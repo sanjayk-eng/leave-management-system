@@ -17,7 +17,7 @@ This table will be updated as new major versions are released.
 
 If you discover a security vulnerability in this project — in either the backend (Go) or frontend (React) — please report it privately by emailing:
 
-**security@example.com**
+**security@zenithive.com**
 
 When reporting, please include as much of the following as you can:
 
