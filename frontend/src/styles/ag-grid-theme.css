@@ -1,0 +1,228 @@
+/* AG Grid Custom Theme for Dark Mode Support */
+.ag-theme-alpine {
+  --ag-background-color: hsl(var(--background));
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-border-color: hsl(var(--border));
+  --ag-header-background-color: hsl(var(--muted) / 0.5);
+  --ag-header-foreground-color: hsl(var(--foreground));
+  --ag-odd-row-background-color: hsl(var(--background));
+  --ag-row-hover-color: hsl(var(--accent) / 0.5);
+  --ag-selected-row-background-color: hsl(var(--accent) / 0.3);
+  --ag-font-family: inherit;
+  --ag-font-size: 14px;
+  --ag-row-height: 60px;
+  --ag-header-height: 48px;
+}
+
+.ag-theme-alpine .ag-root-wrapper {
+  border: none;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.ag-theme-alpine .ag-header {
+  border-bottom: 1px solid hsl(var(--border));
+  font-weight: 500;
+  background: linear-gradient(to right, hsl(var(--muted) / 0.3), hsl(var(--muted) / 0.1));
+}
+
+.ag-theme-alpine .ag-header-cell {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.ag-theme-alpine .ag-header-cell-text {
+  font-weight: 600;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.ag-theme-alpine .ag-row {
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 14px;
+  transition: background-color 0.15s ease;
+}
+
+.ag-theme-alpine .ag-row:last-child {
+  border-bottom: none;
+}
+
+.ag-theme-alpine .ag-row:hover {
+  background-color: hsl(var(--accent) / 0.3) !important;
+}
+
+.ag-theme-alpine .ag-cell {
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  padding-right: 16px;
+  line-height: 1.5;
+}
+
+.ag-theme-alpine .ag-cell-value {
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* Remove default AG Grid borders */
+.ag-theme-alpine .ag-ltr .ag-cell {
+  border-right: none;
+}
+
+/* Loading overlay */
+.ag-theme-alpine .ag-overlay-loading-wrapper {
+  background-color: hsl(var(--background) / 0.95);
+}
+
+.ag-theme-alpine .ag-overlay-loading-center {
+  background-color: transparent;
+  border: none;
+  padding: 20px;
+}
+
+/* No rows overlay */
+.ag-theme-alpine .ag-overlay-no-rows-wrapper {
+  padding: 40px 20px;
+}
+
+.ag-theme-alpine .ag-overlay-no-rows-center {
+  background-color: transparent;
+  border: none;
+}
+
+/* Filter styling */
+.ag-theme-alpine .ag-filter {
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+}
+
+.ag-theme-alpine .ag-filter-toolpanel-header,
+.ag-theme-alpine .ag-filter-toolpanel-search {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+/* Sort indicator */
+.ag-theme-alpine .ag-header-cell-sorted-asc .ag-header-icon,
+.ag-theme-alpine .ag-header-cell-sorted-desc .ag-header-icon {
+  color: hsl(var(--primary));
+}
+
+.ag-theme-alpine .ag-icon-asc,
+.ag-theme-alpine .ag-icon-desc {
+  color: hsl(var(--primary));
+}
+
+/* Pinned columns */
+.ag-theme-alpine .ag-pinned-left-header,
+.ag-theme-alpine .ag-pinned-right-header {
+  border-right: 1px solid hsl(var(--border));
+  background: linear-gradient(to right, hsl(var(--background)), hsl(var(--muted) / 0.2));
+}
+
+.ag-theme-alpine .ag-ltr .ag-pinned-left-cols-container {
+  border-right: 2px solid hsl(var(--border));
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+  background-color: hsl(var(--background));
+}
+
+.ag-theme-alpine .ag-ltr .ag-pinned-right-cols-container {
+  border-left: 2px solid hsl(var(--border));
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+  background-color: hsl(var(--background));
+}
+
+.ag-theme-alpine .ag-pinned-left-header {
+  border-right: 2px solid hsl(var(--border));
+}
+
+.ag-theme-alpine .ag-pinned-right-header {
+  border-left: 2px solid hsl(var(--border));
+}
+
+/* Pinned column cells */
+.ag-theme-alpine .ag-cell.ag-cell-last-left-pinned {
+  border-right: 2px solid hsl(var(--border)) !important;
+}
+
+.ag-theme-alpine .ag-cell.ag-cell-first-right-pinned {
+  border-left: 2px solid hsl(var(--border)) !important;
+}
+
+/* Pagination styling */
+.ag-theme-alpine .ag-paging-panel {
+  border-top: 1px solid hsl(var(--border));
+  padding: 12px 16px;
+  background-color: hsl(var(--muted) / 0.2);
+  position: relative;
+  z-index: 10; /* Ensure pagination stays above scrollbars */
+  min-height: 60px;
+}
+
+.ag-theme-alpine .ag-paging-button {
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--background));
+  border-radius: 0.375rem;
+  padding: 4px 8px;
+  margin: 0 2px;
+  transition: all 0.15s ease;
+}
+
+.ag-theme-alpine .ag-paging-button:hover:not(.ag-disabled) {
+  background-color: hsl(var(--accent));
+  border-color: hsl(var(--primary));
+}
+
+.ag-theme-alpine .ag-paging-button.ag-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+.ag-theme-alpine .ag-body-horizontal-scroll-viewport::-webkit-scrollbar,
+.ag-theme-alpine .ag-body-vertical-scroll-viewport::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+/* Ensure horizontal scroll doesn't overlap pagination */
+.ag-theme-alpine .ag-body-horizontal-scroll {
+  position: relative;
+  z-index: 1;
+}
+
+.ag-theme-alpine .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-track,
+.ag-theme-alpine .ag-body-vertical-scroll-viewport::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 5px;
+}
+
+.ag-theme-alpine .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb,
+.ag-theme-alpine .ag-body-vertical-scroll-viewport::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.4);
+  border-radius: 5px;
+  border: 2px solid hsl(var(--muted) / 0.3);
+}
+
+.ag-theme-alpine .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb:hover,
+.ag-theme-alpine .ag-body-vertical-scroll-viewport::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ag-theme-alpine {
+    --ag-font-size: 13px;
+    --ag-row-height: 56px;
+    --ag-header-height: 44px;
+  }
+  
+  .ag-theme-alpine .ag-header-cell,
+  .ag-theme-alpine .ag-cell {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
