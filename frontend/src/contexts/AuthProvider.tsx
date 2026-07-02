@@ -15,6 +15,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     onError: handleError,
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: (idToken: string) => authService.googleLogin(idToken),
+    onError: handleError,
+  });
+
   const logoutMutation = useMutation({
     mutationFn: () => authService.logout(),
     onError: () => {},
@@ -74,8 +79,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         currentUser,
         login: loginMutation.mutate,
+        googleLogin: googleLoginMutation.mutate,
         logout: logoutMutation.mutate,
         isLoggingIn: loginMutation.isPending,
+        isGoogleLoggingIn: googleLoginMutation.isPending,
         isLoggingOut: logoutMutation.isPending,
       }}
     >

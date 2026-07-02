@@ -1,8 +1,12 @@
 import { api, getAuthToken, setAuthToken, setCurrentUser, removeAuthToken, removeCurrentUser } from '@/lib/api';
 
+export type AuthProvider = 'local' | 'google';
+
 export interface LoginRequest {
-  email: string;
-  password: string;
+  provider: AuthProvider;
+  email?: string;    // required for local login
+  password?: string; // required for local login
+  token?: string;    // required for google login (id_token from Google)
 }
 
 export interface LoginResponse {
@@ -27,14 +31,18 @@ export interface VerifyTokenResponse {
 }
 
 export const authService = {
+  // Local login: { provider: "local", email, password }
+  // Google login: { provider: "google", token: "<google_id_token>" }
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>('/auth/login', credentials);
-    
-    // Store token and user info
     setAuthToken(response.token);
     setCurrentUser(response.user);
-    
     return response;
+  },
+
+  // Convenience wrapper for Google login
+  googleLogin: async (idToken: string): Promise<LoginResponse> => {
+    return authService.login({ provider: 'google', token: idToken });
   },
 
   verifyToken: async (): Promise<VerifyTokenResponse> => {
