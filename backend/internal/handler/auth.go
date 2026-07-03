@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
@@ -13,7 +12,7 @@ import (
 
 // GetAllRoles — GET /api/auth/roles
 // Returns all available role types from Tbl_Role.
-// Public endpoint — no authentication required (used for registration dropdowns etc.)
+// Public endpoint — no authentication required.
 func (s *HandlerFunc) GetAllRoles(c *gin.Context) {
 	roles, err := s.Query.GetAllRoles()
 	if err != nil {
@@ -26,142 +25,72 @@ func (s *HandlerFunc) GetAllRoles(c *gin.Context) {
 	})
 }
 
-func (s *HandlerFunc) Login(c *gin.Context) {
-	// 0. Check if user is already authenticated
-	authHeader := c.GetHeader("Authorization")
-	if authHeader != "" {
-		var tokenString string
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			tokenString = authHeader[7:]
-		} else {
-			tokenString = authHeader
-		}
+func (h *HandlerFunc) Login(c *gin.Context) {
 
-		// If token exists and is valid, user is already logged in
-		if tokenString != "" {
-			claims, err := security.ValidateToken(tokenString, s.Env.SECRET_KEY)
-			if err == nil {
-				// Token is valid, user already logged in
-				userID, parseErr := uuid.Parse(claims.UserID)
-				if parseErr == nil {
-					emp, empErr := s.Query.GetEmployeeByID(userID)
-					if empErr == nil && emp.Status != "deactive" {
-						c.JSON(http.StatusOK, gin.H{
-							"success": true,
-							"message": "Already logged in",
-							"token":   tokenString,
-							"user": gin.H{
-								"id":    emp.ID,
-								"email": emp.Email,
-								"role":  emp.Role,
-							},
-						})
-						return
-					}
-				}
-			}
-		}
-	}
-
-	// 1. Parse request body
 	var input models.LoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
-	// 2. Fetch employee + role name
-	emp, err := s.Query.GetEmployeeByEmail(input.Email)
+	// Default to local if provider not specified (backwards compat)
+	if input.Provider == "" {
+		input.Provider = models.ProviderLocal
+	}
+
+	result, err := h.AuthSvc.Login(&input)
 	if err != nil {
-		// ponytail: generic message — don't confirm whether the email exists
-		errors.RespondWithError(c, http.StatusUnauthorized, "invalid credentials")
+		errors.Error(c, err)
 		return
 	}
-
-	// 3. Validate password
-	if !security.CheckPassword(input.Password, emp.Password) {
-		// ponytail: same message as above — prevent user enumeration
-		errors.RespondWithError(c, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-
-	// 3.5 Check employee status
-	if emp.Status == "deactive" {
-		errors.RespondWithError(c, http.StatusForbidden, "Your account is deactivated. You cannot login")
-		return
-	}
-
-	// 4. Generate JWT with role name
-	token, err := security.GenerateToken(emp.ID, emp.Role, s.Env.SECRET_KEY)
-	if err != nil {
-		log.Printf("JWT generation error: %v", err)
-		errors.RespondWithError(c, http.StatusInternalServerError, "Failed to generate authentication token")
-		return
-	}
-
-	// 5. Success Response
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Login successful",
-		"token":   token,
+		"token":   result.Token,
 		"user": gin.H{
-			"id":    emp.ID,
-			"email": emp.Email,
-			"role":  emp.Role,
+			"id":    result.ID,
+			"email": result.Email,
+			"role":  result.Role,
 		},
 	})
 }
 
-// VerifyToken verifies if the provided token is valid and returns user data
 func (s *HandlerFunc) VerifyToken(c *gin.Context) {
-	// Get token from Authorization header
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
 		errors.RespondWithError(c, http.StatusUnauthorized, "Missing Authorization header")
 		return
 	}
 
-	// Extract token (support both "Bearer token" and "token" formats)
-	var tokenString string
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
+	tokenString := extractToken(authHeader)
 	if tokenString == "" {
 		errors.RespondWithError(c, http.StatusUnauthorized, "Token missing")
 		return
 	}
 
-	// Validate token
 	claims, err := security.ValidateToken(tokenString, s.Env.SECRET_KEY)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, "Invalid or expired token")
 		return
 	}
 
-	// Parse user ID to UUID
 	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, "Invalid user ID")
 		return
 	}
 
-	// Get employee details from database
 	emp, err := s.Query.GetEmployeeByID(userID)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, "User not found")
 		return
 	}
 
-	// Check if employee is still active
 	if emp.Status == "deactive" {
 		errors.RespondWithError(c, http.StatusForbidden, "Account is deactivated")
 		return
 	}
 
-	// Return user data
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Token is valid",
@@ -173,85 +102,8 @@ func (s *HandlerFunc) VerifyToken(c *gin.Context) {
 	})
 }
 
-// CheckAuthStatus checks if user is authenticated without requiring authentication
-func (s *HandlerFunc) CheckAuthStatus(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-
-	// No token provided
-	if authHeader == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "No token provided",
-		})
-		return
-	}
-
-	// Extract token
-	var tokenString string
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
-	if tokenString == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "Token missing",
-		})
-		return
-	}
-
-	// Validate token
-	claims, err := security.ValidateToken(tokenString, s.Env.SECRET_KEY)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "Invalid or expired token",
-		})
-		return
-	}
-
-	// Parse user ID and check user exists
-	userID, err := uuid.Parse(claims.UserID)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "Invalid user ID",
-		})
-		return
-	}
-
-	emp, err := s.Query.GetEmployeeByID(userID)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "User not found",
-		})
-		return
-	}
-
-	// Check if user is active
-	if emp.Status == "deactive" {
-		c.JSON(http.StatusOK, gin.H{
-			"authenticated": false,
-			"message":       "Account is deactivated",
-		})
-		return
-	}
-
-	// User is authenticated
-	c.JSON(http.StatusOK, gin.H{
-		"authenticated": true,
-		"message":       "User is authenticated",
-		"user": gin.H{
-			"id":    emp.ID,
-			"email": emp.Email,
-			"role":  emp.Role,
-		},
-	})
-}
-
+// Logout — POST /api/auth/logout
+// Returns an expired token so the client discards its stored token.
 func (s *HandlerFunc) Logout(c *gin.Context) {
 	userIDRaw, _ := c.Get("user_id")
 	userRoleRaw, _ := c.Get("role")
@@ -267,4 +119,14 @@ func (s *HandlerFunc) Logout(c *gin.Context) {
 		"message": "Logged out successfully",
 		"token":   expiredToken,
 	})
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// extractToken strips the "Bearer " prefix from an Authorization header value.
+func extractToken(authHeader string) string {
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		return authHeader[7:]
+	}
+	return authHeader
 }

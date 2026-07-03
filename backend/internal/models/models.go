@@ -70,12 +70,6 @@ type PayrollEmployeeResponse struct {
 	NetSalary    float64 `json:"net_salary"`
 }
 
-// -------------------Loing input-----------------------
-type LoginInput struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=6"`
-}
-
 // ----------------- AUDIT -----------------
 type AuditInput struct {
 	ActorID  uuid.UUID  `json:"actor_id" validate:"required"`

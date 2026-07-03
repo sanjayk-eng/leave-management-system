@@ -4,6 +4,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/config"
 	"github.com/Zenithive/LeaveManagementSystem/internal/repositories"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
+	authsvc "github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	"github.com/go-playground/validator/v10"
@@ -16,6 +17,7 @@ type HandlerFunc struct {
 	Env                      *config.ENV
 	Query                    *repositories.Repository
 	Validator                *validator.Validate
+	AuthSvc                  authsvc.AuthService
 	LeaveAccrual             *service.LeaveAccrualService
 	LeaveReportSvc           *service.LeaveReportService
 	LeaveTypeSvc             *service.LeaveTypeService
@@ -43,6 +45,7 @@ func NewHandler(
 		Env:                      env,
 		Query:                    query,
 		Validator:                validator,
+		AuthSvc:                  authsvc.New(query, env.SECRET_KEY), // created once here
 		LeaveReportSvc:           service.NewLeaveReportService(query),
 		LeaveTypeSvc:             service.NewLeaveTypeService(query),
 		LeaveApproverFlowService: leaveApproverFlowService,
