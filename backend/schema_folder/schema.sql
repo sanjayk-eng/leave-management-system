@@ -137,10 +137,6 @@ CREATE TABLE IF NOT EXISTS Tbl_Leave (
     CONSTRAINT chk_leave_status CHECK (
         status IN (
             'Pending',
-            'MANAGER_APPROVED',
-            'MANAGER_REJECTED',
-            'ADMIN_APPROVED',
-            'ADMIN_REJECTED',
             'APPROVED',
             'REJECTED',
             'CANCELLED',

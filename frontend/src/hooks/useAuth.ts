@@ -19,6 +19,15 @@ export const useAuth = () => {
     onError: handleError,
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: (idToken: string) => authService.googleLogin(idToken),
+    onSuccess: (data) => {
+      toast.success(data.message || 'Login successful!');
+      navigate('/');
+    },
+    onError: handleError,
+  });
+
   const logoutMutation = useMutation({
     mutationFn: () => authService.logout(),
     onSuccess: () => {
@@ -26,7 +35,6 @@ export const useAuth = () => {
       navigate('/login');
     },
     onError: () => {
-      // logout errors are non-critical; auth is cleared regardless
       toast.success('Logged out successfully');
       navigate('/login');
     },
@@ -35,6 +43,8 @@ export const useAuth = () => {
   return {
     login: loginMutation.mutate,
     isLoggingIn: loginMutation.isPending,
+    googleLogin: googleLoginMutation.mutate,
+    isGoogleLoggingIn: googleLoginMutation.isPending,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
     currentUser,

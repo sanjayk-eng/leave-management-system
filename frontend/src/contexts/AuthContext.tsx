@@ -6,8 +6,10 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   currentUser: CurrentUser | null;
   login: (credentials: LoginRequest) => void;
+  googleLogin: (idToken: string) => void;
   logout: () => void;
   isLoggingIn: boolean;
+  isGoogleLoggingIn: boolean;
   isLoggingOut: boolean;
 }
 

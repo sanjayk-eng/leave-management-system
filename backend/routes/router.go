@@ -27,7 +27,6 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	{
 		auth.POST("/login", h.Login)
 		auth.GET("/verify", h.VerifyToken)                           // Verify token validity
-		auth.GET("/status", h.CheckAuthStatus)                       // Check auth status without requiring auth
 		auth.POST("/logout", middleware.AuthMiddleware(h), h.Logout) // Logout (requires valid token)
 		auth.GET("/roles", h.GetAllRoles)                            // Get all available role types (public)
 	}

@@ -1,18 +1,20 @@
-# frontend
-frontend/node_modules
-frontend/dist
-
-# backend
-backend/bin
-backend/tmp
-
-# env
-**/.env
-**/.env.local
-
-# IDE
-.vscode
-.idea
-
-# OS
-.DS_Store
+# frontend
+frontend/node_modules
+frontend/dist
+
+# backend
+backend/bin
+backend/tmp
+
+# env
+**/.env
+**/.env.local
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+config.bat
+.env
