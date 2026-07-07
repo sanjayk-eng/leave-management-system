@@ -5,11 +5,13 @@ FROM node:20-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Accept build arguments for API URL
+# Accept build arguments for API URL and Google OAuth
 ARG VITE_API_BASE_URL=http://localhost:8082/api
+ARG VITE_GOOGLE_CLIENT_ID=""
 
-# Set environment variable for build
+# Set environment variables for build (Vite bakes these in at build time)
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
 # Copy package files
 COPY package*.json ./
