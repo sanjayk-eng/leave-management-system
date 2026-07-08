@@ -100,12 +100,17 @@ func main() {
 	holidayRepo := repositories.NewHolidayRepository(db)
 	holidayservice := service.NewHolidayService(holidayRepo)
 
+	// ── Permission (RBAC) ────────────────────────────────────────────────────
+	permissionRepo := repositories.NewPermissionRepository(db)
+	permissionSvc := service.NewPermissionService(db, permissionRepo)
+
 	// ── HTTP handler ─────────────────────────────────────────────────────────
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,
 		leaveFlowService, leaveFlowLogService,
 		notifSvc, holidayservice,
+		permissionSvc,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

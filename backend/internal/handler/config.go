@@ -27,6 +27,7 @@ type HandlerFunc struct {
 	LeaveFlowLogService      service.LeaveFlowLog
 	NotificationSvc          notification.Service // async event bus — never nil after NewHandler
 	Holidayservice           service.HolidayService
+	PermissionSvc            service.PermissionService // RBAC permission toggle
 }
 
 // NewHandler constructs the handler with all required dependencies.
@@ -40,6 +41,7 @@ func NewHandler(
 	leaveFlowLogService service.LeaveFlowLog,
 	notifSvc notification.Service,
 	holidayservice service.HolidayService,
+	permissionSvc service.PermissionService,
 ) *HandlerFunc {
 	return &HandlerFunc{
 		Env:                      env,
@@ -54,6 +56,7 @@ func NewHandler(
 		LeaveFlowLogService:      leaveFlowLogService,
 		NotificationSvc:          notifSvc,
 		Holidayservice:           holidayservice,
+		PermissionSvc:            permissionSvc,
 	}
 }
 

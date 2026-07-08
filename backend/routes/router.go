@@ -163,6 +163,18 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	{
 		logs.GET("", h.GetLogs) // Get logs filtered by days (SUPERADMIN only)
 	}
+
+	// ----------------- Permissions (RBAC) -----------------
+	// GET  /api/permissions/roles/:role_id  → view full permission matrix for a role
+	// PATCH /api/permissions/roles/:role_id → toggle is_enabled on individual permissions
+	// Access: SUPERADMIN and ADMIN only.
+	// SUPERADMIN's own permissions (role_id=1) are read-only (service enforces 403).
+	permissions := r.Group("/api/permissions")
+	permissions.Use(middleware.AuthMiddleware(h))
+	{
+		permissions.GET("/roles/:role_id", h.GetRolePermissions)
+		permissions.PATCH("/roles/:role_id", h.UpdateRolePermissions)
+	}
 	// Category routes
 	catagory := r.Group("/api/catagory")
 	catagory.Use(middleware.AuthMiddleware(h))

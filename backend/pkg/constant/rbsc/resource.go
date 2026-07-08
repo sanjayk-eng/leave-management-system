@@ -1,17 +1,20 @@
 package rbsc
 
-// Resource identifies a protectable entity in the system.
-// These map 1:1 to Tbl_Permission.resource values.
+// Resource identifies a protectable entity.
+// Values map 1:1 to the permission_resource DB enum in tbl_permission.
+// Naming: singular snake_case — no drift between code and DB allowed.
 type Resource string
 
 const (
 	ResourceEmployee     Resource = "employee"
 	ResourceLeave        Resource = "leave"
 	ResourceLeaveBalance Resource = "leave_balance"
+	ResourceLeaveReport  Resource = "leave_report"
 	ResourcePayroll      Resource = "payroll"
 	ResourceSettings     Resource = "settings"
-	ResourceEquipment    Resource = "equipment"
-	ResourceLeaveReport  Resource = "leave_report"
+	ResourceDesignation  Resource = "designation"
+	ResourceEquipment    Resource = "equipment" // was "asset" in old migration — fixed
+	ResourcePermission   Resource = "permission"
 )
 
 func (r Resource) String() string { return string(r) }
