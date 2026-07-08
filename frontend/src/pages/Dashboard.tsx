@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaves } from "@/hooks/useLeaves";
 import { useLeaveBalances } from "@/hooks/useLeaveBalances";
@@ -360,10 +361,7 @@ const Dashboard = () => {
                 <Skeleton className="h-4 w-24" />
               </div>
             ) : leavesError ? (
-              <div className="text-center">
-                <p className="text-sm text-destructive">Error loading</p>
-                <Button onClick={() => refetchLeaves()} variant="ghost" size="sm" className="mt-1">Retry</Button>
-              </div>
+              <ErrorDisplay error={leavesError} onRetry={refetchLeaves} compact />
             ) : (
               <>
                 <div className="text-2xl font-bold">{myLeaves.length}</div>
@@ -396,10 +394,7 @@ const Dashboard = () => {
                 <Skeleton className="h-4 w-32" />
               </div>
             ) : balancesError ? (
-              <div className="text-center">
-                <p className="text-sm text-destructive">Error loading</p>
-                <Button onClick={() => refetchBalances()} variant="ghost" size="sm" className="mt-1">Retry</Button>
-              </div>
+              <ErrorDisplay error={balancesError} onRetry={refetchBalances} compact />
             ) : (
               <>
                 <div className="text-2xl font-bold">{balances.length}</div>
@@ -427,10 +422,7 @@ const Dashboard = () => {
                 ))}
               </div>
             ) : leavesError ? (
-              <div className="flex flex-col items-center justify-center py-4 space-y-2">
-                <p className="text-sm text-destructive">{leavesError.message}</p>
-                <Button onClick={() => refetchLeaves()} variant="outline" size="sm">Retry</Button>
-              </div>
+              <ErrorDisplay error={leavesError} onRetry={refetchLeaves} compact />
             ) : (
               <div className="space-y-4">
                 {todaysLeaves.length > 0 ? todaysLeaves.map((leave) => (
@@ -477,10 +469,7 @@ const Dashboard = () => {
                 ))}
               </div>
             ) : balancesError ? (
-              <div className="flex flex-col items-center justify-center py-4 space-y-2">
-                <p className="text-sm text-destructive">{balancesError.message}</p>
-                <Button onClick={() => refetchBalances()} variant="outline" size="sm">Retry</Button>
-              </div>
+              <ErrorDisplay error={balancesError} onRetry={refetchBalances} compact />
             ) : (
               <div className="space-y-4">
                 {detailedBalances.map((balance, index) => (

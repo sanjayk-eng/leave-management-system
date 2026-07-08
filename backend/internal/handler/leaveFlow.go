@@ -38,13 +38,21 @@ func (h *HandlerFunc) LeaveAction(c *gin.Context) {
 		errors.RespondWithError(c, http.StatusUnauthorized, "missing EpID")
 		return
 	}
-	var req models.ActionLeaveReq
 	role := c.GetString("role")
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "Invalid payload: "+err.Error())
+	// RequireLeaveAction middleware pre-parses and validates the payload,
+	// then stores it in context to avoid consuming the body twice.
+	reqVal, exists := c.Get("leave_action_req")
+	if !exists {
+		errors.RespondWithError(c, http.StatusInternalServerError, "leave action request missing from context")
 		return
 	}
+	req, ok := reqVal.(models.ActionLeaveReq)
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "leave action request has unexpected type")
+		return
+	}
+
 	leaveID := c.Param("id")
 
 	if err := h.LeaveFlowService.ActionLeave(c, req, leaveID, empID, role); err != nil {
@@ -53,7 +61,7 @@ func (h *HandlerFunc) LeaveAction(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "leave approver or  reject Successfully",
+		"message": "leave action processed successfully",
 	})
 }
 
@@ -63,7 +71,6 @@ func (h *HandlerFunc) GetLeaves(c *gin.Context) {
 		errors.RespondWithError(c, http.StatusUnauthorized, "missing EpID")
 		return
 	}
-
 	role := c.GetString("role")
 
 	month, year, err := common.GetMonthYear(c)

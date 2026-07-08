@@ -12,6 +12,7 @@ import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
 import { ReasonCellRenderer, TimingCellRenderer, StatusCellRenderer, ApprovalLogCellRenderer } from "@/components/leave/LeaveCellRenderers";
 import { ApprovalLogDrawer } from "@/components/leave/ApprovalLogDrawer";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { LeaveResponse } from "@/services/leaveService";
 import { Check, X, Loader2, Undo2, Info } from "lucide-react";
 import { ColDef, ICellRendererParams } from "ag-grid-community"; // ICellRendererParams used by useCallback renderers
@@ -29,11 +30,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { getCurrentUser } from "@/lib/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { canApproveOrReject, canWithdraw, withdrawLabel } from "@/lib/leaveActionUtils";
-
-// Fix: typed interface instead of `any` for errors with a status code
-interface ApiError extends Error {
-  status?: number;
-}
 
 const Approvals = () => {
   const { 
@@ -489,20 +485,7 @@ const Approvals = () => {
           {isLoading ? (
             <TableSkeleton rows={5} columns={9} showActions={true} />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <div className="text-center">
-                <p className="text-lg font-semibold text-destructive">Failed to load leave requests</p>
-                <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
-                {/* Fix: use ApiError instead of any */}
-                {(error as ApiError).status && (
-                  <p className="text-xs text-muted-foreground mt-1">Error Code: {(error as ApiError).status}</p>
-                )}
-              </div>
-              <Button onClick={() => refreshLeaves()} variant="outline">
-                <Loader2 className="mr-2 h-4 w-4" />
-                Retry
-              </Button>
-            </div>
+            <ErrorDisplay error={error} onRetry={refreshLeaves} className="mx-auto max-w-md" />
           ) : pendingLeaves.length === 0 ? (
             <div className="text-center py-8 space-y-2">
               <div className="text-muted-foreground">
@@ -560,20 +543,7 @@ const Approvals = () => {
           {isLoading ? (
             <TableSkeleton rows={10} columns={10} showActions={true} />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <div className="text-center">
-                <p className="text-lg font-semibold text-destructive">Failed to load leave history</p>
-                <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
-                {/* Fix: use ApiError instead of any */}
-                {(error as ApiError).status && (
-                  <p className="text-xs text-muted-foreground mt-1">Error Code: {(error as ApiError).status}</p>
-                )}
-              </div>
-              <Button onClick={() => refreshLeaves()} variant="outline">
-                <Loader2 className="mr-2 h-4 w-4" />
-                Retry
-              </Button>
-            </div>
+            <ErrorDisplay error={error} onRetry={refreshLeaves} className="mx-auto max-w-md" />
           ) : leaves.length === 0 ? (
             <div className="text-center py-8 space-y-2">
               <div className="text-muted-foreground">

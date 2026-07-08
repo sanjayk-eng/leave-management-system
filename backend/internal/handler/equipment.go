@@ -366,10 +366,6 @@ func (h *HandlerFunc) AssignEquipment(c *gin.Context) {
 }
 
 func (h *HandlerFunc) GetAllAssignedEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "access denied"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
 
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.AssignmentSortFields)
