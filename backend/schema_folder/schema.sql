@@ -2,8 +2,8 @@
 -- COMPLETE DATABASE SCHEMA - HR & LEAVE MANAGEMENT SYSTEM
 -- =====================================================
 -- Database: PostgreSQL
--- Last Updated: April 9, 2026
--- Total Tables: 18
+-- Last Updated: July 7, 2026
+-- Total Tables: 21
 -- =====================================================
 
 -- Enable UUID generation
@@ -379,6 +379,19 @@ CREATE TABLE IF NOT EXISTS Tbl_Leave_Flow (
 );
 
 -- =====================================================
+-- 21. TBL_PERMISSION - Permission Definitions
+-- =====================================================
+CREATE TABLE IF NOT EXISTS tbl_permission (
+    id SERIAL PRIMARY KEY,
+    resource TEXT NOT NULL,
+    action TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tbl_permission_resource_action UNIQUE (resource, action)
+);
+
+-- =====================================================
 -- INDEXES FOR PERFORMANCE
 -- =====================================================
 
@@ -421,6 +434,10 @@ CREATE INDEX IF NOT EXISTS idx_log_created ON tbl_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON Tbl_Audit(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON Tbl_Audit(entity, entity_id);
 
+-- Permission indexes
+CREATE INDEX IF NOT EXISTS idx_permission_resource ON tbl_permission(resource);
+CREATE INDEX IF NOT EXISTS idx_permission_action ON tbl_permission(action);
+
 -- =====================================================
 -- COMMENTS ON TABLES
 -- =====================================================
@@ -443,6 +460,7 @@ COMMENT ON TABLE tbl_equipment_assignment IS 'Equipment assignment history';
 COMMENT ON TABLE Tbl_Company_Settings IS 'Global company configuration and branding';
 COMMENT ON TABLE tbl_log IS 'System activity logging';
 COMMENT ON TABLE Tbl_Audit IS 'Detailed audit trail with JSON metadata';
+COMMENT ON TABLE tbl_permission IS 'Permission definitions for resource-action access control';
 
 -- =====================================================
 -- END OF SCHEMA
