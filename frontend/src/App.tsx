@@ -31,6 +31,12 @@ import Equipment from "./pages/Equipment";
 import Logs from "./pages/Logs";
 import LeaveMonthlyReport from "./pages/LeaveMonthlyReport";
 import NotFound from "./pages/NotFound";
+import CompanySettings from "./pages/settings/CompanySettings";
+import LeavePolicies from "./pages/settings/LeavePolicies";
+import LeaveTiming from "./pages/settings/LeaveTiming";
+import ApprovalFlow from "./pages/settings/ApprovalFlow";
+import BirthdaySettings from "./pages/settings/BirthdaySettings";
+import SettingsPermissions from "./pages/settings/Permissions";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,7 +74,15 @@ const App = () => (
               <Route path="/calendar" element={<AuthGuard><Layout><LeaveCalendar /></Layout></AuthGuard>} />
               <Route path="/payroll" element={<AuthGuard><PayrollRoute><Layout><Payroll /></Layout></PayrollRoute></AuthGuard>} />
               <Route path="/payslips" element={<AuthGuard><Layout><Payslips /></Layout></AuthGuard>} />
-              <Route path="/settings" element={<AuthGuard><AdminRoute><Layout><Settings /></Layout></AdminRoute></AuthGuard>} />
+              <Route path="/settings" element={<AuthGuard><AdminRoute><Layout><Settings /></Layout></AdminRoute></AuthGuard>}>
+                <Route index element={<Navigate to="/settings/company" replace />} />
+                <Route path="company" element={<CompanySettings />} />
+                <Route path="leave-policies" element={<LeavePolicies />} />
+                <Route path="leave-timing" element={<LeaveTiming />} />
+                <Route path="approval-flow" element={<ApprovalFlow />} />
+                <Route path="birthday" element={<BirthdaySettings />} />
+                <Route path="permissions" element={<SettingsPermissions />} />
+              </Route>
               <Route path="/holidays" element={<AuthGuard><HolidayRoute><Layout><Holidays /></Layout></HolidayRoute></AuthGuard>} />
               <Route path="/designations" element={<AuthGuard><DesignationRoute><Layout><Designations /></Layout></DesignationRoute></AuthGuard>} />
               <Route path="/equipment" element={<AuthGuard><AssetRoute><Layout><Equipment /></Layout></AssetRoute></AuthGuard>} />

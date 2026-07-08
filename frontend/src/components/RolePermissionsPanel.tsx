@@ -177,7 +177,7 @@ interface ResourceSectionProps {
 }
 
 function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const meta = RESOURCE_META[group.resource];
   const Icon = meta?.icon ?? Shield;
 
