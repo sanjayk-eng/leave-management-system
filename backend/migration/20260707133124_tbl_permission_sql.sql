@@ -35,8 +35,9 @@ CREATE TYPE permission_resource AS ENUM (
     'payroll',
     'settings',
     'designation',
-    'equipment',
-    'permission'
+    'asset',
+    'permission',
+    'log'
 );
 
 -- ── 2. Enum: permission_action ───────────────────────────────────────────────
@@ -51,7 +52,6 @@ CREATE TYPE permission_action AS ENUM (
     'change_password',
     'update_role',
     'assign_manager',
-    'unassign_manager',
     'activate',
     'deactivate',
     'designation_management',
@@ -108,7 +108,6 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('employee', 'change_password',       'Change Password',       'Reset or change an employee account password',                      TRUE),
     ('employee', 'update_role',           'Update Role',           'Change an employee role (e.g. EMPLOYEE → MANAGER)',                 TRUE),
     ('employee', 'assign_manager',        'Assign Manager',        'Link an employee to a manager in the reporting hierarchy',          TRUE),
-    ('employee', 'unassign_manager',      'Unassign Manager',      'Remove the manager link from an employee',                         TRUE),
     ('employee', 'activate',              'Activate Employee',     'Re-activate a deactivated employee account',                        TRUE),
     ('employee', 'deactivate',            'Deactivate Employee',   'Deactivate (soft-delete) an employee account',                      TRUE),
     ('employee', 'designation_management','Manage Designation',    'Assign or change an employee job designation',                      TRUE),
@@ -123,7 +122,6 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('leave', 'withdraw', 'Withdraw Leave', 'Initiate or confirm a leave withdrawal after approval',          TRUE),
 
     -- LEAVE BALANCE
-    ('leave_balance', 'read',   'View Leave Balance',   'View leave balance for self or other employees',               TRUE),
     ('leave_balance', 'adjust', 'Adjust Leave Balance', 'Manually increase or decrease an employee leave balance',      TRUE),
 
     -- LEAVE REPORT
@@ -142,23 +140,19 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('settings', 'manage_leave_flow',   'Manage Approval Flow',  'Create, update, or delete leave approval workflow configurations',TRUE),
     ('settings', 'manage_birthdays',    'Manage Birthday Settings','Configure the birthday message template and notification schedule',TRUE),
 
-    -- DESIGNATION
-    ('designation', 'add',    'Add Designation',    'Create a new job designation',                       TRUE),
-    ('designation', 'read',   'View Designations',  'List all job designations',                          TRUE),
-    ('designation', 'edit',   'Edit Designation',   'Update an existing job designation',                 TRUE),
-    ('designation', 'remove', 'Remove Designation', 'Delete a job designation',                           TRUE),
-
     -- EQUIPMENT
-    ('equipment', 'add',    'Add Equipment',    'Add new equipment or a new equipment category',              TRUE),
-    ('equipment', 'read',   'View Equipment',   'View equipment inventory and assignment history',             TRUE),
-    ('equipment', 'edit',   'Edit Equipment',   'Update equipment details or category information',            TRUE),
-    ('equipment', 'remove', 'Remove Equipment', 'Delete equipment or equipment category records',              TRUE),
-    ('equipment', 'assign', 'Assign Equipment', 'Assign, reassign, or return equipment to/from employees',    TRUE),
+    ('asset', 'add',    'Add asset',    'Add new asset or a new asset category',              TRUE),
+    ('asset', 'read',   'View asset',   'View asset inventory and assignment history',             TRUE),
+    ('asset', 'edit',   'Edit asset',   'Update asset details or category information',            TRUE),
+    ('asset', 'remove', 'Remove asset', 'Delete asset or asset category records',              TRUE),
+    ('asset', 'assign', 'Assign asset', 'Assign, reassign, or return asset to/from employees',    TRUE),
 
     -- PERMISSION (is_visible=FALSE: used by RBAC middleware, hidden from UI)
     ('permission', 'read', 'View Permissions',      'Read the permission catalogue and role-permission matrix',    FALSE),
-    ('permission', 'edit', 'Edit Role Permissions', 'Toggle is_enabled on tbl_role_permission rows for any role', TRUE)
+    ('permission', 'edit', 'Edit Role Permissions', 'Toggle is_enabled on tbl_role_permission rows for any role', TRUE),
 
+    -- LOGGING (is_visible=FALSE: used by RBAC middleware, hidden from UI)
+    ('log', 'read', 'View System Logs', 'Read system activity logs and audit trail entries', FALSE)
 ON CONFLICT (resource, action) DO UPDATE
     SET label       = EXCLUDED.label,
         description = EXCLUDED.description,
@@ -213,33 +207,32 @@ FROM (VALUES
     ('employee', 'change_password',       'all',  TRUE),
     ('employee', 'update_role',           'all',  TRUE),
     ('employee', 'assign_manager',        'all',  TRUE),
-    ('employee', 'unassign_manager',      'all',  TRUE),
     ('employee', 'activate',              'all',  TRUE),
     ('employee', 'deactivate',            'all',  TRUE),
     ('employee', 'designation_management','all',  TRUE),
+    ('leave', 'apply',                    'own',  FALSE),
     ('leave',    'read',                  'all',  FALSE),
     ('leave',    'approve',               'all',  FALSE),
     ('leave',    'reject',                'all',  FALSE),
-    ('leave',    'cancel',                'all',  FALSE),
+    ('leave',    'cancel',                'own',  FALSE),
     ('leave',    'withdraw',              'all',  FALSE),
-    ('leave_balance', 'read',             'all',  FALSE),
-    ('leave_report',  'read',             'all',  FALSE),
-    ('payroll',  'read',                  'own',  FALSE),
+    ('leave_balance', 'adjust',           'all',  FALSE),
+    ('payroll',  'read',                  'all',  FALSE),
     ('settings', 'read',                  'all',  FALSE),
+    ('settings', 'edit',                  'all',  FALSE),
     ('settings', 'manage_holidays',       'all',  FALSE),
     ('settings', 'manage_leave_policy',   'all',  FALSE),
     ('settings', 'manage_leave_flow',     'all',  FALSE),
     ('settings', 'manage_birthdays',      'all',  FALSE),
-    ('designation', 'add',    'all', FALSE),
-    ('designation', 'read',   'all', FALSE),
-    ('designation', 'edit',   'all', FALSE),
-    ('designation', 'remove', 'all', FALSE),
-    ('equipment', 'add',    'all', FALSE),
-    ('equipment', 'read',   'all', FALSE),
-    ('equipment', 'edit',   'all', FALSE),
-    ('equipment', 'remove', 'all', FALSE),
-    ('equipment', 'assign', 'all', FALSE),
-    ('permission', 'read',  'all', FALSE)
+    ('asset', 'add',    'all', FALSE),
+    ('asset', 'read',   'all', FALSE),
+    ('asset', 'edit',   'all', FALSE),
+    ('asset', 'remove', 'all', FALSE),
+    ('asset', 'assign', 'all', FALSE),
+    ('permission','read','all', FALSE),
+    ('permission','edit','all', FALSE),
+    ('log','read','all', FALSE),
+    ('leave_report','read','all', FALSE)
 ) AS v(resource, action, scope, req_sen)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -254,15 +247,16 @@ FROM (VALUES
     ('employee', 'change_password',       'all',  TRUE),
     ('employee', 'update_role',           'all',  TRUE),
     ('employee', 'assign_manager',        'all',  TRUE),
-    ('employee', 'unassign_manager',      'all',  TRUE),
     ('employee', 'activate',              'all',  TRUE),
     ('employee', 'deactivate',            'all',  TRUE),
     ('employee', 'designation_management','all',  TRUE),
-    ('leave',    'read',                  'all',  FALSE),
-    ('leave',    'approve',               'all',  FALSE),
-    ('leave',    'reject',                'all',  FALSE),
-    ('leave',    'cancel',                'all',  FALSE),
-    ('leave',    'withdraw',              'all',  FALSE),
+    ('leave','apply',    'own',  FALSE),
+    ('leave','read',     'all',  FALSE),
+    ('leave','edit',     'own',  FALSE),
+    ('leave','approve',  'all',  FALSE),
+    ('leave','reject',   'all',  FALSE),
+    ('leave','cancel',   'all',  FALSE),
+    ('leave','withdraw', 'all',  FALSE),
     ('leave_balance', 'read',             'all',  FALSE),
     ('leave_balance', 'adjust',           'all',  FALSE),
     ('leave_report',  'read',             'all',  FALSE),
@@ -274,17 +268,14 @@ FROM (VALUES
     ('settings', 'manage_leave_policy',   'all',  FALSE),
     ('settings', 'manage_leave_flow',     'all',  FALSE),
     ('settings', 'manage_birthdays',      'all',  FALSE),
-    ('designation', 'add',    'all', FALSE),
-    ('designation', 'read',   'all', FALSE),
-    ('designation', 'edit',   'all', FALSE),
-    ('designation', 'remove', 'all', FALSE),
-    ('equipment', 'add',    'all', FALSE),
-    ('equipment', 'read',   'all', FALSE),
-    ('equipment', 'edit',   'all', FALSE),
-    ('equipment', 'remove', 'all', FALSE),
-    ('equipment', 'assign', 'all', FALSE),
+    ('asset', 'add',    'all', FALSE),
+    ('asset', 'read',   'all', FALSE),
+    ('asset', 'edit',   'all', FALSE),
+    ('asset', 'remove', 'all', FALSE),
+    ('asset', 'assign', 'all', FALSE),
     ('permission', 'read',  'all', FALSE),
-    ('permission', 'edit',  'all', FALSE)
+    ('permission', 'edit',  'all', FALSE),
+    ('log', 'read',  'all', FALSE)
 ) AS v(resource, action, scope, req_sen)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -301,9 +292,9 @@ FROM (VALUES
     ('leave',         'reject',   'team'),
     ('leave',         'cancel',   'own'),
     ('leave',         'withdraw', 'own'),
-    ('leave_balance', 'read',     'team'),
     ('payroll',       'read',     'own'),
-    ('designation',   'read',     'all')
+    ('log',            'read',    'team'),
+    ('leave_report',   'read',    'own')
 ) AS v(resource, action, scope)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -317,10 +308,9 @@ FROM (VALUES
     ('leave',         'read',     'own'),
     ('leave',         'edit',     'own'),
     ('leave',         'cancel',   'own'),
-    ('leave',         'withdraw', 'own'),
-    ('leave_balance', 'read',     'own'),
     ('payroll',       'read',     'own'),
-    ('designation',   'read',     'all')
+    ('log',            'read',    'own'),
+    ('leave_report',   'read',    'own')
 ) AS v(resource, action, scope)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -329,13 +319,13 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO tbl_role_permission (role_id, permission_id, scope, require_seniority, is_enabled)
 SELECT 6, p.id, v.scope, FALSE, TRUE
 FROM (VALUES
-    ('employee',      'read',    'own'),
-    ('leave',         'apply',   'own'),
-    ('leave',         'read',    'own'),
-    ('leave',         'edit',    'own'),
-    ('leave',         'cancel',  'own'),
-    ('leave_balance', 'read',    'own'),
-    ('designation',   'read',    'all')
+    ('employee',      'read',     'own'),
+    ('leave',         'apply',    'own'),
+    ('leave',         'read',     'own'),
+    ('leave',         'edit',     'own'),
+    ('leave',         'cancel',   'own'),
+    ('log',            'read',    'own'),
+    ('leave_report',   'read',    'own')
 ) AS v(resource, action, scope)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;

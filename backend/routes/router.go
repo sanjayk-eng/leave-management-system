@@ -207,6 +207,5 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 			assign.DELETE("/remove", h.RemoveEquipment)                   // Remove/return equipment
 			assign.PUT("/update", h.UpdateAssignment)                     // Update assignment (quantity or reassign)
 		}
-
 	}
 }
