@@ -26,7 +26,9 @@ import {
   Building2,
   Clock,
   GitMerge,
+  Shield,
 } from "lucide-react";
+import { RolePermissionsPanel } from "@/components/RolePermissionsPanel";
 import { LeaveTimingSettings } from "@/components/LeaveTimingSettings";
 import { ApprovalFlowSettings } from "@/components/ApprovalFlowSettings";
 import { PolicyFormDialog, PolicyFormValues, POLICY_FORM_DEFAULTS } from "@/components/leave/PolicyFormDialog";
@@ -196,7 +198,7 @@ const Settings = () => {
       </div>
 
       <Tabs defaultValue="company" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="company" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Company</span>
@@ -216,6 +218,10 @@ const Settings = () => {
           <TabsTrigger value="birthday" className="flex items-center gap-2">
             <Cake className="h-4 w-4" />
             <span className="hidden sm:inline">Birthday</span>
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            <span className="hidden sm:inline">Permissions</span>
           </TabsTrigger>
         </TabsList>
 
@@ -627,6 +633,26 @@ const Settings = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Permissions Tab ── */}
+        <TabsContent value="permissions">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-slate-500" />
+                Role Permissions
+              </CardTitle>
+              <CardDescription>
+                Control what each role can do. Toggle individual permissions on or off.
+                Scope and seniority rules are system-defined and cannot be changed here.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RolePermissionsPanel />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
       {/* ── Add Policy Dialog ── */}
