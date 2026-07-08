@@ -13,23 +13,11 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 
 type PermissionRepository interface {
-	// GetRolePermissionsGrouped returns only the permissions that are seeded
-	// for this role (INNER JOIN), grouped into ResourceGroup slices.
-	// Permissions that don't belong to this role are never returned.
 	GetRolePermissionsGrouped(ctx context.Context, roleID int) ([]models.ResourceGroup, error)
-
-	// GetRoleName returns the role type string (e.g. "ADMIN") for a role_id.
 	GetRoleName(ctx context.Context, roleID int) (string, error)
-
-	// BulkToggle updates is_enabled for each supplied toggle inside tx.
-	// Only is_enabled is written — scope and require_seniority are never touched.
-	// Returns an error if any permission_id does not belong to this role.
 	BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int, toggles []models.PermissionToggle) error
+	CheckPermission(ctx context.Context, roleID int, resource, action string) (models.PermissionCheckResult, error)
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// permissionRepo — concrete implementation
-// ─────────────────────────────────────────────────────────────────────────────
 
 type permissionRepo struct {
 	db *sqlx.DB
@@ -39,25 +27,14 @@ func NewPermissionRepository(db *sqlx.DB) PermissionRepository {
 	return &permissionRepo{db: db}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GetRolePermissionsGrouped
-//
-// KEY FIX: INNER JOIN instead of LEFT JOIN.
-//
-// Only returns permissions that are explicitly seeded in tbl_role_permission
-// for this role. No role ever sees permissions it was not given.
-//
-// This means:
-//   - INTERN sees only: employee:read, leave:apply/read/edit/cancel,
-//     leave_balance:read, designation:read  (7 rows total)
-//   - EMPLOYEE sees only: the above + leave:withdraw + payroll:read  (9 rows)
-//   - MANAGER sees team-scoped approvals + own leave ops  (11 rows)
-//   - HR/ADMIN/SUPERADMIN see their full set
-//
-// Ordered by resource then action so the grouping loop is O(n).
-// ─────────────────────────────────────────────────────────────────────────────
+type flatRow struct {
+	Resource string `db:"resource"`
+	models.PermissionRow
+}
 
-const queryRolePermissions = `
+func (r *permissionRepo) GetRolePermissionsGrouped(ctx context.Context, roleID int) ([]models.ResourceGroup, error) {
+
+	query := `
 SELECT
     p.id            AS permission_id,
     p.resource::TEXT AS resource,
@@ -74,16 +51,8 @@ WHERE rp.role_id    = $1
   AND p.is_visible  = TRUE
 ORDER BY p.resource, p.action
 `
-
-// flatRow is the internal scan target — carries resource for grouping.
-type flatRow struct {
-	Resource string `db:"resource"`
-	models.PermissionRow
-}
-
-func (r *permissionRepo) GetRolePermissionsGrouped(ctx context.Context, roleID int) ([]models.ResourceGroup, error) {
 	var rows []flatRow
-	if err := r.db.SelectContext(ctx, &rows, queryRolePermissions, roleID); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, query, roleID); err != nil {
 		return nil, fmt.Errorf("GetRolePermissionsGrouped role=%d: %w", roleID, err)
 	}
 
@@ -105,10 +74,6 @@ func (r *permissionRepo) GetRolePermissionsGrouped(ctx context.Context, roleID i
 	return groups, nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GetRoleName
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (r *permissionRepo) GetRoleName(ctx context.Context, roleID int) (string, error) {
 	var name string
 	if err := r.db.GetContext(ctx, &name,
@@ -118,24 +83,17 @@ func (r *permissionRepo) GetRoleName(ctx context.Context, roleID int) (string, e
 	return name, nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BulkToggle
-//
-// One UPDATE per toggle row inside the provided transaction.
-// Returns an error when affected rows = 0 — permission_id not seeded for role.
-// ─────────────────────────────────────────────────────────────────────────────
+func (r *permissionRepo) BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int, toggles []models.PermissionToggle) error {
 
-const updateToggleSQL = `
+	query := `
 UPDATE tbl_role_permission
 SET    is_enabled = $1,
        updated_at = NOW()
 WHERE  role_id       = $2
   AND  permission_id = $3
 `
-
-func (r *permissionRepo) BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int, toggles []models.PermissionToggle) error {
 	for _, t := range toggles {
-		res, err := tx.ExecContext(ctx, updateToggleSQL, t.IsEnabled, roleID, t.PermissionID)
+		res, err := tx.ExecContext(ctx, query, t.IsEnabled, roleID, t.PermissionID)
 		if err != nil {
 			return fmt.Errorf("BulkToggle role=%d perm=%d: %w", roleID, t.PermissionID, err)
 		}
@@ -145,4 +103,20 @@ func (r *permissionRepo) BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int
 		}
 	}
 	return nil
+}
+
+func (r *permissionRepo) CheckPermission(ctx context.Context, roleID int, resource, action string) (models.PermissionCheckResult, error) {
+	query := `
+SELECT rp.scope, rp.require_seniority, rp.is_enabled
+FROM tbl_role_permission rp
+INNER JOIN tbl_permission p ON p.id = rp.permission_id
+WHERE rp.role_id = $1 AND p.resource = $2 AND p.action = $3
+`
+	var result models.PermissionCheckResult
+	err := r.db.GetContext(ctx, &result, query, roleID, resource, action)
+	if err != nil {
+		// no row = permission not seeded for this role = simply not allowed
+		return models.PermissionCheckResult{Allowed: false}, nil
+	}
+	return result, nil
 }

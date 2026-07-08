@@ -28,13 +28,13 @@ type Permission struct {
 
 // RolePermission is the DB model for a tbl_role_permission row.
 type RolePermission struct {
-	RoleID              int       `db:"role_id"            json:"role_id"`
-	PermissionID        int       `db:"permission_id"      json:"permission_id"`
-	Scope               string    `db:"scope"              json:"scope"`
-	RequireSeniority    bool      `db:"require_seniority"  json:"require_seniority"`
-	IsEnabled           bool      `db:"is_enabled"         json:"is_enabled"`
-	CreatedAt           time.Time `db:"created_at"         json:"created_at"`
-	UpdatedAt           time.Time `db:"updated_at"         json:"updated_at"`
+	RoleID           int       `db:"role_id"            json:"role_id"`
+	PermissionID     int       `db:"permission_id"      json:"permission_id"`
+	Scope            string    `db:"scope"              json:"scope"`
+	RequireSeniority bool      `db:"require_seniority"  json:"require_seniority"`
+	IsEnabled        bool      `db:"is_enabled"         json:"is_enabled"`
+	CreatedAt        time.Time `db:"created_at"         json:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"         json:"updated_at"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,4 +103,10 @@ type TogglePermissionInput struct {
 type PermissionToggle struct {
 	PermissionID int  `json:"permission_id" validate:"required,min=1"`
 	IsEnabled    bool `json:"is_enabled"`
+}
+
+type PermissionCheckResult struct {
+	Scope            string `db:"scope"`
+	RequireSeniority bool   `db:"require_seniority"`
+	Allowed          bool   `db:"is_enabled"`
 }

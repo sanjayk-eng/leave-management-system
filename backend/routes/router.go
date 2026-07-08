@@ -7,6 +7,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/handler"
 	"github.com/Zenithive/LeaveManagementSystem/middleware"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/constant/rbsc"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -172,8 +173,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	permissions := r.Group("/api/permissions")
 	permissions.Use(middleware.AuthMiddleware(h))
 	{
-		permissions.GET("/roles/:role_id", h.GetRolePermissions)
-		permissions.PATCH("/roles/:role_id", h.UpdateRolePermissions)
+		permissions.GET("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionRead)), h.GetRolePermissions)
+		permissions.PATCH("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionEdit)), h.UpdateRolePermissions)
 	}
 	// Category routes
 	catagory := r.Group("/api/catagory")
