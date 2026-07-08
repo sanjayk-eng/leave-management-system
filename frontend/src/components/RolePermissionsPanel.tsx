@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import {
   Users, FileText, Wallet, Settings2, Briefcase,
-  Package, Shield, BookOpen, BarChart3, AlertCircle,
+  Package, Shield, BookOpen, BarChart3,
   ChevronDown, ChevronUp, Users2, Lock,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -10,11 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useRolePermissions, useTogglePermissions } from "@/hooks/usePermissions";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import type { PermissionRow, ResourceGroup } from "@/services/permissionService";
 import { cn } from "@/lib/utils";
 
 // ─── Role tab definitions ─────────────────────────────────────────────────────
-// Excludes SUPERADMIN (role_id=1) — immutable, backend enforces 403.
 const ROLE_TABS = [
   { id: 2, label: "HR",       color: "text-violet-600" },
   { id: 3, label: "Admin",    color: "text-blue-600" },
@@ -28,8 +28,8 @@ const RESOURCE_META: Record<string, {
   icon: React.ElementType;
   label: string;
   description: string;
-  accent: string;   // border-left color class
-  bg: string;       // header bg class
+  accent: string;
+  bg: string;
 }> = {
   employee: {
     icon: Users,
@@ -181,7 +181,7 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
   const meta = RESOURCE_META[group.resource];
   const Icon = meta?.icon ?? Shield;
 
-  const total = group.permissions.length;
+  const total   = group.permissions.length;
   const enabled = group.permissions.filter((p) => p.is_enabled).length;
 
   return (
@@ -189,7 +189,7 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
       "rounded-xl border border-border overflow-hidden border-l-4",
       meta?.accent ?? "border-l-slate-400",
     )}>
-      {/* ── Section header — click to expand/collapse ── */}
+      {/* Section header — click to expand/collapse */}
       <button
         type="button"
         onClick={() => setExpanded((x) => !x)}
@@ -199,7 +199,6 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
           meta?.bg ?? "bg-muted/30",
         )}
       >
-        {/* Icon + title + subtitle */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-lg bg-background/70 shadow-sm shrink-0">
             <Icon className="h-4 w-4 text-foreground/70" />
@@ -214,7 +213,6 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
           </div>
         </div>
 
-        {/* Right: count badge + chevron */}
         <div className="flex items-center gap-2 shrink-0 ml-3">
           {disabled ? (
             <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/20">
@@ -240,10 +238,9 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
         </div>
       </button>
 
-      {/* ── Column headers (only when expanded) ── */}
+      {/* Column headers + rows (only when expanded) */}
       {expanded && (
         <>
-          {/* Column header row */}
           <div className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-2 bg-muted/20 border-t border-border/40">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
               Permission
@@ -256,7 +253,6 @@ function ResourceSection({ group, disabled, onToggle }: ResourceSectionProps) {
             </p>
           </div>
 
-          {/* Permission rows */}
           <div className="bg-background">
             {group.permissions.map((perm, i) => (
               <PermTableRow
@@ -305,12 +301,10 @@ function LoadingSkeleton() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RolePermissionsPanel — exported component
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Main exported component ──────────────────────────────────────────────────
 export function RolePermissionsPanel() {
   const [activeRoleId, setActiveRoleId] = useState<number>(ROLE_TABS[0].id);
-  const { data, isLoading, error } = useRolePermissions(activeRoleId);
+  const { data, isLoading, error, refetch } = useRolePermissions(activeRoleId);
   const { mutate: toggle, isPending } = useTogglePermissions(activeRoleId);
 
   const handleToggle = useCallback(
@@ -320,9 +314,8 @@ export function RolePermissionsPanel() {
     [toggle],
   );
 
-  // Aggregate totals for the summary bar
   const totalEnabled = data?.resources.flatMap((r) => r.permissions).filter((p) => p.is_enabled).length ?? 0;
-  const totalPerms = data?.resources.flatMap((r) => r.permissions).length ?? 0;
+  const totalPerms   = data?.resources.flatMap((r) => r.permissions).length ?? 0;
 
   return (
     <div className="space-y-5">
@@ -372,13 +365,7 @@ export function RolePermissionsPanel() {
       {isLoading ? (
         <LoadingSkeleton />
       ) : error ? (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3.5">
-          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-destructive">Failed to load permissions</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Check your connection or reload the page.</p>
-          </div>
-        </div>
+        <ErrorDisplay error={error} onRetry={refetch} />
       ) : data ? (
         <div className="space-y-3">
           {data.resources.map((group) => (

@@ -19,7 +19,7 @@ const permissionKeys = {
 // render before the user selects a role tab.
 // ─────────────────────────────────────────────────────────────────────────────
 export const useRolePermissions = (roleId: number) => {
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: permissionKeys.role(roleId),
     queryFn: () => permissionService.getByRole(roleId),
     enabled: roleId > 0,
@@ -32,6 +32,7 @@ export const useRolePermissions = (roleId: number) => {
     isLoading,
     isFetching,
     error,
+    refetch,
   };
 };
 
