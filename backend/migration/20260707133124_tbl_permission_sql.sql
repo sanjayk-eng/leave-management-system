@@ -294,7 +294,7 @@ FROM (VALUES
     ('leave',         'withdraw', 'own'),
     ('payroll',       'read',     'own'),
     ('log',            'read',    'team'),
-    ('leave_report',   'read',    'own')
+    ('leave_report',   'read',    'team')
 ) AS v(resource, action, scope)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;

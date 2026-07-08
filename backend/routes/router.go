@@ -63,8 +63,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		leaves.DELETE("/admin-delete/policy/:id", h.DeleteLeavePolicy)                                               // Admin, SuperAdmin, HR delete leave policy
 		leaves.GET("/Get-All-Leave-Policy", h.GetAllLeavePolicies)                                                   // Get all leave policies                                                  // Manager gets team leave history
 		leaves.GET("/all", h.GetLeaves)                                                                              // Get all leaves (filtered by role)
-		leaves.GET("/monthly-report", h.GetLeaveReport)                                                              // Leave report: monthly / yearly / range (HR, ADMIN, SUPERADMIN)
-		leaves.GET("/Get-Leave-Report", accessrole.RoleMiddleware(accessrole.AdminAccessRoles...), h.GetLeaveReport) // Alias for monthly-report
+		leaves.GET("/monthly-report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport)                                                              // Leave report: monthly / yearly / range — scope-filtered by RBAC
+		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport) // Alias — same RBAC guard
 		leaves.GET("/my-leaves", h.GetAllMyLeave)                                                                    // Get current user's own leaves with month/year filtering
 		leaves.GET("/timming", h.GetLeaveTiming)                                                                     // Get all Leave Timing
 		leaves.PUT("/timming", h.UpdateLeaveTiming)                                                                  // Update leave timing by super admin and admin

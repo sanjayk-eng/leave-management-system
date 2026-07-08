@@ -211,7 +211,17 @@ func NewLeaveReportPresentation() *LeaveReportPresentation {
 	return &LeaveReportPresentation{}
 }
 
-func (lrp *LeaveReportPresentation) BuildFinalSelect() string {
+func (lrp *LeaveReportPresentation) BuildFinalSelect(scope string) string {
+	// Build the scope-specific WHERE condition.
+	// $1–$6 are already used by the base query params; $7 is CallerID.
+	scopeClause := ""
+	switch scope {
+	case "own":
+		scopeClause = "\n  AND e.id::text = $7"
+	case "team":
+		scopeClause = "\n  AND (e.id::text = $7 OR e.manager_id::text = $7)"
+	}
+
 	return `
 SELECT
 	e.id::text AS employee_id,
@@ -282,7 +292,8 @@ LEFT JOIN accrual_summary ac ON ac.employee_id = e.id
 WHERE e.status = 'active'
   AND r.type != 'SUPERADMIN'
   AND ($5 = '' OR LOWER(e.full_name) LIKE '%' || LOWER($5) || '%' OR LOWER(e.email) LIKE '%' || LOWER($5) || '%')
-  AND ($6 = '' OR UPPER(r.type) = UPPER($6))
+  AND ($6 = '' OR UPPER(r.type) = UPPER($6))` +
+		scopeClause + `
 
 GROUP BY
 	e.id,
@@ -313,7 +324,7 @@ func NewLeaveReportQueryBuilder() *LeaveReportQueryBuilder {
 	}
 }
 
-func (qb *LeaveReportQueryBuilder) BuildFullQuery() string {
+func (qb *LeaveReportQueryBuilder) BuildFullQuery(scope string) string {
 	builder := NewSQLBuilder()
 
 	return builder.
@@ -323,7 +334,7 @@ func (qb *LeaveReportQueryBuilder) BuildFullQuery() string {
 		Add(qb.leaveCalc.BuildProratedLeavesCTE()).
 		Add(qb.aggregation.BuildBalanceSummaryCTE()).
 		Add(qb.aggregation.BuildAccrualSummaryCTE()).
-		Add(qb.presentation.BuildFinalSelect()).
+		Add(qb.presentation.BuildFinalSelect(scope)).
 		Build()
 }
 
@@ -336,29 +347,35 @@ func (r *Repository) GetLeaveReportByRange(
 ) ([]models.LeaveReportRecord, error) {
 
 	queryBuilder := NewLeaveReportQueryBuilder()
-	query := queryBuilder.BuildFullQuery()
+	// Scope clause is baked into WHERE inside BuildFinalSelect — no post-append needed.
+	query := queryBuilder.BuildFullQuery(filter.Scope)
 
-	query += models.BuildLeaveReportOrder(
-		filter.SortBy,
-		filter.SortOrder,
-	)
+	query += models.BuildLeaveReportOrder(filter.SortBy, filter.SortOrder)
 
 	var rows []models.LeaveReportRecord
+	var err error
 
-	err := r.DB.Select(
-		&rows,
-		query,
-		filter.FromYear,
-		filter.FromMonth,
-		filter.ToYear,
-		filter.ToMonth,
-		filter.Search,
-		filter.Role,
-	)
+	switch filter.Scope {
+	case "own", "team":
+		// $7 = CallerID (UUID string)
+		err = r.DB.Select(
+			&rows, query,
+			filter.FromYear, filter.FromMonth,
+			filter.ToYear, filter.ToMonth,
+			filter.Search, filter.Role,
+			filter.CallerID,
+		)
+	default: // "all" — standard 6-arg path
+		err = r.DB.Select(
+			&rows, query,
+			filter.FromYear, filter.FromMonth,
+			filter.ToYear, filter.ToMonth,
+			filter.Search, filter.Role,
+		)
+	}
 
 	if err != nil {
 		return nil, err
 	}
-
 	return rows, nil
 }

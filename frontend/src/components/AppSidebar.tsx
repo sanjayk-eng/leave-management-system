@@ -45,7 +45,7 @@ const menuItems = [
   { title: "Payroll", url: "/payroll", icon: DollarSign, roles: ['SUPERADMIN', 'ADMIN'] },
   { title: "Payslips", url: "/payslips", icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "System Logs", url: "/logs", icon: Activity, roles: ['SUPERADMIN'] },
-  { title: "Leave Report", url: "/leave-monthly-report", icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
+  { title: "Leave Report", url: "/leave-monthly-report", icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "Settings", url: "/settings", icon: Settings, roles: ['SUPERADMIN', 'ADMIN'] },
 ];
 

@@ -75,6 +75,9 @@ func (s *LeaveReportService) GetLeaveReport(req *models.LeaveReportRequest) (*mo
 
 		SortBy:    req.SortBy,
 		SortOrder: req.SortOrder,
+
+		Scope:    req.Scope,
+		CallerID: req.CallerID,
 	}
 
 	records, err := s.repo.GetLeaveReportByRange(filter)
