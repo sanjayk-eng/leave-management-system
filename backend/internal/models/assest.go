@@ -8,11 +8,11 @@ import (
 
 // EQUIPMENT
 
-type EquipmentCategoryRequest struct {
+type AssetCategoryRequest struct {
 	Name        string  `json:"name" validate:"required,min=2,max=50"`
 	Description *string `json:"description,omitempty" validate:"omitempty,max=255"`
 }
-type EquipmentCategoryRes struct {
+type AssetCategory struct {
 	ID          string    `db:"id" json:"id"`
 	Name        string    `db:"name" json:"name" validate:"required,min=2,max=50"`
 	Description string    `db:"description" json:"description,omitempty" validate:"omitempty,max=255"`
@@ -77,4 +77,12 @@ type UpdateAssignmentRequest struct {
 	EquipmentID    uuid.UUID  `json:"equipment_id" validate:"required"`
 	Quantity       int        `json:"quantity" validate:"required,min=1"`
 	AssignedBy     uuid.UUID  `json:"assigned_by" validate:"required"` // Add this
+}
+
+type QueryFilter struct {
+	Page     int
+	PageSize int
+	Search   string
+	SortBy   string
+	SortDir  string
 }

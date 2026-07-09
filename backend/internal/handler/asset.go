@@ -20,17 +20,7 @@ import (
 // ======================
 
 func (h *HandlerFunc) CreateCategory(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can create categories"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	var req models.EquipmentCategoryRequest
+	var req models.AssetCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
@@ -39,112 +29,86 @@ func (h *HandlerFunc) CreateCategory(c *gin.Context) {
 		errors.RespondWithError(c, http.StatusBadRequest, "validation error: "+err.Error())
 		return
 	}
-
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.CreateCategory(tx, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to create category: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.EquipmentCategory, constant.ActionCreate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.CreateCategory(c, req); err != nil {
+		errors.Error(c, err)
 		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"message": "category created successfully"})
 }
 
-func (h *HandlerFunc) GetAllCategory(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can view categories"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
+func (h *HandlerFunc) GetCategory(c *gin.Context) {
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.CategorySortFields)
 
-	data, total, err := h.Query.GetAllCategory(
-		pagination.PageSize, pagination.Offset,
-		filters.Search, filters.SortBy, filters.SortDir,
+	filter := models.QueryFilter{
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Search:   filters.Search,
+		SortBy:   filters.SortBy,
+		SortDir:  filters.SortDir,
+	}
+
+	data, total, err := h.AssetService.GetCategory(
+		c.Request.Context(),
+		filter,
 	)
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, "failed to get categories: "+err.Error())
+		errors.Error(c, err)
 		return
 	}
 
-	response := gin.H{"message": "success", "categories": data}
-	if pagination.PageSize > 0 {
-		response["pagination"] = pagi.CalculatePaginationResponse(pagination.Page, pagination.PageSize, total)
+	response := gin.H{
+		"success":    true,
+		"categories": data,
 	}
+
+	if filter.PageSize > 0 {
+		response["pagination"] = pagi.CalculatePaginationResponse(
+			filter.Page,
+			filter.PageSize,
+			total,
+		)
+	}
+
 	c.JSON(http.StatusOK, response)
 }
 
 func (h *HandlerFunc) UpdateCategory(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can update categories"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
 	categoryID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid category ID")
 		return
 	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
 
-	var req models.EquipmentCategoryRequest
+	var req models.AssetCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+
 	if err := models.Validate.Struct(&req); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "validation error: "+err.Error())
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.UpdateCategory(tx, categoryID, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to update category: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.EquipmentCategory, constant.ActionUpdate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.UpdateCategory(c, categoryID, req); err != nil {
+		errors.Error(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "category updated successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "category updated successfully",
+	})
 }
 
 func (h *HandlerFunc) DeleteCategory(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can delete categories"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
 	categoryID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid category ID")
 		return
 	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.DeleteCategory(tx, categoryID); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to delete category: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.EquipmentCategory, constant.ActionDelete, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-
+	h.AssetService.DeleteCategory(c, categoryID)
 	c.JSON(http.StatusOK, gin.H{"message": "category deleted successfully"})
 }
 

@@ -24,8 +24,14 @@ import { SearchableSelect } from '../SearchableSelect';
 import { useEmployeeSelect, useEquipmentSelect } from './shared';
 import { employeeService } from '../../services/employeeService';
 import { equipmentService } from '../../services/equipmentService';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ApiError } from '@/lib/api';
 
 const EMPTY_ASSIGN: AssignEquipmentRequest = { employee_id: '', equipment_id: '', quantity: 1 };
+
+function isAccessDenied(err: Error | null): boolean {
+  return err instanceof ApiError && (err.status === 403 || err.status === 401);
+}
 
 const EquipmentAssignments: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -177,7 +183,8 @@ const EquipmentAssignments: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Toolbar — hidden when access is denied */}
+      {!isAccessDenied(error) && (
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <h3 className="text-lg font-medium">Asset Assignments</h3>
@@ -266,6 +273,7 @@ const EquipmentAssignments: React.FC = () => {
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
       {/* Remove Dialog */}
       <Dialog open={isRemoveOpen} onOpenChange={setIsRemoveOpen}>
@@ -351,6 +359,10 @@ const EquipmentAssignments: React.FC = () => {
       <div className="border rounded-lg">
         {loading ? (
           <TableSkeleton rows={5} columns={6} showActions />
+        ) : error ? (
+          <div className="p-4">
+            <ErrorDisplay error={error} onRetry={() => fetchAssignments()} />
+          </div>
         ) : (
           <div className={fetching ? 'opacity-60 pointer-events-none transition-opacity duration-150' : ''}>
             <Table>
@@ -368,16 +380,8 @@ const EquipmentAssignments: React.FC = () => {
               <TableBody>
                 {assignments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      {error ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <p className="text-red-600 text-sm font-medium">⚠️ Error loading assignments</p>
-                          <p className="text-xs text-muted-foreground">{error}</p>
-                          <Button variant="outline" size="sm" onClick={() => fetchAssignments()}>Try Again</Button>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">No asset assignments found. Assign assets to employees to get started.</span>
-                      )}
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No asset assignments found. Assign assets to employees to get started.
                     </TableCell>
                   </TableRow>
                 ) : (

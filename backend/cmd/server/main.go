@@ -104,6 +104,10 @@ func main() {
 	permissionRepo := repositories.NewPermissionRepository(db)
 	permissionSvc := service.NewPermissionService(db, permissionRepo)
 
+	// ── Asset  ───────────────────────────────────────────────────────
+	repository := repositories.NewAssetRepository(db)
+	assetService := service.NewAssetService(db, repository)
+
 	// ── HTTP handler ─────────────────────────────────────────────────────────
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
@@ -111,6 +115,7 @@ func main() {
 		leaveFlowService, leaveFlowLogService,
 		notifSvc, holidayservice,
 		permissionSvc,
+		assetService,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

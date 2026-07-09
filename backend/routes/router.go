@@ -184,14 +184,11 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		// ======================
 		// Category CRUD
 		// ======================
-		catagory.POST("", h.CreateCategory)       // Create category (ADMIN, SUPERADMIN, HR)
-		catagory.GET("", h.GetAllCategory)        // Get all categories (ADMIN, SUPERADMIN, HR)
-		catagory.DELETE("/:id", h.DeleteCategory) // Delete category (ADMIN, SUPERADMIN, HR)
-		catagory.PUT("/:id", h.UpdateCategory)    // Update category (ADMIN, SUPERADMIN, HR)
+		catagory.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateCategory)
+		catagory.GET("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRead)), h.GetCategory)
+		catagory.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRemove)), h.DeleteCategory)
+		catagory.PUT("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionEdit)), h.UpdateCategory)
 
-		// ======================
-		// Equipment under category
-		// ======================
 		equipment := catagory.Group("/equipment")
 		{
 			equipment.POST("", h.CreateEquipment)                   // Create equipment (ADMIN, SUPERADMIN, HR)
@@ -203,11 +200,11 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		// Equipment assignment routes
 		assign := equipment.Group("/assign")
 		{
-			assign.POST("", h.AssignEquipment)                                                                                                  // Assign equipment
-			assign.GET("", h.GetAllAssignedEquipment, middleware.RequirePermission(h, string(rbsc.ResourceEquipment), string(rbsc.ActionRead))) // Get all assignments
-			assign.GET("/employee/:id", h.GetAssignedEquipmentByEmployee)                                                                       // Get by employee id
-			assign.DELETE("/remove", h.RemoveEquipment)                                                                                         // Remove/return equipment
-			assign.PUT("/update", h.UpdateAssignment)                                                                                           // Update assignment (quantity or reassign)
+			assign.POST("", h.AssignEquipment)                            // Assign equipment
+			assign.GET("", h.GetAllAssignedEquipment)                     // Get all assignments
+			assign.GET("/employee/:id", h.GetAssignedEquipmentByEmployee) // Get by employee id
+			assign.DELETE("/remove", h.RemoveEquipment)                   // Remove/return equipment
+			assign.PUT("/update", h.UpdateAssignment)                     // Update assignment (quantity or reassign)
 		}
 	}
 }

@@ -13,7 +13,7 @@ const (
 	ResourcePayroll      Resource = "payroll"
 	ResourceSettings     Resource = "settings"
 	ResourceDesignation  Resource = "designation"
-	ResourceEquipment    Resource = "asses" // was "asset" in old migration — fixed
+	ResourceAsset        Resource = "asset" // was "asset" in old migration — fixed
 	ResourcePermission   Resource = "permission"
 )
 

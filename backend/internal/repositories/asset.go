@@ -1,12 +1,32 @@
 package repositories
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
+
+type assetRepository struct {
+	DB *sqlx.DB
+}
+
+type AssetRepository interface {
+	CreateCategory(ctx context.Context, data models.AssetCategoryRequest) error
+	UpdateCategory(ctx context.Context, id uuid.UUID, data models.AssetCategoryRequest) error
+	GetCategory(ctx context.Context, filter models.QueryFilter) ([]models.AssetCategory, int64, error)
+	DeleteCategory(ctx context.Context, id uuid.UUID) error
+}
+
+func NewAssetRepository(db *sqlx.DB) AssetRepository {
+	return &assetRepository{
+		DB: db,
+	}
+}
 
 // ======================
 // SORT FIELD MAPS
@@ -50,79 +70,110 @@ func resolveSortField(sortMap map[string]string, key, defaultField string) strin
 // CATEGORY REPOSITORIES
 // ======================
 
-func (r *Repository) CreateCategory(tx *sqlx.Tx, data models.EquipmentCategoryRequest) error {
-	_, err := tx.Exec(`
+func (r *assetRepository) CreateCategory(ctx context.Context, data models.AssetCategoryRequest) error {
+	_, err := r.DB.ExecContext(ctx, `
 		INSERT INTO tbl_equipment_category (name, description)
-		VALUES ($1,$2)
+		VALUES ($1, $2)
 	`, data.Name, data.Description)
-	if err != nil {
-		return fmt.Errorf("failed to create category: %w", err)
-	}
-	return nil
+	return err
 }
 
-// GetAllCategory supports optional pagination, search, and sorting.
-// limit=0 returns all records.
-func (r *Repository) GetAllCategory(limit, offset int, search, sortBy, sortDir string) ([]models.EquipmentCategoryRes, int64, error) {
-	var res []models.EquipmentCategoryRes
-	var total int64
-	var args []interface{}
+func (r *assetRepository) GetCategory(ctx context.Context, filter models.QueryFilter) ([]models.AssetCategory, int64, error) {
+
+	var (
+		res   []models.AssetCategory
+		total int64
+		args  []interface{}
+	)
+
 	argIndex := 1
 
 	whereClause := ""
-	if search != "" {
+
+	if filter.Search != "" {
 		whereClause = fmt.Sprintf(" WHERE name ILIKE $%d", argIndex)
-		args = append(args, "%"+search+"%")
+		args = append(args, "%"+filter.Search+"%")
 		argIndex++
 	}
 
-	countQuery := "SELECT COUNT(*) FROM tbl_equipment_category" + whereClause
-	if err := r.DB.Get(&total, countQuery, args...); err != nil {
+	countQuery := `
+		SELECT COUNT(*)
+		FROM tbl_equipment_category
+	` + whereClause
+
+	if err := r.DB.GetContext(ctx, &total, countQuery, args...); err != nil {
 		return nil, 0, err
 	}
 
-	sortCol := resolveSortField(categorySortMap, sortBy, "name")
-	safeSortDir := "ASC"
-	if sortDir == "desc" {
-		safeSortDir = "DESC"
-	}
-	orderClause := fmt.Sprintf(" ORDER BY %s %s, id ASC", sortCol, safeSortDir)
+	sortCol := resolveSortField(categorySortMap, filter.SortBy, "name")
 
-	query := "SELECT id, name, description, created_at, updated_at FROM tbl_equipment_category" + whereClause + orderClause
-
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-		args = append(args, limit, offset)
+	sortDir := "ASC"
+	if filter.SortDir == "desc" {
+		sortDir = "DESC"
 	}
 
-	if err := r.DB.Select(&res, query, args...); err != nil {
+	query := `
+		SELECT
+			id,
+			name,
+			description,
+			created_at,
+			updated_at
+		FROM tbl_equipment_category
+	` + whereClause +
+		fmt.Sprintf(" ORDER BY %s %s, id ASC", sortCol, sortDir)
+
+	if filter.PageSize > 0 {
+		offset := (filter.Page - 1) * filter.PageSize
+
+		query += fmt.Sprintf(
+			" LIMIT $%d OFFSET $%d",
+			argIndex,
+			argIndex+1,
+		)
+
+		args = append(args, filter.PageSize, offset)
+	}
+
+	if err := r.DB.SelectContext(ctx, &res, query, args...); err != nil {
 		return nil, 0, err
 	}
+
 	return res, total, nil
 }
 
-func (r *Repository) UpdateCategory(tx *sqlx.Tx, id uuid.UUID, data models.EquipmentCategoryRequest) error {
-	result, err := tx.Exec(`
+func (r *assetRepository) UpdateCategory(ctx context.Context, id uuid.UUID, data models.AssetCategoryRequest) error {
+
+	result, err := r.DB.ExecContext(ctx, `
 		UPDATE tbl_equipment_category
-		SET name=$1, description=$2, updated_at=now()
-		WHERE id=$3
+		SET
+			name = $1,
+			description = $2,
+			updated_at = NOW()
+		WHERE id = $3
 	`, data.Name, data.Description, id)
 	if err != nil {
 		return err
 	}
-	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("category not found")
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.CustomErr(http.StatusNotFound, "category not found")
 	}
 	return nil
 }
 
-func (r *Repository) DeleteCategory(tx *sqlx.Tx, id uuid.UUID) error {
-	result, err := tx.Exec(`DELETE FROM tbl_equipment_category WHERE id=$1`, id)
+func (r *assetRepository) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	result, err := r.DB.ExecContext(ctx, `DELETE FROM tbl_equipment_category WHERE id=$1`, id)
 	if err != nil {
 		return err
 	}
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("category not found")
+		return errors.CustomErr(http.StatusNotFound, "category not found")
 	}
 	return nil
 }
