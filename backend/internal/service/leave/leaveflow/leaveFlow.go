@@ -31,7 +31,7 @@ type LeaveFlowService interface {
 	GetLeaves(ctx context.Context, empID uuid.UUID, role string, month int, year int) (gin.H, error)
 	GetMyLeave(empID uuid.UUID, month int, year int) (gin.H, error)
 	CancleLeave(c context.Context, leaveId string) (string, error)
-	UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput) error
+	UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput, role string) error
 }
 
 type leaveFlow struct {
@@ -300,7 +300,7 @@ func (s *leaveFlow) GetByID(ctx context.Context, leaveID string) (*models.Leave,
 	return leave, err
 }
 
-func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput) error {
+func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput, role string) error {
 	// Parse leave UUID from the URL param
 	leaveUUID, err := uuid.Parse(leaveId)
 	if err != nil {
@@ -347,7 +347,7 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 		if err = s.Repo.UpdateLeave(tx, leaveUUID, empID, leave, leaveDays); err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "failed to update leave: "+err.Error())
 		}
-		if err := s.LeaveFlowLogService.RegenerateApprovalLog(ctx, tx, leaveUUID, leaveTypeRes, accessrole.ROLE_EMPLOYEE); err != nil {
+		if err := s.LeaveFlowLogService.RegenerateApprovalLog(ctx, tx, leaveUUID, leaveTypeRes, role); err != nil {
 			return err
 		}
 

@@ -87,8 +87,9 @@ func (r *Repository) GetDefaultEntitlementByLeaveTypeID(tx *sqlx.Tx, leaveTypeID
 	return row.DefaultEntitlement, nil
 }
 
-// GetTotalPaidLeaveBalance returns the sum of all closing balances for paid, non-early leave types
-// for the given employee in the current year. This is used to validate unpaid leave applications.
+// GetTotalPaidLeaveBalance returns the sum of all closing balances for paid, non-early, non-WFH
+// leave types for the given employee in the current year.
+// WFH leave is excluded — only pure paid leave blocks an unpaid/WFH application.
 func (r *Repository) GetTotalPaidLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID) (float64, error) {
 	var totalBalance float64
 	err := tx.Get(&totalBalance, `
@@ -99,14 +100,14 @@ func (r *Repository) GetTotalPaidLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID)
 		  AND lb.year = EXTRACT(YEAR FROM CURRENT_DATE)
 		  AND lt.is_paid = TRUE
 		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
+		  AND lt.is_work_from_home = FALSE
 	`, employeeID)
 	return totalBalance, err
 }
 
-// GetTotalPendingPaidLeaveDays returns the sum of all pending/manager-approved leave days
-// for paid, non-early leave types for the given employee in the current year.
-// This is used to validate unpaid leave applications - employees with pending paid leaves
-// should not be allowed to apply for unpaid leave.
+// GetTotalPendingPaidLeaveDays returns the sum of all pending leave days for paid, non-early,
+// non-WFH leave types for the given employee in the current year.
+// WFH leave is excluded — only pure paid pending leaves block an unpaid/WFH application.
 func (r *Repository) GetTotalPendingPaidLeaveDays(tx *sqlx.Tx, employeeID uuid.UUID) (float64, error) {
 	var totalPendingDays float64
 	err := tx.Get(&totalPendingDays, `
@@ -118,6 +119,7 @@ func (r *Repository) GetTotalPendingPaidLeaveDays(tx *sqlx.Tx, employeeID uuid.U
 		  AND EXTRACT(YEAR FROM l.start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
 		  AND lt.is_paid = TRUE
 		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
+		  AND lt.is_work_from_home = FALSE
 	`, employeeID)
 	return totalPendingDays, err
 }

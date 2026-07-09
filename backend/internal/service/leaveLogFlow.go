@@ -134,7 +134,9 @@ func (s *leaveFlowLog) generateApprovalLog(leaveTypeRes *models.LeaveTypeRespons
 
 	for _, stage := range leaveTypeRes.ApprovalFlow.Flow {
 
-		if getRoleLevel(string(stage.ApproverRole)) <= applicantLevel {
+		// Include stages at EQUAL level (same role — e.g. a MANAGER above in hierarchy)
+		// and ABOVE. Only strictly lower levels are skipped.
+		if getRoleLevel(string(stage.ApproverRole)) < applicantLevel {
 			continue
 		}
 
