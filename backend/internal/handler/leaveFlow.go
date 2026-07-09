@@ -135,7 +135,7 @@ func (h *HandlerFunc) EditLeave(c *gin.Context) {
 		return
 	}
 	input.EmployeeID = empID
-	if err := h.LeaveFlowService.UpdateLeave(c, empID, leaveID, &input); err != nil {
+	if err := h.LeaveFlowService.UpdateLeave(c, empID, leaveID, &input, c.GetString("role")); err != nil {
 		errors.Error(c, err)
 		return
 	}

@@ -11,31 +11,38 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ValidateUnpaidLeaveApplication checks if an employee can apply for unpaid leave.
-// Business Rule: Employees cannot apply for unpaid leave if they have:
+// ValidateUnpaidLeaveApplication checks if an employee can apply for unpaid or WFH leave.
+// Business Rule: Employees cannot apply for unpaid leave OR work-from-home leave if they have:
 //  1. Any paid leave balance > 0, OR
 //  2. Any pending/manager-approved paid leaves
 //
 // Returns an error if validation fails, nil if validation passes.
 func ValidateUnpaidLeaveApplication(repo *repositories.Repository, tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int) error {
-	// First, check if the leave type being applied is unpaid or early leave
+	// First, check the leave type flags
 	var result struct {
-		IsPaid  bool  `db:"is_paid"`
-		IsEarly *bool `db:"is_early"`
+		IsPaid         bool  `db:"is_paid"`
+		IsEarly        *bool `db:"is_early"`
+		IsWorkFromHome bool  `db:"is_work_from_home"`
 	}
-	err := tx.Get(&result, `SELECT is_paid, is_early FROM Tbl_Leave_Type WHERE id=$1`, leaveTypeID)
+	err := tx.Get(&result, `SELECT is_paid, is_early, is_work_from_home FROM Tbl_Leave_Type WHERE id=$1`, leaveTypeID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch leave type: %w", err)
 	}
 
-	// If the leave type is paid, no validation needed
-	if result.IsPaid {
+	// Paid leave (non-WFH) — no validation needed
+	if result.IsPaid && !result.IsWorkFromHome {
 		return nil
 	}
 
-	// If the leave type is early leave, skip unpaid leave validation
+	// Early leave — skip this validation entirely
 	if result.IsEarly != nil && *result.IsEarly {
 		return nil
+	}
+
+	// Determine the context label for the error message
+	leaveLabel := "unpaid leave"
+	if result.IsWorkFromHome {
+		leaveLabel = "work-from-home leave"
 	}
 
 	// If applying for unpaid leave, check if employee has any paid leave balance
@@ -52,16 +59,15 @@ func ValidateUnpaidLeaveApplication(repo *repositories.Repository, tx *sqlx.Tx, 
 
 	// Validation logic with detailed error messages
 	if totalPaidBalance > 0 && totalPendingPaidDays > 0 {
-
-		return fmt.Errorf("cannot apply for unpaid leave. You have %.1f days of paid leave balance remaining and %.1f days of pending paid leaves. Please use paid leave first", totalPaidBalance, totalPendingPaidDays)
+		return fmt.Errorf("cannot apply for %s. You have %.1f days of paid leave balance remaining and %.1f days of pending paid leaves. Please use paid leave first", leaveLabel, totalPaidBalance, totalPendingPaidDays)
 	}
 
 	if totalPaidBalance > 0 {
-		return fmt.Errorf("cannot apply for unpaid leave. You have %.1f days of paid leave balance remaining. Please use paid leave first", totalPaidBalance)
+		return fmt.Errorf("cannot apply for %s. You have %.1f days of paid leave balance remaining. Please use paid leave first", leaveLabel, totalPaidBalance)
 	}
 
 	if totalPendingPaidDays > 0 {
-		return fmt.Errorf("cannot apply for unpaid leave. You have %.1f days of pending paid leave applications. Please wait for approval or use those paid leaves first", totalPendingPaidDays)
+		return fmt.Errorf("cannot apply for %s. You have %.1f days of pending paid leave applications. Please wait for approval or use those paid leaves first", leaveLabel, totalPendingPaidDays)
 	}
 	return nil
 }
