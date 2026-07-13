@@ -23,6 +23,7 @@ type permissionService struct {
 	db   *sqlx.DB
 	repo repositories.PermissionRepository
 }
+
 func NewPermissionService(db *sqlx.DB, repo repositories.PermissionRepository) PermissionService {
 	return &permissionService{db: db, repo: repo}
 }
@@ -68,6 +69,13 @@ func (s *permissionService) TogglePermissions(ctx context.Context, callerRoleID,
 		return errors.CustomErr(http.StatusNotFound, "role not found")
 	}
 
+	// ── Validate caller has all permissions they're trying to grant ──
+	// This enforces cascading permission inheritance:
+	// SUPERADMIN disables X → ADMIN cannot enable X for anyone
+	if err := s.enforceCallerPermissions(ctx, callerRoleID, input); err != nil {
+		return err
+	}
+
 	// ── Validate dependency rules before touching the DB ──
 	if err := s.validatePermissionDependencies(ctx, targetRoleID, input); err != nil {
 		return err
@@ -105,6 +113,86 @@ func (s *permissionService) Check(ctx context.Context, roleID int, resource, act
 	return s.repo.CheckPermission(ctx, roleID, resource, action)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// enforceCallerPermissions validates that the caller has all the permissions
+// they are trying to grant to the target role.
+//
+// Business Rule (Cascading Permission Inheritance):
+//   If SUPERADMIN disables permission X for their own role, then no lower role
+//   (ADMIN, HR, etc.) can enable that permission for any role below them.
+//
+// Algorithm:
+//   1. Build a map of permission IDs → permission details (label, resource, action)
+//   2. Build a set of permission IDs that the caller has ENABLED
+//   3. For each permission the caller wants to enable on the target:
+//      - Check if the caller has that permission enabled
+//      - If not, deny with user-friendly label
+//
+// Time Complexity: O(P) where P = number of permissions (~40-50)
+// Space Complexity: O(P) for the maps
+// ─────────────────────────────────────────────────────────────────────────────
+func (s *permissionService) enforceCallerPermissions(ctx context.Context, callerRoleID int, input *models.TogglePermissionInput) error {
+	// Fetch caller's permissions
+	callerGroups, err := s.repo.GetRolePermissionsGrouped(ctx, callerRoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to fetch caller permissions: "+err.Error())
+	}
+
+	// Build two maps for O(1) lookup:
+	// 1. permission_id → permission details (for error messages)
+	// 2. permission_id → is_enabled (for validation)
+	type permDetails struct {
+		label    string
+		resource string
+		action   string
+	}
+	permInfo := make(map[int]permDetails, 64)
+	callerEnabledPerms := make(map[int]bool, 64)
+
+	for _, group := range callerGroups {
+		for _, perm := range group.Permissions {
+			permInfo[perm.PermissionID] = permDetails{
+				label:    perm.Label,
+				resource: group.Resource,
+				action:   perm.Action,
+			}
+			if perm.IsEnabled {
+				callerEnabledPerms[perm.PermissionID] = true
+			}
+		}
+	}
+
+	// Validate each permission being enabled
+	var deniedPermissions []string
+	for _, toggle := range input.Permissions {
+		// Only check when trying to ENABLE a permission
+		if !toggle.IsEnabled {
+			continue
+		}
+
+		// Check if caller has this permission enabled
+		if !callerEnabledPerms[toggle.PermissionID] {
+			info, exists := permInfo[toggle.PermissionID]
+			if exists {
+				deniedPermissions = append(deniedPermissions, info.label)
+			} else {
+				deniedPermissions = append(deniedPermissions, fmt.Sprintf("Permission ID %d", toggle.PermissionID))
+			}
+		}
+	}
+
+	if len(deniedPermissions) > 0 {
+		if len(deniedPermissions) == 1 {
+			return errors.CustomErr(http.StatusForbidden,
+				fmt.Sprintf("you cannot grant the permission '%s' because you don't have it enabled in your role", deniedPermissions[0]))
+		}
+		return errors.CustomErr(http.StatusForbidden,
+			fmt.Sprintf("you cannot grant the following permissions because you don't have them enabled in your role:\n  • %s",
+				strings.Join(deniedPermissions, "\n  • ")))
+	}
+
+	return nil
+}
 
 func (s *permissionService) validatePermissionDependencies(ctx context.Context, targetRoleID int, input *models.TogglePermissionInput) error {
 	groups, err := s.repo.GetRolePermissionsGrouped(ctx, targetRoleID)
@@ -114,6 +202,7 @@ func (s *permissionService) validatePermissionDependencies(ctx context.Context, 
 	type permInfo struct {
 		action    string
 		resource  string
+		label     string
 		isEnabled bool
 	}
 	byID := make(map[int]permInfo, 64)
@@ -125,6 +214,7 @@ func (s *permissionService) validatePermissionDependencies(ctx context.Context, 
 			byID[p.PermissionID] = permInfo{
 				action:    p.Action,
 				resource:  g.Resource,
+				label:     p.Label,
 				isEnabled: p.IsEnabled,
 			}
 			siblingsByResource[g.Resource] = append(siblingsByResource[g.Resource], p.PermissionID)
@@ -153,8 +243,9 @@ func (s *permissionService) validatePermissionDependencies(ctx context.Context, 
 		if t.IsEnabled && info.action != "read" {
 			readID, hasRead := readPermByResource[info.resource]
 			if hasRead && !afterState[readID] {
-				violations = append(violations, fmt.Sprintf("cannot enable '%s' on resource '%s': "+"permission_id %d (read) must be enabled first",info.action, info.resource, readID,
-				))
+				readInfo := byID[readID]
+				violations = append(violations, fmt.Sprintf("cannot enable '%s': '%s' must be enabled first (resource: %s)",
+					info.label, readInfo.label, info.resource))
 			}
 		}
 
@@ -166,14 +257,16 @@ func (s *permissionService) validatePermissionDependencies(ctx context.Context, 
 				}
 				if afterState[sibID] {
 					sibInfo := byID[sibID]
-					violations = append(violations, fmt.Sprintf("cannot disable 'read' on resource '%s': "+	"permission_id %d (%s) must be disabled first",info.resource, sibID, sibInfo.action))
+					violations = append(violations, fmt.Sprintf("cannot disable '%s': '%s' must be disabled first (resource: %s)",
+						info.label, sibInfo.label, info.resource))
 				}
 			}
 		}
 	}
 
 	if len(violations) > 0 {
-		return errors.CustomErr(http.StatusUnprocessableEntity,"permission dependency violation:\n"+strings.Join(violations, "\n"))
+		return errors.CustomErr(http.StatusUnprocessableEntity,
+			fmt.Sprintf("permission dependency violations detected:\n  • %s", strings.Join(violations, "\n  • ")))
 	}
 	return nil
 }
