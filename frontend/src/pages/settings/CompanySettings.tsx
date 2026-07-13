@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSettings } from "@/hooks/useSettings";
 import { payrollService } from "@/services/payrollService";
+import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, Eye, Building2 } from "lucide-react";
+import { Loader2, Eye, Building2, ShieldX } from "lucide-react";
 import { CardSkeleton } from "@/components/skeletons/CardSkeleton";
 
 export default function CompanySettings() {
@@ -21,6 +23,8 @@ export default function CompanySettings() {
   const [companyName, setCompanyName] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isPreviewingPayslip, setIsPreviewingPayslip] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -33,14 +37,35 @@ export default function CompanySettings() {
   }, [settings]);
 
   const handleSaveSettings = () => {
-    updateSettings({
-      working_days_per_month: workingDays,
-      allow_manager_add_leave: allowManagerAddLeave,
-      primary_color: primaryColor,
-      secondary_color: secondaryColor,
-      company_name: companyName,
-      logo: logoFile,
-    });
+    setAccessDenied(false);
+    updateSettings(
+      {
+        working_days_per_month: workingDays,
+        allow_manager_add_leave: allowManagerAddLeave,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        company_name: companyName,
+        logo: logoFile,
+      },
+      {
+        onError: (error) => {
+          // Roll local form state back to last known server data
+          if (settings) {
+            setWorkingDays(settings.working_days_per_month);
+            setAllowManagerAddLeave(settings.allow_manager_add_leave);
+            if (settings.primary_color)   setPrimaryColor(settings.primary_color);
+            if (settings.secondary_color) setSecondaryColor(settings.secondary_color);
+            if (settings.company_name)    setCompanyName(settings.company_name);
+          }
+          setLogoFile(null);
+          // Show inline banner for 403, let the hook's toast handle everything else
+          if (error instanceof ApiError && error.status === 403) {
+            setAccessDenied(true);
+            setAccessDeniedMessage(error.message);
+          }
+        },
+      }
+    );
   };
 
   const handlePreviewPayslip = async () => {
@@ -61,6 +86,16 @@ export default function CompanySettings() {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Access denied banner ── */}
+      {accessDenied && (
+        <Alert variant="destructive">
+          <ShieldX className="h-4 w-4" />
+          <AlertTitle>Access Denied</AlertTitle>
+          <AlertDescription>{accessDeniedMessage}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {/* LEFT — General + Branding fields */}
         <Card>

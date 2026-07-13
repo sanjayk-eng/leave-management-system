@@ -11,7 +11,6 @@ import {
   Activity,
   Package,
   History,
-  Sun,
   BarChart3
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -41,7 +40,6 @@ const menuItems = [
   { title: "My Leave History", url: "/my-leave-history", icon: History, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "Leave Approvals", url: "/approvals", icon: ClipboardList, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER'] },
   { title: "Leave Calendar", url: "/calendar", icon: Calendar, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Holidays", url: "/holidays", icon: Sun, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
   { title: "Payroll", url: "/payroll", icon: DollarSign, roles: ['SUPERADMIN', 'ADMIN'] },
   { title: "Payslips", url: "/payslips", icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "System Logs", url: "/logs", icon: Activity, roles: ['SUPERADMIN'] },

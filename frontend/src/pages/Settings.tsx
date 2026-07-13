@@ -2,7 +2,7 @@ import { NavLink, Outlet, Navigate, useLocation } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
-  Building2, FileText, Clock, GitMerge, Cake, Shield,
+  Building2, FileText, Clock, GitMerge, Cake, Shield, Sun,
 } from "lucide-react";
 
 
@@ -50,6 +50,13 @@ const NAV_ITEMS = [
     icon:        Shield,
     title:       "Role Permissions",
     description: "Control what each role can do — toggle permissions on or off",
+  },
+  {
+    to:          "/settings/holidays",
+    label:       "Holidays",
+    icon:        Sun,
+    title:       "Holiday Management",
+    description: "Manage company holidays and observances",
   },
 ] as const;
 

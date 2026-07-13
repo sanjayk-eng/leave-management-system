@@ -6,7 +6,6 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/config"
 	"github.com/Zenithive/LeaveManagementSystem/internal/handler"
 	"github.com/Zenithive/LeaveManagementSystem/middleware"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/constant/rbsc"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -62,22 +61,21 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		leaves.GET("/my-leaves", h.GetAllMyLeave)
 
 		//leaves.PUT("/edit/:id", h.EditMyLeave)                                                                         // New Route
-		leaves.POST("/admin-add/policy", h.LeavePolicy)                // Admin creates leave policy
-		leaves.PUT("/admin-update/policy/:id", h.UpdateLeavePolicy)    // Admin, SuperAdmin, HR update leave policy
-		leaves.DELETE("/admin-delete/policy/:id", h.DeleteLeavePolicy) // Admin, SuperAdmin, HR delete leave policy
-		leaves.GET("/Get-All-Leave-Policy", h.GetAllLeavePolicies)     // Get all leave policies                                                  // Manager gets team leave history
+		leaves.POST("/admin-add/policy", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.LeavePolicy)                // Admin creates leave policy
+		leaves.PUT("/admin-update/policy/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.UpdateLeavePolicy)    // Admin, SuperAdmin, HR update leave policy
+		leaves.DELETE("/admin-delete/policy/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.DeleteLeavePolicy) // Admin, SuperAdmin, HR delete leave policy
+		leaves.GET("/Get-All-Leave-Policy", h.GetAllLeavePolicies)                                                                                                           // Get all leave policies                                                  // Manager gets team leave history
 		// Get all leaves (filtered by role)
-		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport) // Alias — same RBAC guard
-		// Get current user's own leaves with month/year filtering
-		leaves.GET("/timming", h.GetLeaveTiming)    // Get all Leave Timing
-		leaves.PUT("/timming", h.UpdateLeaveTiming) // Update leave timing by super admin and admin
-		leaves.PUT("edit/:id", h.EditLeave)         // Cancel pending leave (Employee/Admin)
+		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport)     // Alias — same RBAC guard
+		leaves.GET("/timming", h.GetLeaveTiming)                                                                                                          // Get all Leave Timing
+		leaves.PUT("/timming", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeaveTiming)), h.UpdateLeaveTiming) // Update leave timing by super admin and admin
+		leaves.PUT("edit/:id", middleware.RequirePermission(h, string(rbsc.ResourceLeave), string(rbsc.ActionApply)), h.EditLeave)                        // Cancel pending leave (Employee/Admin)
 	}
 	leaveLog := leaves.Group("/log")
 	leaveLog.GET("/", h.GetLeaveLog)
 
 	approver := leaves.Group("/approver-flow")
-	approver.Use(middleware.AuthMiddleware(h), accessrole.RoleMiddleware(accessrole.AdminAccessRoles...))
+	approver.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeaveFlow)))
 	{
 		approver.POST("", h.CreateApprovelFlow)
 		approver.GET("", h.GetAllApprovelFlow)
@@ -136,7 +134,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Settings -----------------
 	settings := r.Group("/api/settings")
-	settings.Use(middleware.AuthMiddleware(h)) // Only admin/superadmin
+	settings.Use(middleware.AuthMiddleware(h),middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionMangmentCompanyInfo))) // Only admin/superadmin
 	{
 		settings.GET("", h.GetCompanySettings)                      // Get current settings
 		settings.PUT("", h.UpdateCompanySettings)                   // Update settings
@@ -145,9 +143,9 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	holidays := r.Group("/api/settings/holidays")
 	holidays.Use(middleware.AuthMiddleware(h))
 	{
-		holidays.POST("", h.AddHoliday)          // SUPERADMIN adds holiday
-		holidays.GET("", h.GetHolidays)          // List all holidays
-		holidays.DELETE("/:id", h.DeleteHoliday) // Remove holiday
+		holidays.POST("", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageHolidays)), h.AddHoliday)          // SUPERADMIN adds holiday
+		holidays.GET("", h.GetHolidays)                                                                                                             // List all holidays
+		holidays.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageHolidays)), h.DeleteHoliday) // Remove holiday
 	}
 
 	// ----------------- Designations -----------------

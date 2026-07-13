@@ -31,15 +31,12 @@ const (
 	// ── Leave balance ────────────────────────────────────────────────────────
 	ActionAdjust Action = "adjust"
 
-	// ── Payroll ──────────────────────────────────────────────────────────────
-	ActionRun      Action = "run"
-	ActionFinalize Action = "finalize"
-
 	// ── Settings sub-actions ─────────────────────────────────────────────────
-	ActionManageHolidays    Action = "manage_holidays"
-	ActionManageLeavePolicy Action = "manage_leave_policy"
-	ActionManageLeaveFlow   Action = "manage_leave_flow"
-	ActionManageBirthdays   Action = "manage_birthdays"
+	ActionManageHolidays      Action = "manage_holidays"
+	ActionManageLeavePolicy   Action = "manage_leave_policy"
+	ActionManageLeaveFlow     Action = "manage_leave_flow"
+	ActionManageLeaveTiming   Action = "manage_leave_timing"
+	ActionMangmentCompanyInfo Action = "manage_company_info"
 
 	// ── Equipment ────────────────────────────────────────────────────────────
 	ActionAssign Action = "assign"

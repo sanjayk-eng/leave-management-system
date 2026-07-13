@@ -67,6 +67,10 @@ function ScopeBadge({ scope }: { scope: string }) {
   );
 }
 
+// ─── Shared grid columns ──────────────────────────────────────────────────────
+// 1fr = permission label | 96px = scope | 88px = enabled toggle
+const GRID_COLS = "grid-cols-[1fr_96px_88px]";
+
 // ─── Permission row ───────────────────────────────────────────────────────────
 interface PermissionRowProps {
   perm: PermissionRow;
@@ -80,71 +84,70 @@ function PermissionRow({ perm, draftEnabled, onToggle }: PermissionRowProps) {
   const isDirty  = draftEnabled !== undefined && draftEnabled !== perm.is_enabled;
 
   return (
-    <tr className={cn(
-      "border-b border-border last:border-0 hover:bg-muted/40",
+    <div className={cn(
+      "grid border-b border-border last:border-0 hover:bg-muted/40",
+      GRID_COLS,
       isDirty && "bg-muted/20",
     )}>
       {/* Label + description */}
-      <td className="py-2.5 pl-4 pr-2">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className={cn(
-              "text-sm",
-              isDirty ? "text-foreground font-medium" : "text-foreground",
-            )}>
-              {perm.label}
-            </span>
+      <div className="py-2.5 pl-4 pr-2 flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            "text-sm",
+            isDirty ? "text-foreground font-medium" : "text-foreground",
+          )}>
+            {perm.label}
+          </span>
 
-            {isDirty && (
-              <span className="text-[10px] text-muted-foreground">
-                (unsaved)
-              </span>
-            )}
-
-            {perm.require_seniority && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-label="Seniority required"
-                      className="text-amber-400 hover:text-amber-500 outline-none"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">
-                    ⚠ Requires higher seniority than target
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-
-          {perm.description && (
-            <span className="text-xs text-muted-foreground leading-snug">
-              {perm.description}
+          {isDirty && (
+            <span className="text-[10px] text-muted-foreground">
+              (unsaved)
             </span>
           )}
+
+          {perm.require_seniority && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Seniority required"
+                    className="text-amber-400 hover:text-amber-500 outline-none"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                  ⚠ Requires higher seniority than target
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
-      </td>
+
+        {perm.description && (
+          <span className="text-xs text-muted-foreground leading-snug">
+            {perm.description}
+          </span>
+        )}
+      </div>
 
       {/* Scope */}
-      <td className="py-2.5 px-4 text-center align-top">
+      <div className="py-2.5 px-4 flex items-start justify-center">
         <ScopeBadge scope={perm.scope} />
-      </td>
+      </div>
 
       {/* Switch — small, gray */}
-      <td className="py-2.5 px-4 text-center align-top">
+      <div className="py-2.5 px-4 flex items-start justify-center">
         <Switch
           checked={checked}
           onCheckedChange={(val) => onToggle(perm.permission_id, val)}
           aria-label={perm.label}
           className="h-4 w-7 data-[state=checked]:bg-zinc-900 data-[state=unchecked]:bg-zinc-300 dark:data-[state=checked]:bg-zinc-100 dark:data-[state=unchecked]:bg-zinc-600 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
         />
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
 
@@ -188,34 +191,33 @@ function ResourceBlock({ group, drafts, onToggle }: ResourceBlockProps) {
         </span>
       </button>
 
-      {/* Permission table */}
+      {/* Permission grid */}
       {open && (
         <div className="border-t border-border">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="py-2 pl-4 pr-2 text-xs font-medium text-muted-foreground">
-                  Permission
-                </th>
-                <th className="py-2 px-4 text-xs font-medium text-muted-foreground text-center whitespace-nowrap">
-                  Scope
-                </th>
-                <th className="py-2 px-4 text-xs font-medium text-muted-foreground text-center whitespace-nowrap">
-                  Enabled
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.permissions.map((perm) => (
-                <PermissionRow
-                  key={perm.permission_id}
-                  perm={perm}
-                  draftEnabled={drafts.get(perm.permission_id)}
-                  onToggle={onToggle}
-                />
-              ))}
-            </tbody>
-          </table>
+          {/* Header row — same GRID_COLS as data rows */}
+          <div className={cn("grid bg-muted/50 border-b border-border", GRID_COLS)}>
+            <div className="py-2 pl-4 pr-2 text-xs font-medium text-muted-foreground">
+              Permission
+            </div>
+            <div className="py-2 px-4 text-xs font-medium text-muted-foreground text-center whitespace-nowrap">
+              Scope
+            </div>
+            <div className="py-2 px-4 text-xs font-medium text-muted-foreground text-center whitespace-nowrap">
+              Enabled
+            </div>
+          </div>
+
+          {/* Data rows */}
+          <div>
+            {group.permissions.map((perm) => (
+              <PermissionRow
+                key={perm.permission_id}
+                perm={perm}
+                draftEnabled={drafts.get(perm.permission_id)}
+                onToggle={onToggle}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

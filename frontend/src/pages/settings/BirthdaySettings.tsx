@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSettings } from "@/hooks/useSettings";
 import { useBirthdayPreview } from "@/hooks/useBirthday";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Loader2, Cake, Eye } from "lucide-react";
+import { ApiError } from "@/lib/api";
+import { Loader2, Cake, Eye, ShieldX } from "lucide-react";
 
 export default function BirthdaySettings() {
   const { settings, updateSettings, isUpdating } = useSettings();
@@ -18,6 +20,8 @@ export default function BirthdaySettings() {
   const [previewName, setPreviewName] = useState("John");
   const [previewBirthDate, setPreviewBirthDate] = useState("1995-04-16");
   const [showPreview, setShowPreview] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   const debouncedPreviewName = useDebounce(previewName, 500);
   const debouncedPreviewBirthDate = useDebounce(previewBirthDate, 500);
@@ -36,18 +40,44 @@ export default function BirthdaySettings() {
 
   const handleSaveSettings = () => {
     if (!settings) return;
-    updateSettings({
-      working_days_per_month:    settings.working_days_per_month,
-      allow_manager_add_leave:   settings.allow_manager_add_leave,
-      primary_color:             settings.primary_color   ?? "#2980b9",
-      secondary_color:           settings.secondary_color ?? "#ecf0f1",
-      company_name:              settings.company_name    ?? "",
-      birthday_message_template: birthdayTemplate,
-    });
+    setAccessDenied(false);
+    updateSettings(
+      {
+        working_days_per_month:    settings.working_days_per_month,
+        allow_manager_add_leave:   settings.allow_manager_add_leave,
+        primary_color:             settings.primary_color   ?? "#2980b9",
+        secondary_color:           settings.secondary_color ?? "#ecf0f1",
+        company_name:              settings.company_name    ?? "",
+        birthday_message_template: birthdayTemplate,
+      },
+      {
+        onError: (error) => {
+          // Roll the template back to last saved value
+          if (settings?.birthday_message_template) {
+            setBirthdayTemplate(settings.birthday_message_template);
+          }
+          // Show inline banner for 403
+          if (error instanceof ApiError && error.status === 403) {
+            setAccessDenied(true);
+            setAccessDeniedMessage(error.message);
+          }
+        },
+      }
+    );
   };
 
   return (
     <div className="space-y-6">
+
+      {/* ── Access denied banner ── */}
+      {accessDenied && (
+        <Alert variant="destructive">
+          <ShieldX className="h-4 w-4" />
+          <AlertTitle>Access Denied</AlertTitle>
+          <AlertDescription>{accessDeniedMessage}</AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

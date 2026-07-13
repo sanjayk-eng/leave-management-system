@@ -12,7 +12,6 @@ import { AdminRoute } from "@/components/AdminRoute";
 import { PayrollRoute } from "@/components/PayrollRoute";
 import { DesignationRoute } from "@/components/DesignationRoute";
 import { AssetRoute } from "@/components/AssetRoute";
-import { HolidayRoute } from "@/components/HolidayRoute";
 import { LeaveReportRoute } from "@/components/LeaveReportRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -25,7 +24,6 @@ import LeaveCalendar from "./pages/LeaveCalendar";
 import Payroll from "./pages/Payroll";
 import Payslips from "./pages/Payslips";
 import Settings from "./pages/Settings";
-import Holidays from "./pages/Holidays";
 import Designations from "./pages/Designations";
 import Equipment from "./pages/Equipment";
 import Logs from "./pages/Logs";
@@ -37,6 +35,7 @@ import LeaveTiming from "./pages/settings/LeaveTiming";
 import ApprovalFlow from "./pages/settings/ApprovalFlow";
 import BirthdaySettings from "./pages/settings/BirthdaySettings";
 import SettingsPermissions from "./pages/settings/Permissions";
+import HolidaySettings from "./pages/settings/Holidays";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -82,8 +81,8 @@ const App = () => (
                 <Route path="approval-flow" element={<ApprovalFlow />} />
                 <Route path="birthday" element={<BirthdaySettings />} />
                 <Route path="permissions" element={<SettingsPermissions />} />
+                <Route path="holidays" element={<HolidaySettings />} />
               </Route>
-              <Route path="/holidays" element={<AuthGuard><HolidayRoute><Layout><Holidays /></Layout></HolidayRoute></AuthGuard>} />
               <Route path="/designations" element={<AuthGuard><DesignationRoute><Layout><Designations /></Layout></DesignationRoute></AuthGuard>} />
               <Route path="/equipment" element={<AuthGuard><AssetRoute><Layout><Equipment /></Layout></AssetRoute></AuthGuard>} />
               <Route path="/logs" element={<AuthGuard><SuperAdminRoute><Layout><Logs /></Layout></SuperAdminRoute></AuthGuard>} />

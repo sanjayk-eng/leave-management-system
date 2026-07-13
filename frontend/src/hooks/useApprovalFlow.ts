@@ -93,11 +93,12 @@ export const useApprovalFlow = () => {
     isLoading,
     error,
     refetch,
-    createFlow:  createMutation.mutate,
-    isCreating:  createMutation.isPending,
-    updateFlow:  updateMutation.mutate,
-    isUpdating:  updateMutation.isPending,
-    deleteFlow:  deleteMutation.mutate,
-    isDeleting:  deleteMutation.isPending,
+    createFlow:      createMutation.mutate,
+    isCreating:      createMutation.isPending,
+    updateFlow:      updateMutation.mutate,
+    updateFlowAsync: updateMutation.mutateAsync,
+    isUpdating:      updateMutation.isPending,
+    deleteFlow:      deleteMutation.mutate,
+    isDeleting:      deleteMutation.isPending,
   };
 };

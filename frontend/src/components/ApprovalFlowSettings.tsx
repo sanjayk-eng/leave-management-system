@@ -24,6 +24,7 @@ import {
   GitMerge, ChevronDown, Lock,
 } from 'lucide-react';
 import { CardSkeleton } from '@/components/skeletons/CardSkeleton';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { useApprovalFlow, useSystemRoles } from '@/hooks/useApprovalFlow';
 import type { ApproverRole, ApprovalStage, LeaveApprovalFlowResponse } from '@/types';
 
@@ -275,7 +276,7 @@ export const NewFlowCard = ({ onCreate, onCancel, isCreating }: NewFlowCardProps
 
 interface FlowCardProps {
   flow:       LeaveApprovalFlowResponse;
-  onUpdate:   (id: string, payload: { name: string; flow: ApprovalStage[] }) => void;
+  onUpdate:   (id: string, payload: { name: string; flow: ApprovalStage[] }) => Promise<unknown>;
   onDelete:   (id: string) => void;
   isUpdating: boolean;
   isDeleting: boolean;
@@ -297,10 +298,16 @@ export const FlowCard = ({ flow, onUpdate, onDelete, isUpdating, isDeleting }: F
     setDirty(true);
   };
 
-  const handleSave = () => {
-    onUpdate(flow.id, { name: editName.trim() || flow.name, flow: stages });
-    setDirty(false);
-    setNameEdit(false);
+  const handleSave = async () => {
+    try {
+      await onUpdate(flow.id, { name: editName.trim() || flow.name, flow: stages });
+      // Only reset dirty/nameEdit when the API call actually succeeded
+      setDirty(false);
+      setNameEdit(false);
+    } catch {
+      // Error already handled (toast) in the hook's onError — just keep dirty=true
+      // so the user knows their changes weren't saved
+    }
   };
 
   return (
@@ -408,16 +415,31 @@ export const FlowCard = ({ flow, onUpdate, onDelete, isUpdating, isDeleting }: F
 
 export const ApprovalFlowSettings = () => {
   const {
-    flows, isLoading,
+    flows, isLoading, error, refetch,
     createFlow, isCreating,
-    updateFlow, isUpdating,
+    updateFlowAsync, isUpdating,
     deleteFlow, isDeleting,
   } = useApprovalFlow();
-  const { isLoading: isLoadingRoles } = useSystemRoles();
+  const { isLoading: isLoadingRoles, error: rolesError } = useSystemRoles();
 
   const [showNewCard, setShowNewCard] = useState(false);
 
+  // Show skeleton only while both queries are in their initial load
   if (isLoading || isLoadingRoles) return <CardSkeleton rows={5} />;
+
+  // Show error if either fetch failed
+  if (error || rolesError) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <ErrorDisplay
+            error={error ?? rolesError}
+            onRetry={refetch}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -467,7 +489,7 @@ export const ApprovalFlowSettings = () => {
             <FlowCard
               key={flow.id}
               flow={flow}
-              onUpdate={(id, payload) => updateFlow({ id, payload })}
+              onUpdate={(id, payload) => updateFlowAsync({ id, payload })}
               onDelete={id => deleteFlow(id)}
               isUpdating={isUpdating}
               isDeleting={isDeleting}
