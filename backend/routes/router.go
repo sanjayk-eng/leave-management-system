@@ -152,7 +152,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Designations -----------------
 	designations := r.Group("/api/designations")
-	designations.Use(middleware.AuthMiddleware(h))
+	designations.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)))
 	{
 		designations.POST("", h.CreateDesignation)       // Create designation (ADMIN, SUPERADMIN, HR)
 		designations.GET("", h.GetAllDesignations)       // Get all designations (All authenticated users)

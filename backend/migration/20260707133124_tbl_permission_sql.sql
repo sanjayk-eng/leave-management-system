@@ -148,11 +148,11 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('asset', 'assign', 'Assign asset', 'Assign, reassign, or return asset to/from employees',    TRUE),
 
     -- PERMISSION (is_visible=FALSE: used by RBAC middleware, hidden from UI)
-    ('permission', 'read', 'View Permissions',      'Read the permission catalogue and role-permission matrix',    FALSE),
+    ('permission', 'read', 'View Permissions',      'Read the permission catalogue and role-permission matrix',    TRUE),
     ('permission', 'edit', 'Edit Role Permissions', 'Toggle is_enabled on tbl_role_permission rows for any role', TRUE),
 
     -- LOGGING (is_visible=FALSE: used by RBAC middleware, hidden from UI)
-    ('log', 'read', 'View System Logs', 'Read system activity logs and audit trail entries', FALSE)
+    ('log', 'read', 'View System Logs', 'Read system activity logs and audit trail entries', TRUE)
 ON CONFLICT (resource, action) DO UPDATE
     SET label       = EXCLUDED.label,
         description = EXCLUDED.description,
@@ -292,7 +292,6 @@ FROM (VALUES
     ('leave',         'reject',   'team'),
     ('leave',         'cancel',   'own'),
     ('leave',         'withdraw', 'own'),
-    ('payroll',       'read',     'own'),
     ('log',            'read',    'team'),
     ('leave_report',   'read',    'team')
 ) AS v(resource, action, scope)
@@ -308,7 +307,6 @@ FROM (VALUES
     ('leave',         'read',     'own'),
     ('leave',         'edit',     'own'),
     ('leave',         'cancel',   'own'),
-    ('payroll',       'read',     'own'),
     ('log',            'read',    'own'),
     ('leave_report',   'read',    'own')
 ) AS v(resource, action, scope)

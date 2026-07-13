@@ -18,13 +18,6 @@ import (
 // Only ADMIN, SUPERADMIN, and HR can create designations
 func (h *HandlerFunc) CreateDesignation(c *gin.Context) {
 	// 1️ Permission check
-	role := c.GetString("role")
-
-	if err := accessrole.Admin_SuperAdmin_Hr(role, "only ADMIN, SUPERADMIN, and HR can create designations"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
 	empId, err := common.GetEmployeeId(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
@@ -173,12 +166,6 @@ func (h *HandlerFunc) UpdateDesignation(c *gin.Context) {
 // DeleteDesignation - DELETE /api/designations/:id
 // Only ADMIN, SUPERADMIN, and HR can delete designations
 func (h *HandlerFunc) DeleteDesignation(c *gin.Context) {
-	// 1️ Permission check
-	role := c.GetString("role")
-	if err := accessrole.Admin_SuperAdmin_Hr(role, "only ADMIN, SUPERADMIN, and HR can delete designations"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
 
 	empId, err := common.GetEmployeeId(c)
 	if err != nil {
