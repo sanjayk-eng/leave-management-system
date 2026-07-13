@@ -4,24 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSettings } from "@/hooks/useSettings";
 import { useBirthdayPreview } from "@/hooks/useBirthday";
 import { useDebounce } from "@/hooks/useDebounce";
-import { ApiError } from "@/lib/api";
-import { Loader2, Cake, Eye, ShieldX } from "lucide-react";
+import { Loader2, Cake, Eye } from "lucide-react";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { CardSkeleton } from "@/components/skeletons/CardSkeleton";
 
 export default function BirthdaySettings() {
-  const { settings, updateSettings, isUpdating } = useSettings();
+  const { settings, updateSettings, isUpdating, isLoading, error } = useSettings();
 
-  const [birthdayTemplate, setBirthdayTemplate] = useState(
-    "Happy Birthday {name}! 🎉 You're turning {age} on {date}. Have a wonderful day!"
-  );
-  const [previewName, setPreviewName] = useState("John");
-  const [previewBirthDate, setPreviewBirthDate] = useState("1995-04-16");
+  const [birthdayTemplate, setBirthdayTemplate] = useState("");
+  const [previewName, setPreviewName] = useState("");
+  const [previewBirthDate, setPreviewBirthDate] = useState("");
   const [showPreview, setShowPreview] = useState(false);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   const debouncedPreviewName = useDebounce(previewName, 500);
   const debouncedPreviewBirthDate = useDebounce(previewBirthDate, 500);
@@ -40,7 +36,6 @@ export default function BirthdaySettings() {
 
   const handleSaveSettings = () => {
     if (!settings) return;
-    setAccessDenied(false);
     updateSettings(
       {
         working_days_per_month:    settings.working_days_per_month,
@@ -51,33 +46,26 @@ export default function BirthdaySettings() {
         birthday_message_template: birthdayTemplate,
       },
       {
-        onError: (error) => {
+        onError: () => {
           // Roll the template back to last saved value
           if (settings?.birthday_message_template) {
             setBirthdayTemplate(settings.birthday_message_template);
-          }
-          // Show inline banner for 403
-          if (error instanceof ApiError && error.status === 403) {
-            setAccessDenied(true);
-            setAccessDeniedMessage(error.message);
           }
         },
       }
     );
   };
 
+  if (isLoading) {
+    return <CardSkeleton rows={4} />;
+  }
+
+  if (error) {
+    return <ErrorDisplay error={error} />;
+  }
+
   return (
     <div className="space-y-6">
-
-      {/* ── Access denied banner ── */}
-      {accessDenied && (
-        <Alert variant="destructive">
-          <ShieldX className="h-4 w-4" />
-          <AlertTitle>Access Denied</AlertTitle>
-          <AlertDescription>{accessDeniedMessage}</AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

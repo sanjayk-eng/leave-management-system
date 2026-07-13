@@ -4,40 +4,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSettings } from "@/hooks/useSettings";
 import { payrollService } from "@/services/payrollService";
-import { ApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, Eye, Building2, ShieldX } from "lucide-react";
+import { Loader2, Eye, Building2 } from "lucide-react";
 import { CardSkeleton } from "@/components/skeletons/CardSkeleton";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 
 export default function CompanySettings() {
-  const { settings, isLoading: isLoadingSettings, updateSettings, isUpdating } = useSettings();
+  const { settings, isLoading: isLoadingSettings, updateSettings, isUpdating, error } = useSettings();
 
-  // Company settings state
-  const [workingDays, setWorkingDays] = useState(22);
-  const [allowManagerAddLeave, setAllowManagerAddLeave] = useState(true);
-  const [primaryColor, setPrimaryColor] = useState("#2980b9");
-  const [secondaryColor, setSecondaryColor] = useState("#ecf0f1");
+  // Company settings state — empty until server data arrives
+  const [workingDays, setWorkingDays] = useState(0);
+  const [allowManagerAddLeave, setAllowManagerAddLeave] = useState(false);
+  const [primaryColor, setPrimaryColor] = useState("");
+  const [secondaryColor, setSecondaryColor] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [isPreviewingPayslip, setIsPreviewingPayslip] = useState(false);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   useEffect(() => {
     if (settings) {
       setWorkingDays(settings.working_days_per_month);
       setAllowManagerAddLeave(settings.allow_manager_add_leave);
-      if (settings.primary_color)   setPrimaryColor(settings.primary_color);
-      if (settings.secondary_color) setSecondaryColor(settings.secondary_color);
-      if (settings.company_name)    setCompanyName(settings.company_name);
+      setPrimaryColor(settings.primary_color   ?? "");
+      setSecondaryColor(settings.secondary_color ?? "");
+      setCompanyName(settings.company_name      ?? "");
     }
   }, [settings]);
 
   const handleSaveSettings = () => {
-    setAccessDenied(false);
     updateSettings(
       {
         working_days_per_month: workingDays,
@@ -48,21 +44,16 @@ export default function CompanySettings() {
         logo: logoFile,
       },
       {
-        onError: (error) => {
+        onError: () => {
           // Roll local form state back to last known server data
           if (settings) {
             setWorkingDays(settings.working_days_per_month);
             setAllowManagerAddLeave(settings.allow_manager_add_leave);
-            if (settings.primary_color)   setPrimaryColor(settings.primary_color);
-            if (settings.secondary_color) setSecondaryColor(settings.secondary_color);
-            if (settings.company_name)    setCompanyName(settings.company_name);
+            setPrimaryColor(settings.primary_color   ?? "");
+            setSecondaryColor(settings.secondary_color ?? "");
+            setCompanyName(settings.company_name      ?? "");
           }
           setLogoFile(null);
-          // Show inline banner for 403, let the hook's toast handle everything else
-          if (error instanceof ApiError && error.status === 403) {
-            setAccessDenied(true);
-            setAccessDeniedMessage(error.message);
-          }
         },
       }
     );
@@ -84,18 +75,12 @@ export default function CompanySettings() {
     return <CardSkeleton rows={6} />;
   }
 
+  if (error) {
+    return <ErrorDisplay error={error} />;
+  }
+
   return (
     <div className="space-y-6">
-
-      {/* ── Access denied banner ── */}
-      {accessDenied && (
-        <Alert variant="destructive">
-          <ShieldX className="h-4 w-4" />
-          <AlertTitle>Access Denied</AlertTitle>
-          <AlertDescription>{accessDeniedMessage}</AlertDescription>
-        </Alert>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-2">
         {/* LEFT — General + Branding fields */}
         <Card>
@@ -153,7 +138,7 @@ export default function CompanySettings() {
                   <Input
                     id="brandColor"
                     type="color"
-                    value={primaryColor}
+                    value={primaryColor || "#000000"}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="w-12 h-10 p-1 cursor-pointer shrink-0"
                   />
@@ -174,7 +159,7 @@ export default function CompanySettings() {
                   <Input
                     id="secondaryColor"
                     type="color"
-                    value={secondaryColor}
+                    value={secondaryColor || "#000000"}
                     onChange={(e) => setSecondaryColor(e.target.value)}
                     className="w-12 h-10 p-1 cursor-pointer shrink-0"
                   />
