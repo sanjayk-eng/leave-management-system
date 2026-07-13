@@ -34,17 +34,17 @@ const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "Employees", url: "/employees", icon: Users, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
   { title: "My Team", url: "/my-team", icon: Users, roles: ['MANAGER'] },
-  { title: "Designations", url: "/designations", icon: Briefcase, roles: ['SUPERADMIN', 'ADMIN'] },
-  { title: "Assets", url: "/equipment", icon: Package, roles: ['SUPERADMIN', 'ADMIN'] },
+  { title: "Designations", url: "/designations", icon: Briefcase, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
+  { title: "Assets", url: "/equipment", icon: Package, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
   { title: "Apply Leave", url: "/apply-leave", icon: Calendar, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "My Leave History", url: "/my-leave-history", icon: History, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "Leave Approvals", url: "/approvals", icon: ClipboardList, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER'] },
   { title: "Leave Calendar", url: "/calendar", icon: Calendar, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Payroll", url: "/payroll", icon: DollarSign, roles: ['SUPERADMIN', 'ADMIN'] },
+  { title: "Payroll", url: "/payroll", icon: DollarSign, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
   { title: "Payslips", url: "/payslips", icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
   { title: "System Logs", url: "/logs", icon: Activity, roles: ['SUPERADMIN'] },
   { title: "Leave Report", url: "/leave-monthly-report", icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Settings", url: "/settings", icon: Settings, roles: ['SUPERADMIN', 'ADMIN'] },
+  { title: "Settings", url: "/settings", icon: Settings, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
 ];
 
 export function AppSidebar() {

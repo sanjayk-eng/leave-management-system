@@ -11,13 +11,24 @@ import (
 
 func (h *HandlerFunc) GetRolePermissions(c *gin.Context) {
 
-	roleID, err := strconv.Atoi(c.Param("role_id"))
-	if err != nil || roleID <= 0 {
+	targetRoleID, err := strconv.Atoi(c.Param("role_id"))
+	if err != nil || targetRoleID <= 0 {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid role_id: must be a positive integer")
 		return
 	}
 
-	resp, err := h.PermissionSvc.GetRolePermissions(c.Request.Context(), roleID)
+	callerRoleID, ok := c.Get("role_id")
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "caller role_id missing from context")
+		return
+	}
+	callerID, ok := callerRoleID.(int)
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "caller role_id has unexpected type")
+		return
+	}
+
+	resp, err := h.PermissionSvc.GetRolePermissions(c.Request.Context(), callerID, targetRoleID)
 	if err != nil {
 		errors.Error(c, err)
 		return
@@ -28,13 +39,23 @@ func (h *HandlerFunc) GetRolePermissions(c *gin.Context) {
 
 func (h *HandlerFunc) UpdateRolePermissions(c *gin.Context) {
 
-	roleID, err := strconv.Atoi(c.Param("role_id"))
-	if err != nil || roleID <= 0 {
+	targetRoleID, err := strconv.Atoi(c.Param("role_id"))
+	if err != nil || targetRoleID <= 0 {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid role_id: must be a positive integer")
 		return
 	}
 
-	// 3. Bind + validate request body
+	callerRoleID, ok := c.Get("role_id")
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "caller role_id missing from context")
+		return
+	}
+	callerID, ok := callerRoleID.(int)
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "caller role_id has unexpected type")
+		return
+	}
+
 	var input models.TogglePermissionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
@@ -45,14 +66,14 @@ func (h *HandlerFunc) UpdateRolePermissions(c *gin.Context) {
 		return
 	}
 
-	if err := h.PermissionSvc.TogglePermissions(c.Request.Context(), roleID, &input); err != nil {
+	if err := h.PermissionSvc.TogglePermissions(c.Request.Context(), callerID, targetRoleID, &input); err != nil {
 		errors.Error(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "permissions updated successfully",
-		"role_id": roleID,
+		"role_id": targetRoleID,
 		"updated": len(input.Permissions),
 	})
 }

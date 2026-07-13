@@ -14,8 +14,9 @@ type RoleInput struct {
 
 // Role is the response model for a single role entry.
 type Role struct {
-	ID   int    `json:"id" db:"id"`
-	Type string `json:"type" db:"type"`
+	ID       int    `json:"id"       db:"id"`
+	Type     string `json:"type"     db:"type"`
+	Priority int    `json:"priority" db:"priority"`
 }
 
 // ----------------- EMPLOYEE -----------------

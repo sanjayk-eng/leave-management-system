@@ -14,8 +14,8 @@ import (
 )
 
 type PermissionService interface {
-	GetRolePermissions(ctx context.Context, roleID int) (*models.RolePermissionResponse, error)
-	TogglePermissions(ctx context.Context, roleID int, input *models.TogglePermissionInput) error
+	GetRolePermissions(ctx context.Context, callerRoleID, targetRoleID int) (*models.RolePermissionResponse, error)
+	TogglePermissions(ctx context.Context, callerRoleID, targetRoleID int, input *models.TogglePermissionInput) error
 	Check(ctx context.Context, roleID int, resource, action string) (models.PermissionCheckResult, error)
 }
 
@@ -27,41 +27,54 @@ func NewPermissionService(db *sqlx.DB, repo repositories.PermissionRepository) P
 	return &permissionService{db: db, repo: repo}
 }
 
-func (s *permissionService) GetRolePermissions(ctx context.Context, roleID int) (*models.RolePermissionResponse, error) {
+func (s *permissionService) GetRolePermissions(ctx context.Context, callerRoleID, targetRoleID int) (*models.RolePermissionResponse, error) {
 
-	roleName, err := s.repo.GetRoleName(ctx, roleID)
+	// ── Hierarchy check ────────────────────────────────────────────────────────
+	// Caller must have a strictly higher priority than the target role.
+	// SUPERADMIN (priority 6) is handled by the middleware bypass — it never
+	// reaches here — so we enforce the rule for everyone else.
+	if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
+		return nil, err
+	}
+
+	roleName, err := s.repo.GetRoleName(ctx, targetRoleID)
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusNotFound, "role not found")
 	}
-	resources, err := s.repo.GetRolePermissionsGrouped(ctx, roleID)
+	resources, err := s.repo.GetRolePermissionsGrouped(ctx, targetRoleID)
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to fetch permissions: "+err.Error())
 	}
 
 	return &models.RolePermissionResponse{
-		RoleID:    roleID,
+		RoleID:    targetRoleID,
 		RoleName:  roleName,
 		Resources: resources,
 	}, nil
 }
 
-func (s *permissionService) TogglePermissions(ctx context.Context, roleID int, input *models.TogglePermissionInput) error {
+func (s *permissionService) TogglePermissions(ctx context.Context, callerRoleID, targetRoleID int, input *models.TogglePermissionInput) error {
 
 	if input == nil || len(input.Permissions) == 0 {
 		return errors.CustomErr(http.StatusBadRequest, "at least one permission toggle is required")
 	}
 
-	if _, err := s.repo.GetRoleName(ctx, roleID); err != nil {
+	// ── Hierarchy check ────────────────────────────────────────────────────────
+	if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
+		return err
+	}
+
+	if _, err := s.repo.GetRoleName(ctx, targetRoleID); err != nil {
 		return errors.CustomErr(http.StatusNotFound, "role not found")
 	}
 
 	// ── Validate dependency rules before touching the DB ──
-	if err := s.validatePermissionDependencies(ctx, roleID, input); err != nil {
+	if err := s.validatePermissionDependencies(ctx, targetRoleID, input); err != nil {
 		return err
 	}
 
 	err := database.ExecuteTransaction(ctx, s.db, func(tx *sqlx.Tx) error {
-		if err := s.repo.BulkToggle(ctx, tx, roleID, input.Permissions); err != nil {
+		if err := s.repo.BulkToggle(ctx, tx, targetRoleID, input.Permissions); err != nil {
 			return errors.CustomErr(http.StatusBadRequest, err.Error())
 		}
 		return nil
@@ -70,13 +83,31 @@ func (s *permissionService) TogglePermissions(ctx context.Context, roleID int, i
 	return err
 }
 
+// enforceHierarchy returns 403 if the caller's priority is not strictly greater
+// than the target role's priority. Fetches both priorities from Tbl_Role.
+func (s *permissionService) enforceHierarchy(ctx context.Context, callerRoleID, targetRoleID int) error {
+	callerPriority, err := s.repo.GetRolePriority(ctx, callerRoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to resolve caller role priority")
+	}
+	targetPriority, err := s.repo.GetRolePriority(ctx, targetRoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusNotFound, "target role not found")
+	}
+	if callerPriority <= targetPriority {
+		return errors.CustomErr(http.StatusForbidden,
+			"access denied: you can only manage roles with a lower priority than your own")
+	}
+	return nil
+}
+
 func (s *permissionService) Check(ctx context.Context, roleID int, resource, action string) (models.PermissionCheckResult, error) {
 	return s.repo.CheckPermission(ctx, roleID, resource, action)
 }
 
 
-func (s *permissionService) validatePermissionDependencies(ctx context.Context, roleID int, input *models.TogglePermissionInput) error {
-	groups, err := s.repo.GetRolePermissionsGrouped(ctx, roleID)
+func (s *permissionService) validatePermissionDependencies(ctx context.Context, targetRoleID int, input *models.TogglePermissionInput) error {
+	groups, err := s.repo.GetRolePermissionsGrouped(ctx, targetRoleID)
 	if err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to load permissions for validation")
 	}

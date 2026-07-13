@@ -15,6 +15,7 @@ import (
 type PermissionRepository interface {
 	GetRolePermissionsGrouped(ctx context.Context, roleID int) ([]models.ResourceGroup, error)
 	GetRoleName(ctx context.Context, roleID int) (string, error)
+	GetRolePriority(ctx context.Context, roleID int) (int, error)
 	BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int, toggles []models.PermissionToggle) error
 	CheckPermission(ctx context.Context, roleID int, resource, action string) (models.PermissionCheckResult, error)
 }
@@ -81,6 +82,15 @@ func (r *permissionRepo) GetRoleName(ctx context.Context, roleID int) (string, e
 		return "", fmt.Errorf("GetRoleName role_id=%d: %w", roleID, err)
 	}
 	return name, nil
+}
+
+func (r *permissionRepo) GetRolePriority(ctx context.Context, roleID int) (int, error) {
+	var priority int
+	if err := r.db.GetContext(ctx, &priority,
+		`SELECT priority FROM Tbl_Role WHERE id = $1`, roleID); err != nil {
+		return 0, fmt.Errorf("GetRolePriority role_id=%d: %w", roleID, err)
+	}
+	return priority, nil
 }
 
 func (r *permissionRepo) BulkToggle(ctx context.Context, tx *sqlx.Tx, roleID int, toggles []models.PermissionToggle) error {

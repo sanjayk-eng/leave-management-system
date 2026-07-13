@@ -172,7 +172,7 @@ func (r *Repository) GetRoleID(role string) (string, error) {
 // ------------------ GET ALL ROLES ------------------
 func (r *Repository) GetAllRoles() ([]models.Role, error) {
 	var roles []models.Role
-	err := r.DB.Select(&roles, `SELECT id, type FROM Tbl_Role ORDER BY id`)
+	err := r.DB.Select(&roles, `SELECT id, type, priority FROM Tbl_Role ORDER BY priority`)
 	return roles, err
 }
 

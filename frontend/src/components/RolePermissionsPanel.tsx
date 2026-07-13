@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
-import { ChevronRight, ChevronDown, Info } from "lucide-react";
+import { ChevronRight, ChevronDown, Info, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,19 +18,13 @@ import {
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import { useQuery } from "@tanstack/react-query";
 import { useRolePermissions, useTogglePermissions } from "@/hooks/usePermissions";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { authService, type RoleEntry } from "@/services/authService";
+import { useAuth } from "@/hooks/useAuth";
 import type { PermissionRow, ResourceGroup } from "@/services/permissionService";
 import { cn } from "@/lib/utils";
-
-// ─── Roles ────────────────────────────────────────────────────────────────────
-const ROLE_TABS = [
-  { id: 2, label: "HR" },
-  { id: 3, label: "Admin" },
-  { id: 4, label: "Manager" },
-  { id: 5, label: "Employee" },
-  { id: 6, label: "Intern" },
-] as const;
 
 // ─── Resource label map ───────────────────────────────────────────────────────
 const RESOURCE_LABEL: Record<string, string> = {
@@ -241,28 +235,30 @@ function LoadingSkeleton() {
 
 // ─── Role selector ────────────────────────────────────────────────────────────
 function RoleSelector({
+  roles,
   activeId,
   onChange,
 }: {
+  roles: RoleEntry[];
   activeId: number;
   onChange: (id: number) => void;
 }) {
   return (
     <div className="flex items-center border border-border rounded-md overflow-hidden w-fit">
-      {ROLE_TABS.map((tab) => (
+      {roles.map((role) => (
         <button
-          key={tab.id}
+          key={role.id}
           type="button"
-          onClick={() => onChange(tab.id)}
+          onClick={() => onChange(role.id)}
           className={cn(
             "px-4 py-1.5 text-sm font-medium transition-colors",
             "border-r border-border last:border-r-0",
-            activeId === tab.id
+            activeId === role.id
               ? "bg-foreground text-background"
               : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
-          {tab.label}
+          {role.type.charAt(0) + role.type.slice(1).toLowerCase()}
         </button>
       ))}
     </div>
@@ -271,9 +267,35 @@ function RoleSelector({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function RolePermissionsPanel() {
-  const [activeRoleId, setActiveRoleId] = useState<number>(ROLE_TABS[0].id);
-  const { data, isLoading, error, refetch } = useRolePermissions(activeRoleId);
-  const { mutate: toggle, isPending } = useTogglePermissions(activeRoleId);
+  const { currentUser } = useAuth();
+
+  // ── Fetch all roles with priority from API ──────────────────────────────────
+  const { data: rolesData, isLoading: isLoadingRoles } = useQuery({
+    queryKey: ["roles"],
+    queryFn: () => authService.getRoles(),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // ── Filter to only roles strictly below the current user's priority ──────────
+  // SUPERADMIN sees all; others see only what they outrank.
+  const manageableRoles = useMemo<RoleEntry[]>(() => {
+    if (!rolesData?.data || !currentUser) return [];
+    const callerRole = rolesData.data.find((r) => r.type === currentUser.role);
+    if (!callerRole) return [];
+    return rolesData.data
+      .filter((r) => r.priority < callerRole.priority)
+      .sort((a, b) => b.priority - a.priority); // highest first in tabs
+  }, [rolesData, currentUser]);
+
+  const [activeRoleId, setActiveRoleId] = useState<number>(0);
+
+  // Auto-select first available tab once roles are loaded
+  const resolvedActiveId = activeRoleId > 0
+    ? activeRoleId
+    : (manageableRoles[0]?.id ?? 0);
+
+  const { data, isLoading, error, refetch } = useRolePermissions(resolvedActiveId);
+  const { mutate: toggle, isPending } = useTogglePermissions(resolvedActiveId);
 
   // Draft overrides: permission_id → new is_enabled value
   // Only contains entries that differ from server state
@@ -360,21 +382,39 @@ export function RolePermissionsPanel() {
   }, [data, drafts]);
 
   const totalPerms = data?.resources.flatMap((r) => r.permissions).length ?? 0;
-  const activeRole = ROLE_TABS.find((t) => t.id === activeRoleId);
+  const activeRole = manageableRoles.find((r) => r.id === resolvedActiveId);
+
+  // ── Loading roles ──────────────────────────────────────────────────────────
+  if (isLoadingRoles) {
+    return (
+      <div className="flex items-center gap-2 py-8 text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Loading roles…</span>
+      </div>
+    );
+  }
+
+  if (manageableRoles.length === 0) {
+    return (
+      <p className="py-8 text-sm text-muted-foreground">
+        No roles available to manage.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-4">
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <RoleSelector activeId={activeRoleId} onChange={handleRoleChange} />
+        <RoleSelector roles={manageableRoles} activeId={resolvedActiveId} onChange={handleRoleChange} />
 
         <div className="flex items-center gap-2">
 
           {/* Status text */}
           {data && !isLoading && (
             <span className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{activeRole?.label}</span>
+              <span className="font-medium text-foreground">{activeRole?.type}</span>
               {" — "}
               {totalEnabled} / {totalPerms} enabled
             </span>

@@ -30,6 +30,12 @@ export interface VerifyTokenResponse {
   };
 }
 
+export interface RoleEntry {
+  id: number;
+  type: string;
+  priority: number;
+}
+
 export const authService = {
   // Local login: { provider: "local", email, password }
   // Google login: { provider: "google", token: "<google_id_token>" }
@@ -77,5 +83,9 @@ export const authService = {
       removeAuthToken();
       removeCurrentUser();
     }
+  },
+
+  getRoles: async (): Promise<{ message: string; data: RoleEntry[] }> => {
+    return api.get<{ message: string; data: RoleEntry[] }>('/auth/roles');
   },
 };
