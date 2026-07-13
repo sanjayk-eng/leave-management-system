@@ -137,7 +137,7 @@ func (r *Repository) restoreEmployeeEquipment(tx *sqlx.Tx, employeeID uuid.UUID)
 	}
 
 	for _, eqID := range equipmentIDs {
-		req := models.RemoveEquipmentRequest{
+		req := models.RemoveAssignmentRequest{
 			EmployeeID:  employeeID,
 			EquipmentID: eqID,
 		}

@@ -3,16 +3,12 @@ package handler
 import (
 	"net/http"
 
-	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	pagi "github.com/Zenithive/LeaveManagementSystem/pkg/common/pagination"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 )
 
 // ======================
@@ -108,7 +104,10 @@ func (h *HandlerFunc) DeleteCategory(c *gin.Context) {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid category ID")
 		return
 	}
-	h.AssetService.DeleteCategory(c, categoryID)
+	if err := h.AssetService.DeleteCategory(c, categoryID); err != nil {
+		errors.Error(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "category deleted successfully"})
 }
 
@@ -116,18 +115,9 @@ func (h *HandlerFunc) DeleteCategory(c *gin.Context) {
 // EQUIPMENT
 // ======================
 
-func (h *HandlerFunc) CreateEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can create equipment"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
+func (h *HandlerFunc) CreateAsset(c *gin.Context) {
 
-	var req models.EquipmentRequest
+	var req models.AssetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
@@ -137,59 +127,48 @@ func (h *HandlerFunc) CreateEquipment(c *gin.Context) {
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.CreateEquipment(tx, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to create equipment: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.Equipment, constant.ActionCreate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.CreateAsset(c, &req); err != nil {
+		errors.Error(c, err)
 		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"message": "equipment created successfully"})
 }
 
-func (h *HandlerFunc) GetAllEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin(c.GetString("role"), "only ADMIN and SUPERADMIN can view equipment"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
+func (h *HandlerFunc) GetAsset(c *gin.Context) {
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.EquipmentSortFields)
 
-	data, total, err := h.Query.GetAllEquipment(
-		pagination.PageSize, pagination.Offset,
-		filters.Search, filters.SortBy, filters.SortDir,
-	)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, "failed to get equipment: "+err.Error())
-		return
-	}
-	if data == nil {
-		data = []models.EquipmentRes{}
+	filter := models.QueryFilter{
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Search:   filters.Search,
+		SortBy:   filters.SortBy,
+		SortDir:  filters.SortDir,
 	}
 
-	response := gin.H{"message": "success", "equipment": data}
-	if pagination.PageSize > 0 {
-		response["pagination"] = pagi.CalculatePaginationResponse(pagination.Page, pagination.PageSize, total)
+	data, total, err := h.AssetService.GetAssets(c.Request.Context(), filter)
+	if err != nil {
+		errors.Error(c, err)
+		return
 	}
+
+	response := gin.H{
+		"success":   true,
+		"equipment": data,
+	}
+
+	if filter.PageSize > 0 {
+		response["pagination"] = pagi.CalculatePaginationResponse(
+			filter.Page,
+			filter.PageSize,
+			total,
+		)
+	}
+
 	c.JSON(http.StatusOK, response)
 }
-
 func (h *HandlerFunc) GetEquipmentByCategory(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin(c.GetString("role"), "only ADMIN and SUPERADMIN can view equipment"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
-	categoryIDStr := c.Query("id")
-	if categoryIDStr == "" {
-		errors.RespondWithError(c, http.StatusBadRequest, "category_id query parameter is required")
-		return
-	}
-	categoryID, err := uuid.Parse(categoryIDStr)
+	categoryID, err := uuid.Parse(c.Query("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid category ID")
 		return
@@ -198,44 +177,48 @@ func (h *HandlerFunc) GetEquipmentByCategory(c *gin.Context) {
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.EquipmentSortFields)
 
-	data, total, err := h.Query.GetEquipmentByCategory(
-		categoryID,
-		pagination.PageSize, pagination.Offset,
-		filters.Search, filters.SortBy, filters.SortDir,
-	)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, "failed to get equipment: "+err.Error())
-		return
-	}
-	if data == nil {
-		data = []models.EquipmentRes{}
+	filter := models.QueryFilter{
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Search:   filters.Search,
+		SortBy:   filters.SortBy,
+		SortDir:  filters.SortDir,
 	}
 
-	response := gin.H{"message": "success", "equipment": data}
-	if pagination.PageSize > 0 {
-		response["pagination"] = pagi.CalculatePaginationResponse(pagination.Page, pagination.PageSize, total)
+	data, total, err := h.AssetService.GetEquipmentByCategory(
+		c.Request.Context(),
+		categoryID,
+		filter,
+	)
+	if err != nil {
+		errors.Error(c, err)
+		return
 	}
+
+	response := gin.H{
+		"message":   "success",
+		"equipment": data,
+	}
+
+	if filter.PageSize > 0 {
+		response["pagination"] = pagi.CalculatePaginationResponse(
+			filter.Page,
+			filter.PageSize,
+			total,
+		)
+	}
+
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *HandlerFunc) UpdateEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can update equipment"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
+func (h *HandlerFunc) UpdateAsset(c *gin.Context) {
 	equipmentID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid equipment ID")
 		return
 	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
 
-	var req models.EquipmentRequest
+	var req models.AssetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
@@ -245,70 +228,47 @@ func (h *HandlerFunc) UpdateEquipment(c *gin.Context) {
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.UpdateEquipment(tx, equipmentID, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to update equipment: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.Equipment, constant.ActionUpdate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.UpdateAsset(c, equipmentID, req); err != nil {
+		errors.Error(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "equipment updated successfully"})
 }
-
 func (h *HandlerFunc) DeleteEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "only ADMIN, SUPERADMIN, and HR can delete equipment"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
-	equipmentID, err := uuid.Parse(c.Param("id"))
+	assetID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid equipment ID")
 		return
 	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
+
+	if err := h.AssetService.DeleteAsset(c.Request.Context(), assetID); err != nil {
+		errors.Error(c, err)
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.DeleteEquipment(tx, equipmentID); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to delete equipment: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.Equipment, constant.ActionDelete, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "equipment deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "equipment deleted successfully",
+	})
 }
 
 // ======================
 // ASSIGNMENT
 // ======================
 
-func (h *HandlerFunc) AssignEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "access denied"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
+func (h *HandlerFunc) AssignAsset(c *gin.Context) {
 	empID, err := common.GetEmployeeId(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	var req models.AssignEquipmentRequest
+	var req models.AssignAssetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Always override assigned_by from auth context — never trust the request body
 	req.AssignedBy = empID
 
 	if err := models.Validate.Struct(&req); err != nil {
@@ -316,40 +276,45 @@ func (h *HandlerFunc) AssignEquipment(c *gin.Context) {
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.AssignEquipment(tx, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to assign equipment: "+err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.EquipmentAssign, constant.ActionCreate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.AssignAsset(c, &req); err != nil {
+		errors.Error(c, err)
 		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"message": "equipment assigned successfully"})
 }
-
 func (h *HandlerFunc) GetAllAssignedEquipment(c *gin.Context) {
-
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.AssignmentSortFields)
 
-	data, total, err := h.Query.GetAllAssignedEquipment(
-		pagination.PageSize, pagination.Offset,
-		filters.Search, filters.SortBy, filters.SortDir,
-	)
+	filter := models.QueryFilter{
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Search:   filters.Search,
+		SortBy:   filters.SortBy,
+		SortDir:  filters.SortDir,
+	}
+
+	data, total, err := h.AssetService.GetAllAssignedEquipment(c.Request.Context(), filter)
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		errors.Error(c, err)
 		return
 	}
 
-	response := gin.H{"message": "success", "data": data}
-	if pagination.PageSize > 0 {
-		response["pagination"] = pagi.CalculatePaginationResponse(pagination.Page, pagination.PageSize, total)
+	response := gin.H{
+		"message": "success",
+		"data":    data,
 	}
+
+	if filter.PageSize > 0 {
+		response["pagination"] = pagi.CalculatePaginationResponse(
+			filter.Page,
+			filter.PageSize,
+			total,
+		)
+	}
+
 	c.JSON(http.StatusOK, response)
 }
-
 func (h *HandlerFunc) GetAssignedEquipmentByEmployee(c *gin.Context) {
 	employeeID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -360,62 +325,40 @@ func (h *HandlerFunc) GetAssignedEquipmentByEmployee(c *gin.Context) {
 	pagination := pagi.GetPaginationParams(c)
 	filters := pagi.GetFilterParams(c, pagi.AssignmentSortFields)
 
-	data, total, err := h.Query.GetAssignedEquipmentByEmployee(
+	filter := models.QueryFilter{
+		Page:     pagination.Page,
+		PageSize: pagination.PageSize,
+		Search:   filters.Search,
+		SortBy:   filters.SortBy,
+		SortDir:  filters.SortDir,
+	}
+
+	data, total, err := h.AssetService.GetAssignedEquipmentByEmployee(
+		c.Request.Context(),
 		employeeID,
-		pagination.PageSize, pagination.Offset,
-		filters.Search, filters.SortBy, filters.SortDir,
+		filter,
 	)
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		errors.Error(c, err)
 		return
 	}
 
-	response := gin.H{"message": "success", "data": data}
-	if pagination.PageSize > 0 {
-		response["pagination"] = pagi.CalculatePaginationResponse(pagination.Page, pagination.PageSize, total)
+	response := gin.H{
+		"message": "success",
+		"data":    data,
 	}
+
+	if filter.PageSize > 0 {
+		response["pagination"] = pagi.CalculatePaginationResponse(
+			filter.Page,
+			filter.PageSize,
+			total,
+		)
+	}
+
 	c.JSON(http.StatusOK, response)
 }
-
-func (h *HandlerFunc) RemoveEquipment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "access denied"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	var req models.RemoveEquipmentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := models.Validate.Struct(&req); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "validation error: "+err.Error())
-		return
-	}
-
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.RemoveEquipment(tx, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.Equipment, constant.ActionDelete, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "equipment removed successfully"})
-}
-
 func (h *HandlerFunc) UpdateAssignment(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin_Hr(c.GetString("role"), "access denied"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
 	empID, err := common.GetEmployeeId(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
@@ -427,7 +370,6 @@ func (h *HandlerFunc) UpdateAssignment(c *gin.Context) {
 		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Always override assigned_by from auth context — never trust the request body
 	req.AssignedBy = empID
 
 	if err := models.Validate.Struct(&req); err != nil {
@@ -435,19 +377,31 @@ func (h *HandlerFunc) UpdateAssignment(c *gin.Context) {
 		return
 	}
 
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.UpdateAssignment(tx, req); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, err.Error())
-		}
-		return h.Query.AddLog(models.NewCommon(constant.Equipment, constant.ActionUpdate, empID), tx)
-	}); err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+	if err := h.AssetService.UpdateAssignAsset(c, &req); err != nil {
+		errors.Error(c, err)
 		return
 	}
-
 	message := "assignment updated successfully"
 	if req.ToEmployeeID != nil {
 		message = "equipment reassigned successfully"
 	}
 	c.JSON(http.StatusOK, gin.H{"message": message})
+}
+
+func (h *HandlerFunc) RemoveAssignment(c *gin.Context) {
+	var req models.RemoveAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := models.Validate.Struct(&req); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, "validation error: "+err.Error())
+		return
+	}
+
+	if err := h.AssetService.RemoveEquipment(c, &req); err != nil {
+		errors.Error(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "equipment removed successfully"})
 }
