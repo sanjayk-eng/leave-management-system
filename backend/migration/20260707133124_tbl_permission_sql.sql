@@ -56,6 +56,7 @@ CREATE TYPE permission_action AS ENUM (
     'activate',
     'deactivate',
     'designation_management',
+    'read_salary',
 
     -- leave workflow
     'apply',
@@ -113,6 +114,7 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('employee', 'activate',              'Activate Employee',     'Re-activate a deactivated employee account',                        TRUE),
     ('employee', 'deactivate',            'Deactivate Employee',   'Deactivate (soft-delete) an employee account',                      TRUE),
     ('employee', 'designation_management','Manage Designation',    'Assign , view , update an employee job designation',                      TRUE),
+    ('employee', 'read_salary','read salary',    'View Employee Salary',                      TRUE),
 
     -- LEAVE
     ('leave', 'apply',    'Apply Leave',    'Submit &Edit a pending leave request',      TRUE),
@@ -202,6 +204,7 @@ SELECT 2, p.id, v.scope, v.req_sen::BOOLEAN, TRUE
 FROM (VALUES
     ('employee', 'add',                   'all',  TRUE),
     ('employee', 'read',                  'all',  TRUE),
+    ('employee', 'read_salary',                  'all',  TRUE),
     ('employee', 'edit',                  'all',  TRUE),
     ('employee', 'change_password',       'all',  TRUE),
     ('employee', 'update_role',           'all',  TRUE),
@@ -246,6 +249,7 @@ FROM (VALUES
     ('employee', 'edit',                  'all',  TRUE),
     ('employee', 'change_password',       'all',  TRUE),
     ('employee', 'update_role',           'all',  TRUE),
+    ('employee', 'read_salary',           'all',  TRUE),
     ('employee', 'assign_manager',        'all',  TRUE),
     ('employee', 'activate',              'all',  TRUE),
     ('employee', 'deactivate',            'all',  TRUE),
@@ -283,6 +287,7 @@ INSERT INTO tbl_role_permission (role_id, permission_id, scope, require_seniorit
 SELECT 4, p.id, v.scope, FALSE, TRUE
 FROM (VALUES
     ('employee',      'read',     'team'),
+    ('employee', 'read_salary', 'team'),
     ('leave',         'apply',    'own'),
     ('leave',         'read',     'team'),
     ('leave',         'approve',  'team'),

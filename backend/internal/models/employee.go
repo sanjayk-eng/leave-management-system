@@ -58,6 +58,22 @@ type EmployeeInput struct {
 	DesignationName *string    `json:"designation_name,omitempty"` // optional
 }
 
+type RoleUpdateResult struct {
+	EmployeeID string `json:"employee_id"`
+	OldRole    string `json:"old_role"`
+	NewRole    string `json:"new_role"`
+}
+type UpdateRoleInput struct {
+	Role string `json:"role" binding:"required"`
+}
+
+type EmployeeAccessFilter struct {
+	ActorID            uuid.UUID
+	Scope              string      // "own" | "team" | "all"
+	VisibleEmployeeIDs []uuid.UUID // populated only when Scope == "team"
+	IncludeSalary      bool
+}
+
 // EmployeeFilterParams - Query parameters for filtering, sorting, and pagination
 type EmployeeFilterParams struct {
 	// Pagination

@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dateInputToISO } from "@/lib/dateUtils";
 import { validateSecurePassword } from "@/lib/passwordValidation";
@@ -44,6 +45,23 @@ function formatDate(iso?: string | null) {
   if (!iso) return <span className="text-muted-foreground italic">-</span>;
   const d = new Date(iso);
   return <span>{d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>;
+}
+
+const AVATAR_COLOURS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-rose-500",
+  "bg-sky-500",
+  "bg-orange-500",
+  "bg-indigo-500",
+];
+function avatarColour(index: number) {
+  return AVATAR_COLOURS[index % AVATAR_COLOURS.length];
+}
+function getInitials(name: string) {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 type SortCol = 'name' | 'email' | 'joining_date' | 'ending_date' | 'salary' | 'birth_date' | 'manager_name' | 'role' | 'status';
@@ -492,7 +510,7 @@ const Employees = () => {
 
         <CardContent>
           {isLoading ? (
-            <TableSkeleton rows={pageSize} columns={isHR ? 9 : 10} showActions />
+            <TableSkeleton rows={pageSize} columns={isHR ? 8 : 9} showActions />
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
               <p className="text-lg font-semibold text-destructive">Failed to load employees</p>
@@ -517,7 +535,6 @@ const Employees = () => {
                       {!isHR && <SortableTableHead column="salary" label="Salary"   {...sh} className="min-w-[110px] hidden md:table-cell" />}
                       <SortableTableHead column="joining_date" label="Joining Date" {...sh} className="min-w-[130px] hidden lg:table-cell" />
                       <SortableTableHead column="birth_date"   label="Birth Date"   {...sh} className="min-w-[130px] hidden xl:table-cell" />
-                      <SortableTableHead column="ending_date"  label="Ending Date"  {...sh} className="min-w-[120px] hidden xl:table-cell" />
                       <SortableTableHead column="status"       label="Status"       {...sh} className="min-w-[90px]" />
                       {/* sticky right — Actions */}
                       <TableHead className="sticky right-0 z-10 bg-background w-[60px] text-center shadow-[-1px_0_0_0_hsl(var(--border))]">Actions</TableHead>
@@ -526,14 +543,23 @@ const Employees = () => {
                   <TableBody>
                     {filteredUsers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={isHR ? 10 : 11} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={isHR ? 9 : 10} className="text-center py-8 text-muted-foreground">
                           No employees found.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredUsers.map((emp) => (
+                      filteredUsers.map((emp, idx) => (
                         <TableRow key={emp.id}>
-                          <TableCell className="sticky left-0 z-10 bg-background font-medium shadow-[1px_0_0_0_hsl(var(--border))]">{emp.full_name}</TableCell>
+                          <TableCell className="sticky left-0 z-10 bg-background shadow-[1px_0_0_0_hsl(var(--border))]">
+                            <div className="flex items-center gap-2.5">
+                              <Avatar className="h-8 w-8 shrink-0">
+                                <AvatarFallback className={`${avatarColour(idx)} text-white text-xs font-bold`}>
+                                  {getInitials(emp.full_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium">{emp.full_name}</span>
+                            </div>
+                          </TableCell>
                           <TableCell className="text-sm hidden sm:table-cell">{emp.email}</TableCell>
                           <TableCell>
                             <Badge className={roleBadgeClass[emp.role] || roleBadgeClass.EMPLOYEE}>
@@ -549,7 +575,6 @@ const Employees = () => {
                           {!isHR && <TableCell className="text-sm hidden md:table-cell">₹{(emp.salary || 0).toLocaleString()}</TableCell>}
                           <TableCell className="hidden lg:table-cell">{formatDate(emp.joining_date)}</TableCell>
                           <TableCell className="hidden xl:table-cell">{formatDate(emp.birth_date)}</TableCell>
-                          <TableCell className="hidden xl:table-cell">{formatDate(emp.ending_date)}</TableCell>
                           <TableCell>
                             <Badge className={emp.status === 'active' ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}>
                               {emp.status}

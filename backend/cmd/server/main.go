@@ -116,7 +116,7 @@ func main() {
 	// ── HTTP handler ─────────────────────────────────────────────────────────
 
 	employeeRepo := repositories.NewEmployeeRepository(db)
-	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo , *repo)
+	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo , *repo , permissionSvc)
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,

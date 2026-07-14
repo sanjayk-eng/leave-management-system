@@ -163,8 +163,6 @@ func (r *Repository) GetAllRoles() ([]models.Role, error) {
 	return roles, err
 }
 
-
-
 // ------------------ GET CURRENT ROLE NAME ------------------
 func (r *Repository) GetEmployeeCurrentRole(empID string) (string, error) {
 	var role string

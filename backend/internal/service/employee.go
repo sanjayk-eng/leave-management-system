@@ -10,6 +10,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/repositories"
 	accessrole "github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/constant/rbsc"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	notifmodels "github.com/Zenithive/LeaveManagementSystem/pkg/notification/models"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/security"
@@ -20,7 +21,13 @@ import (
 type EmployeeService interface {
 	Create(ctx context.Context, actorRoleID int, input *models.EmployeeInput) error
 	Update(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, req *models.UpdateEmployeeInput) error
+	UpdatePassword(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, actorRoleName string, employeeID string, newPassword string) error
+	UpdateRole(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, newRoleName string) (*models.RoleUpdateResult, error)
+	GetEmployees(ctx context.Context, actorID uuid.UUID, actorRoleID int, params models.EmployeeFilterParams) (*models.PaginatedEmployeeResponse, error)
+	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
 }
+
+const minPasswordLength = 8
 
 type employeeService struct {
 	DB              *sqlx.DB
@@ -29,6 +36,7 @@ type employeeService struct {
 	NotificationSvc notification.Service
 	RoleRepo        repositories.RoleRepository
 	CommonRepo      repositories.Repository
+	PermissionSvc   PermissionService
 }
 
 func NewEmployeeService(
@@ -38,6 +46,7 @@ func NewEmployeeService(
 	notifSvc notification.Service,
 	roleRepo repositories.RoleRepository,
 	commonRepo repositories.Repository,
+	permissionSvc PermissionService,
 ) EmployeeService {
 	return &employeeService{
 		DB:              db,
@@ -45,7 +54,8 @@ func NewEmployeeService(
 		Repo:            employeeRepo,
 		NotificationSvc: notifSvc,
 		RoleRepo:        roleRepo,
-		CommonRepo:      commonRepo, // BUG FIX: was never assigned, nil-panics on allocateLeaveBalance
+		CommonRepo:      commonRepo,
+		PermissionSvc:   permissionSvc,
 	}
 }
 
@@ -286,4 +296,231 @@ func derefStr(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// ============================================================
+// UpdatePassword
+// ============================================================
+
+func (s *employeeService) UpdatePassword(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, actorRoleName string, employeeID string, newPassword string) error {
+	if err := validatePasswordStrength(newPassword); err != nil {
+		return err
+	}
+
+	id, err := uuid.Parse(employeeID)
+	if err != nil {
+		return errors.CustomErr(http.StatusBadRequest, "invalid employee id")
+	}
+
+	employee, err := s.Repo.GetByID(id)
+	if err != nil {
+		return errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if err := s.HrbcService.HasPriorityAllow(actorRoleID, employee.RoleID); err != nil {
+		return err
+	}
+
+	hashedPassword, err := security.HashPassword(newPassword)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to hash password")
+	}
+
+	if err := s.Repo.UpdatePassword(ctx, id, hashedPassword); err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to update password")
+	}
+
+	s.publishPasswordChanged(actorUserID, actorRoleName, employee, newPassword)
+
+	return nil
+}
+
+func validatePasswordStrength(password string) error {
+	if len(password) < minPasswordLength {
+		return errors.CustomErr(http.StatusBadRequest, "password must be at least 8 characters long")
+	}
+	return nil
+}
+
+// publishPasswordChanged fires the notification best-effort. The actor's
+// email is looked up via the same Repo.GetByID used everywhere else in this
+// service, instead of a one-off raw SQL query — and since `employee` was
+// already fetched above, there's no second lookup for the target's own
+// name/email like the old GetEmployeeDetailsForNotification call needed.
+func (s *employeeService) publishPasswordChanged(actorUserID uuid.UUID, actorRoleName string, employee *models.Employee, newPassword string) {
+	actorEmail := ""
+	if actorUserID != uuid.Nil {
+		if actor, err := s.Repo.GetByID(actorUserID); err == nil {
+			actorEmail = actor.Email
+		}
+	}
+
+	s.NotificationSvc.Publish(notification.Event{
+		Type: notification.PasswordChanged,
+		Data: &notifmodels.EmployeeNotificationData{
+			EmployeeID:    employee.ID.String(),
+			EmployeeName:  employee.FullName,
+			EmployeeEmail: employee.Email,
+			NewPassword:   newPassword,
+			ActorEmail:    actorEmail,
+			ActorRole:     actorRoleName,
+		},
+	})
+}
+
+// ============================================================
+// UpdateRole
+// ============================================================
+
+func (s *employeeService) UpdateRole(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, newRoleName string) (*models.RoleUpdateResult, error) {
+	empID, err := uuid.Parse(employeeID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid employee id")
+	}
+
+	newRoleID, err := s.RoleRepo.GetRoleID(newRoleName)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid role")
+	}
+
+	currentRoleID, isManager, err := s.Repo.GetCurrentRoleAndManagerStatus(ctx, empID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to fetch employee role: "+err.Error())
+	}
+
+	if err := s.authorizeRoleChange(actorUserID, actorRoleID, empID, currentRoleID, newRoleID); err != nil {
+		return nil, err
+	}
+
+	if currentRoleID == newRoleID {
+		return nil, errors.CustomErr(http.StatusBadRequest, "employee already has this role")
+	}
+
+	// Structural rule, not hierarchy: an employee with direct reports can't
+	// lose their manager designation via a role change.
+	if isManager && newRoleName != accessrole.ROLE_MANAGER {
+		return nil, errors.CustomErr(http.StatusForbidden, "cannot change role of employee who is a manager with subordinates")
+	}
+
+	currentRoleName, err := s.RoleRepo.GetRoleType(currentRoleID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to resolve current role")
+	}
+
+	var updatedID string
+	if err := database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
+		id, err := s.Repo.UpdateRole(tx, empID, newRoleID)
+		if err != nil {
+			return errors.CustomErr(http.StatusInternalServerError, "failed to update role: "+err.Error())
+		}
+		updatedID = id
+
+		if err := s.CommonRepo.AdjustLeaveBalancesForRoleChange(tx, empID, currentRoleName, newRoleName, time.Now().Year()); err != nil {
+			return errors.CustomErr(http.StatusInternalServerError, "failed to adjust leave balances for role change: "+err.Error())
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &models.RoleUpdateResult{
+		EmployeeID: updatedID,
+		OldRole:    currentRoleName,
+		NewRole:    newRoleName,
+	}, nil
+}
+
+func (s *employeeService) authorizeRoleChange(actorUserID uuid.UUID, actorRoleID int, targetEmployeeID uuid.UUID, currentRoleID, newRoleID int) error {
+	if actorUserID == targetEmployeeID {
+		isTop, err := s.HrbcService.IsHighestPriority(actorRoleID)
+		if err != nil {
+			return err
+		}
+		if !isTop {
+			return errors.CustomErr(http.StatusForbidden, "you cannot change your own role")
+		}
+		return nil
+	}
+
+	if err := s.HrbcService.HasPriorityAllow(actorRoleID, currentRoleID); err != nil {
+		return err
+	}
+
+	return s.HrbcService.HasPriorityAllow(actorRoleID, newRoleID)
+}
+
+func (s *employeeService) GetEmployees(ctx context.Context, actorID uuid.UUID, actorRoleID int, params models.EmployeeFilterParams) (*models.PaginatedEmployeeResponse, error) {
+	access, err := s.buildEmployeeAccessFilter(ctx, actorID, actorRoleID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Repo.GetAllEmployees(ctx, params, access)
+}
+
+func (s *employeeService) buildEmployeeAccessFilter(ctx context.Context, actorID uuid.UUID, actorRoleID int) (models.EmployeeAccessFilter, error) {
+	readPerm, err := s.PermissionSvc.Check(ctx, actorRoleID, string(rbsc.ResourceEmployee), string(rbsc.ActionRead))
+	if err != nil {
+		return models.EmployeeAccessFilter{}, errors.CustomErr(http.StatusInternalServerError, "failed to resolve employee read permission")
+	}
+	if !readPerm.Allowed {
+		return models.EmployeeAccessFilter{}, errors.CustomErr(http.StatusForbidden, "you do not have permission to view employees")
+	}
+
+	salaryPerm, err := s.PermissionSvc.Check(ctx, actorRoleID, "employee", "read_salary")
+	if err != nil {
+		return models.EmployeeAccessFilter{}, errors.CustomErr(http.StatusInternalServerError, "failed to resolve salary permission")
+	}
+
+	access := models.EmployeeAccessFilter{
+		ActorID:       actorID,
+		Scope:         readPerm.Scope,
+		IncludeSalary: salaryPerm.Allowed,
+	}
+
+	if readPerm.Scope == "team" {
+		ids, err := s.resolveTeamIDs(ctx, actorID)
+		if err != nil {
+			return models.EmployeeAccessFilter{}, err
+		}
+		access.VisibleEmployeeIDs = ids
+	}
+
+	return access, nil
+}
+
+func (s *employeeService) resolveTeamIDs(ctx context.Context, actorID uuid.UUID) ([]uuid.UUID, error) {
+	hierarchy, err := s.Repo.GetOrgHierarchyMap(ctx)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to resolve team hierarchy")
+	}
+
+	visited := map[uuid.UUID]bool{actorID: true}
+	queue := []uuid.UUID{actorID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		for _, reportID := range hierarchy[current] {
+			if visited[reportID] {
+				continue
+			}
+			visited[reportID] = true
+			queue = append(queue, reportID)
+		}
+	}
+	ids := make([]uuid.UUID, 0, len(visited))
+	for id := range visited {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (s *employeeService) GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error) {
+
+	res, err := s.Repo.GetEmployeeByID(empID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, err.Error())
+	}
+	return res, nil
 }

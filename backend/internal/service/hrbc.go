@@ -10,6 +10,7 @@ import (
 type Hrbc interface {
 	HasPriorityAllow(actorRoleID, targetRoleID int) error
 	HasPriorityAllowByType(actorRoleID int, targetRoleType string) error
+	IsHighestPriority(actorRoleID int) (bool, error)
 }
 
 type hrbc struct {
@@ -38,6 +39,20 @@ func (h *hrbc) HasPriorityAllowByType(actorRoleID int, targetRoleType string) er
 	}
 
 	return h.validatePriority(actorRoleID, targetPriority)
+}
+
+func (h *hrbc) IsHighestPriority(actorRoleID int) (bool, error) {
+	actorPriority, err := h.roleRepo.GetRolePriority(actorRoleID)
+	if err != nil {
+		return false, errors.CustomErr(http.StatusInternalServerError, "failed to fetch actor role")
+	}
+
+	maxPriority, err := h.roleRepo.GetMaxRolePriority()
+	if err != nil {
+		return false, errors.CustomErr(http.StatusInternalServerError, "failed to fetch max role priority")
+	}
+
+	return actorPriority >= maxPriority, nil
 }
 
 func (h *hrbc) validatePriority(actorRoleID, targetPriority int) error {

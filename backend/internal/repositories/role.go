@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"fmt"
+
 	"github.com/jmoiron/sqlx"
 )
 
@@ -13,6 +15,7 @@ type RoleRepository interface {
 	GetRolePriorityByType(roleType string) (int, error)
 	GetRoleID(role string) (int, error)
 	GetRoleType(roleID int) (string, error)
+	GetMaxRolePriority() (int, error)
 }
 
 func NewRoleRepository(db *sqlx.DB) RoleRepository {
@@ -74,4 +77,12 @@ func (r *roleRepository) GetRoleType(roleID int) (string, error) {
 	}
 
 	return roleType, nil
+}
+
+func (r *roleRepository) GetMaxRolePriority() (int, error) {
+	var maxPriority int
+	if err := r.db.Get(&maxPriority, `SELECT MAX(priority) FROM Tbl_Role`); err != nil {
+		return 0, fmt.Errorf("GetMaxRolePriority: %w", err)
+	}
+	return maxPriority, nil
 }
