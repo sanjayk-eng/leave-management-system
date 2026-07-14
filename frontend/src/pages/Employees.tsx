@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEmployees } from "@/hooks/useEmployees";
 import { useDesignations } from "@/hooks/useDesignations";
 import { useDebounce } from "@/hooks/useDebounce";
-import { getCurrentUser } from "@/lib/api";
+import { getCurrentUser, ApiError } from "@/lib/api";
 import { leaveBalanceService, employeeService } from "@/services";
 import type { Employee } from "@/services/employeeService";
 import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase } from "lucide-react";
@@ -26,6 +26,7 @@ import { ServerPagination } from "@/components/ServerPagination";
 import { SortableTableHead } from "@/components/equipment/shared";
 import { useManagerSelect } from "@/components/equipment/shared";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -121,6 +122,9 @@ const Employees = () => {
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
   const isHR         = currentUser?.role === 'HR';
   const queryClient  = useQueryClient();
+
+  // 403/401 → hide write controls and filters (same pattern as Designations page)
+  const isAccessDenied = error instanceof ApiError && (error.status === 403 || error.status === 401);
 
   // ── server-driven manager select ─────────────────────────────────────────────
   const managerSelect = useManagerSelect();
@@ -359,12 +363,14 @@ const Employees = () => {
           <p className="text-sm text-muted-foreground">Manage employee records and roles</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          {!isAccessDenied && (
           <DialogTrigger asChild>
             <Button className="w-full sm:w-auto">
               <UserPlus className="mr-2 h-4 w-4" />
               <span>Add Employee</span>
             </Button>
           </DialogTrigger>
+          )}
           <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Employee</DialogTitle>
@@ -435,76 +441,81 @@ const Employees = () => {
           <CardTitle>All Employees</CardTitle>
           <CardDescription>View and manage all employees</CardDescription>
 
-          {/* Filters row 1 — search + role + status */}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mt-2">
-            <div className="relative sm:col-span-2">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search by name, email, or manager..." className="pl-9 pr-9"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} />
-              {searchQuery !== debouncedSearch && (
-                <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by role" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                <SelectItem value="INTERN">Intern</SelectItem>
-                <SelectItem value="MANAGER">Manager</SelectItem>
-                <SelectItem value="HR">HR</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                {isSuperAdmin && <SelectItem value="SUPERADMIN">Super Admin</SelectItem>}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="deactive">Deactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Filters — hidden when access is denied */}
+          {!isAccessDenied && (
+            <>
+              {/* Filters row 1 — search + role + status */}
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mt-2">
+                <div className="relative sm:col-span-2">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search by name, email, or manager..." className="pl-9 pr-9"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} />
+                  {searchQuery !== debouncedSearch && (
+                    <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by role" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                    <SelectItem value="INTERN">Intern</SelectItem>
+                    <SelectItem value="MANAGER">Manager</SelectItem>
+                    <SelectItem value="HR">HR</SelectItem>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    {isSuperAdmin && <SelectItem value="SUPERADMIN">Super Admin</SelectItem>}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="deactive">Deactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Filters row 2 — designation */}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2">
-            <Select value={designationFilter} onValueChange={(v) => { setDesignationFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by designation" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Designations</SelectItem>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {designations?.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>{d.designation_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Filters row 2 — designation */}
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2">
+                <Select value={designationFilter} onValueChange={(v) => { setDesignationFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by designation" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Designations</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {designations?.map((d) => (
+                      <SelectItem key={d.id} value={String(d.id)}>{d.designation_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Active filter chips */}
-          {hasActiveFilters && (
-            <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
-              <span className="text-muted-foreground">Filters:</span>
-              {searchQuery    && <Badge variant="secondary">Search: "{searchQuery}"</Badge>}
-              {roleFilter !== "all"        && <Badge variant="secondary">Role: {roleFilter}</Badge>}
-              {statusFilter !== "all"      && <Badge variant="secondary">Status: {statusFilter}</Badge>}
-              {designationFilter !== "all" && (
-                <Badge variant="secondary">
-                  {designationFilter === "unassigned"
-                    ? "Unassigned"
-                    : designations.find(d => String(d.id) === designationFilter)?.designation_name}
-                </Badge>
+              {/* Active filter chips */}
+              {hasActiveFilters && (
+                <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-muted-foreground">Filters:</span>
+                  {searchQuery    && <Badge variant="secondary">Search: "{searchQuery}"</Badge>}
+                  {roleFilter !== "all"        && <Badge variant="secondary">Role: {roleFilter}</Badge>}
+                  {statusFilter !== "all"      && <Badge variant="secondary">Status: {statusFilter}</Badge>}
+                  {designationFilter !== "all" && (
+                    <Badge variant="secondary">
+                      {designationFilter === "unassigned"
+                        ? "Unassigned"
+                        : designations.find(d => String(d.id) === designationFilter)?.designation_name}
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">({totalCount} {totalCount === 1 ? 'employee' : 'employees'})</span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      setSearchQuery(""); setRoleFilter("all");
+                      setDesignationFilter("all"); setStatusFilter("all"); setCurrentPage(1);
+                    }}>
+                    Clear All
+                  </Button>
+                </div>
               )}
-              <span className="text-muted-foreground">({totalCount} {totalCount === 1 ? 'employee' : 'employees'})</span>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
-                onClick={() => {
-                  setSearchQuery(""); setRoleFilter("all");
-                  setDesignationFilter("all"); setStatusFilter("all"); setCurrentPage(1);
-                }}>
-                Clear All
-              </Button>
-            </div>
+            </>
           )}
         </CardHeader>
 
@@ -512,13 +523,10 @@ const Employees = () => {
           {isLoading ? (
             <TableSkeleton rows={pageSize} columns={isHR ? 8 : 9} showActions />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <p className="text-lg font-semibold text-destructive">Failed to load employees</p>
-              <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
-              <Button onClick={() => refetch()} variant="outline">
-                <Loader2 className="mr-2 h-4 w-4" />Retry
-              </Button>
-            </div>
+            <ErrorDisplay
+              error={error}
+              onRetry={isAccessDenied ? undefined : () => refetch()}
+            />
           ) : (
             <>
               {/* smooth fade while re-fetching (sort / filter change) */}

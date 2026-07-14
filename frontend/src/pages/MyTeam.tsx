@@ -6,10 +6,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { employeeService } from "@/services";
-import { getCurrentUser } from "@/lib/api";
+import { getCurrentUser, ApiError } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { ServerPagination } from "@/components/ServerPagination";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import {
   Search,
   Users,
@@ -65,7 +66,7 @@ const MyTeam = () => {
   const currentUser = getCurrentUser();
 
   // Step 1 — fetch current user's profile to get full_name (needed as manager filter)
-  const { data: myProfile, isLoading: profileLoading } = useQuery({
+  const { data: myProfile, isLoading: profileLoading, error: profileError } = useQuery({
     queryKey: ["employeeProfile", currentUser?.id],
     queryFn:  () => employeeService.getById(currentUser!.id),
     enabled:  !!currentUser?.id,
@@ -75,7 +76,7 @@ const MyTeam = () => {
   // Step 2 — server-side paginated fetch of direct reports
   // placeholderData keeps the previous page visible while the new one loads → no flicker
   // queryKey uses debouncedSearch so the query only re-runs after typing settles
-  const { data: teamData, isLoading: teamLoading, isFetching } = useQuery({
+  const { data: teamData, isLoading: teamLoading, isFetching, error: teamError } = useQuery({
     queryKey: ["myTeam", myProfile?.full_name, currentPage, pageSize, debouncedSearch],
     queryFn:  () =>
       employeeService.getAll({
@@ -88,6 +89,11 @@ const MyTeam = () => {
     staleTime:        3 * 60 * 1000,
     placeholderData:  keepPreviousData,
   });
+
+  // The first meaningful error — profile error takes priority
+  const fetchError = (profileError ?? teamError) as Error | null;
+  // 403/401 → show access denied, hide search and table
+  const isAccessDenied = fetchError instanceof ApiError && (fetchError.status === 403 || fetchError.status === 401);
 
   // Only show full skeleton on the very first load (no data yet)
   const showSkeleton = profileLoading || (teamLoading && !teamData);
@@ -165,21 +171,24 @@ const MyTeam = () => {
           <CardTitle>Team Members</CardTitle>
           <CardDescription>All employees reporting directly to you</CardDescription>
 
-          {/* Search */}
-          <div className="relative mt-2">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, email, role or designation…"
-              className="pl-9 pr-9"
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-            />
-            {(isTyping || isFetching) && (
-              <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
-            )}          </div>
+          {/* Search — hidden when access is denied */}
+          {!isAccessDenied && (
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, role or designation…"
+                className="pl-9 pr-9"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+              />
+              {(isTyping || isFetching) && (
+                <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          )}
 
           {/* Active filter chip */}
-          {searchQuery && (
+          {searchQuery && !isAccessDenied && (
             <div className="mt-2 flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Showing</span>
               <Badge variant="secondary">
@@ -193,6 +202,11 @@ const MyTeam = () => {
         <CardContent>
           {showSkeleton ? (
             <TableSkeleton rows={pageSize} columns={8} showActions={false} />
+          ) : fetchError ? (
+            <ErrorDisplay
+              error={fetchError}
+              onRetry={isAccessDenied ? undefined : () => window.location.reload()}
+            />
           ) : (            <>
               <div
                 className={`rounded-lg border overflow-x-auto transition-opacity duration-150 ${
