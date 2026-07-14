@@ -1,369 +1,134 @@
 package repositories
 
 import (
-	"fmt"
-	"strings"
-	"time"
+	"database/sql"
+	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/timezone"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
-// employeeSortMap maps API sort_by keys → safe SQL column expressions.
-// Used by both GetAllEmployees and GetEmployeesByManagerID via resolveSortField.
-var employeeSortMap = map[string]string{
-	"name":         "e.full_name",
-	"email":        "e.email",
-	"joining_date": "e.joining_date",
-	"ending_date":  "COALESCE(e.ending_date, '9999-12-31')",
-	"salary":       "e.salary",
-	"manager_name": "COALESCE(m.full_name, '')",
-	"role":         "r.type",
-	"status":       "e.status",
+type EmployeeRepository interface {
+	CheckEmailExists(email string) (bool, error)
+	Create(tx *sqlx.Tx, employee *models.Employee) (uuid.UUID, error)
+	Update(tx *sqlx.Tx, employee *models.Employee) error
+	GetByID(id uuid.UUID) (*models.Employee, error)
 }
 
-// birthdaySortExpr returns a SQL ORDER BY expression that sorts employees by upcoming
-// birthday relative to today's (month/day). Ascending = soonest, Descending = furthest.
-// NULLs are always placed last regardless of direction.
-func birthdaySortExpr(order string) string {
-	today := time.Now()
-	dateStr := fmt.Sprintf("%04d-%02d-%02d", today.Year(), int(today.Month()), today.Day())
+type employeeRepository struct {
+	db *sqlx.DB
+}
 
-	if order == "desc" {
-		return fmt.Sprintf(`
-			CASE WHEN e.birth_date IS NULL THEN -1
-			ELSE MOD(
-				CAST(EXTRACT(DOY FROM e.birth_date) AS INT)
-				- CAST(EXTRACT(DOY FROM DATE '%s') AS INT)
-				+ 366, 366
-			) END DESC`, dateStr)
+func NewEmployeeRepository(db *sqlx.DB) EmployeeRepository {
+	return &employeeRepository{
+		db: db,
 	}
-	return fmt.Sprintf(`
-		CASE WHEN e.birth_date IS NULL THEN 999999
-		ELSE MOD(
-			CAST(EXTRACT(DOY FROM e.birth_date) AS INT)
-			- CAST(EXTRACT(DOY FROM DATE '%s') AS INT)
-			+ 366, 366
-		) END ASC`, dateStr)
 }
 
-// resolveEmployeeSort returns the final ORDER BY clause for a given sort_by + sort_order.
-// Falls back to "e.full_name ASC" for unknown keys.
-func resolveEmployeeSort(sortBy, sortOrder string) string {
-	dir := "ASC"
-	if sortOrder == "desc" {
-		dir = "DESC"
+func (r *employeeRepository) CheckEmailExists(email string) (bool, error) {
+	var exists bool
+
+	err := r.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM Tbl_Employee
+			WHERE email = $1
+		)
+	`, email).Scan(&exists)
+
+	if err != nil {
+		return false, err
 	}
 
-	if sortBy == "birth_date" {
-		return birthdaySortExpr(sortOrder)
-	}
+	return exists, nil
+}
+func (r *employeeRepository) Create(tx *sqlx.Tx, employee *models.Employee) (uuid.UUID, error) {
 
-	col := resolveSortField(employeeSortMap, sortBy, "e.full_name")
-	return fmt.Sprintf("%s %s", col, dir)
+	var id uuid.UUID
+
+	err := tx.QueryRow(`
+INSERT INTO Tbl_Employee (
+	full_name,
+	email,
+	role_id,
+	password,
+	salary,
+	birth_date,
+	joining_date
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id
+`,
+		employee.FullName,
+		employee.Email,
+		employee.RoleID,
+		employee.Password,
+		employee.Salary,
+		employee.BirthDate,
+		employee.JoiningDate,
+	).Scan(&id)
+
+	return id, err
 }
 
-// 1. Get employee status
-func (r *Repository) GetEmployeeStatus(employeeID uuid.UUID) (string, error) {
-	var status string
-	err := r.DB.Get(&status, `SELECT status FROM Tbl_Employee WHERE id=$1`, employeeID)
-	return status, err
-}
+func (r *employeeRepository) Update(tx *sqlx.Tx, employee *models.Employee) error {
 
-// GetEmployeeRole returns the role type for a given employee ID
-func (r *Repository) GetEmployeeRole(employeeID uuid.UUID) (string, error) {
-	var role string
-	err := r.DB.Get(&role, `
-		SELECT r.type FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE e.id = $1
-	`, employeeID)
-	return role, err
-}
+	_, err := tx.Exec(`
+		UPDATE Tbl_Employee
+		SET
+			full_name = $2,
+			email = $3,
+			salary = $4,
+			joining_date = $5,
+			birth_date = $6,
+			ending_date = $7,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`,
+		employee.ID,
+		employee.FullName,
+		employee.Email,
+		employee.Salary,
+		employee.JoiningDate,
+		employee.BirthDate,
+		employee.EndingDate,
+	)
 
-// ------------------ UPDATE EMPLOYEE DESIGNATION ------------------
-func (r *Repository) UpdateEmployeeDesignation(empID uuid.UUID, designationID *uuid.UUID) error {
-	_, err := r.DB.Exec(`
-		UPDATE Tbl_Employee SET designation_id = $1, updated_at = NOW() WHERE id = $2
-	`, designationID, empID)
 	return err
 }
 
-// GetAllEmployees returns a paginated, filtered, sorted list of employees.
-// HR: salary is NULL. ADMIN/SUPERADMIN: salary included.
-// Filters: search (name/email/manager), role, designation, status, manager (exact).
-// Sort: name, email, joining_date, ending_date, salary, birth_date, manager_name, role, status.
-func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role string) (*models.PaginatedEmployeeResponse, error) {
-	salaryCol := "NULL::double precision AS salary"
-	if role == accessrole.ROLE_ADMIN || role == accessrole.ROLE_SUPER_ADMIN {
-		salaryCol = "e.salary"
-	}
-	// Build WHERE conditions dynamically
-	conditions := []string{}
-	args := []interface{}{}
-	n := 1 // arg counter
+func (r *employeeRepository) GetByID(id uuid.UUID) (*models.Employee, error) {
+	var employee models.Employee
 
-	if params.Search != "" {
-		conditions = append(conditions, fmt.Sprintf(
-			"(e.full_name ILIKE $%d OR e.email ILIKE $%d OR m.full_name ILIKE $%d)",
-			n, n, n,
-		))
-		args = append(args, "%"+params.Search+"%")
-		n++
-	}
-	if params.Status != "" {
-		conditions = append(conditions, fmt.Sprintf("e.status = $%d", n))
-		args = append(args, params.Status)
-		n++
-	}
-	if len(params.Roles) > 0 {
-		placeholders := make([]string, len(params.Roles))
-		for i, r := range params.Roles {
-			placeholders[i] = fmt.Sprintf("$%d", n)
-			args = append(args, r)
-			n++
-		}
-		conditions = append(conditions, fmt.Sprintf("r.type IN (%s)", strings.Join(placeholders, ",")))
-	}
-	if params.Designation != "" {
-		conditions = append(conditions, fmt.Sprintf("d.designation_name = $%d", n))
-		args = append(args, params.Designation)
-		n++
-	}
-	if params.Manager != "" {
-		conditions = append(conditions, fmt.Sprintf("m.full_name = $%d", n))
-		args = append(args, params.Manager)
-		n++
-	}
-
-	whereClause := buildWhere(conditions)
-
-	baseJoins := `
-		FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		LEFT JOIN Tbl_Employee m ON e.manager_id = m.id
-		LEFT JOIN Tbl_Designation d ON e.designation_id = d.id
-	`
-
-	// Count total for pagination
-	var totalCount int
-	if err := r.DB.Get(&totalCount,
-		"SELECT COUNT(*) "+baseJoins+whereClause, args...); err != nil {
-		return nil, err
-	}
-
-	// Pagination defaults
-	if params.Page < 1 {
-		params.Page = 1
-	}
-	if params.PageSize < 1 {
-		params.PageSize = 10
-	}
-	if params.PageSize > 100 {
-		params.PageSize = 100
-	}
-	offset := (params.Page - 1) * params.PageSize
-
-	orderBy := resolveEmployeeSort(params.SortBy, params.SortOrder)
-
-	query := fmt.Sprintf(`
+	err := r.db.Get(&employee, `
 		SELECT
-			e.id, e.full_name, e.email, e.status,
-			r.type AS role, e.manager_id, e.designation_id,
-			%s, e.joining_date, e.birth_date, e.ending_date,
-			e.created_at, e.updated_at,
-			m.full_name AS manager_name,
-			d.designation_name
-		%s%s
-		ORDER BY %s
-		LIMIT $%d OFFSET $%d
-	`, salaryCol, baseJoins, whereClause, orderBy, n, n+1)
-
-	args = append(args, params.PageSize, offset)
-
-	rows, err := r.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	employees := []models.EmployeeResponse{}
-	for rows.Next() {
-		var emp models.EmployeeResponse
-		if err := rows.Scan(
-			&emp.ID, &emp.FullName, &emp.Email, &emp.Status,
-			&emp.Role, &emp.ManagerID, &emp.DesignationID,
-			&emp.Salary, &emp.JoiningDate, &emp.BirthDate, &emp.EndingDate,
-			&emp.CreatedAt, &emp.UpdatedAt,
-			&emp.ManagerName, &emp.DesignationName,
-		); err != nil {
-			return nil, err
-		}
-		employees = append(employees, emp)
-	}
-
-	totalPages := (totalCount + params.PageSize - 1) / params.PageSize
-
-	return &models.PaginatedEmployeeResponse{
-		Employees:  employees,
-		TotalCount: totalCount,
-		Page:       params.Page,
-		PageSize:   params.PageSize,
-		TotalPages: totalPages,
-	}, nil
-}
-
-// buildWhere joins conditions into a WHERE clause string.
-func buildWhere(conditions []string) string {
-	if len(conditions) == 0 {
-		return ""
-	}
-	clause := " WHERE " + conditions[0]
-	for _, c := range conditions[1:] {
-		clause += " AND " + c
-	}
-	return clause
-}
-
-func (r *Repository) GetHrEmail() []string {
-	var hrEmails []string
-	r.DB.Select(&hrEmails, `
-		SELECT e.email FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE r.type = 'HR' AND e.status = 'active'
-	`)
-	return hrEmails
-}
-
-// GetTodayBirthdays returns all active employees whose birth_date month+day matches today in the configured timezone.
-// We pass today's date explicitly instead of relying on PostgreSQL's CURRENT_DATE,
-// which would use UTC on Railway and return the wrong day near midnight.
-func (r *Repository) GetTodayBirthdays() ([]models.BirthdayEmployee, error) {
-	year, month, day := timezone.TodayDate()
-
-	rows, err := r.DB.Query(`
-		SELECT id::text, full_name, email, birth_date
+			id,
+			full_name,
+			email,
+			role_id,
+			password,
+			manager_id,
+			designation_id,
+			salary,
+			birth_date,
+			joining_date,
+			ending_date,
+			status,
+			deleted_at,
+			created_at,
+			updated_at
 		FROM Tbl_Employee
-		WHERE status = 'active'
-		  AND birth_date IS NOT NULL
-		  AND EXTRACT(MONTH FROM birth_date) = $1
-		  AND EXTRACT(DAY   FROM birth_date) = $2
-		ORDER BY full_name
-	`, month, day)
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`, id)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	_ = year // used for logging/debugging if needed
-
-	var result []models.BirthdayEmployee
-	for rows.Next() {
-		var emp models.BirthdayEmployee
-		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Email, &emp.BirthDate); err != nil {
-			return nil, err
+		if err == sql.ErrNoRows {
+			return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
 		}
-		result = append(result, emp)
-	}
-	return result, nil
-}
-
-// GetBirthdays fetches active employees based on month/year calendar filters.
-//
-// month=4&year=2026  → employees whose birth month = April (any year), shown in context of 2026
-// year=2026          → all employees, shown across full year 2026
-// (no params)        → upcoming 30 days from today IST (year-wrap safe)
-func (r *Repository) GetBirthdays(month, year int) ([]models.BirthdayEmployee, error) {
-	base := `
-	SELECT id::text, full_name, email, birth_date
-	FROM Tbl_Employee
-	WHERE status = 'active'
-	  AND birth_date IS NOT NULL
-	`
-
-	var (
-		query string
-		args  []interface{}
-	)
-
-	switch {
-	case month > 0 && year > 0:
-		// Specific month of a specific year — match by birth month only
-		query = base + `
-		AND EXTRACT(MONTH FROM birth_date) = $1
-		ORDER BY EXTRACT(DAY FROM birth_date)
-		`
-		args = append(args, month)
-
-	case year > 0:
-		// Full year view — return all employees, service will classify by that year
-		query = base + `ORDER BY EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date)`
-
-	default:
-		// Upcoming 30 days from today in the configured application timezone.
-		// We pass the app-timezone date as a parameter instead of relying on PostgreSQL's CURRENT_DATE
-		// (which uses UTC on Railway and would return the wrong day near midnight).
-		now := timezone.Now()
-		todayStr := fmt.Sprintf("%04d-%02d-%02d", now.Year(), int(now.Month()), now.Day())
-
-		query = base + `
-		AND (
-			make_date(
-				EXTRACT(YEAR FROM $1::date)::int,
-				EXTRACT(MONTH FROM birth_date)::int,
-				EXTRACT(DAY FROM birth_date)::int
-			) BETWEEN $1::date AND $1::date + INTERVAL '30 days'
-			OR
-			make_date(
-				EXTRACT(YEAR FROM $1::date)::int + 1,
-				EXTRACT(MONTH FROM birth_date)::int,
-				EXTRACT(DAY FROM birth_date)::int
-			) BETWEEN $1::date AND $1::date + INTERVAL '30 days'
-		)
-		ORDER BY
-			LEAST(
-				make_date(EXTRACT(YEAR FROM $1::date)::int,     EXTRACT(MONTH FROM birth_date)::int, EXTRACT(DAY FROM birth_date)::int),
-				make_date(EXTRACT(YEAR FROM $1::date)::int + 1, EXTRACT(MONTH FROM birth_date)::int, EXTRACT(DAY FROM birth_date)::int)
-			)
-		`
-		args = append(args, todayStr)
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to get employee")
 	}
 
-	rows, err := r.DB.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []models.BirthdayEmployee
-	for rows.Next() {
-		var emp models.BirthdayEmployee
-		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Email, &emp.BirthDate); err != nil {
-			return nil, err
-		}
-		result = append(result, emp)
-	}
-	return result, nil
-}
-
-// GetAllActiveEmployeesWithRoles returns id, role, and joining_date for all active employees.
-// Used when allocating leave balance for a newly created leave type.
-type ActiveEmployeeRole struct {
-	ID          uuid.UUID  `db:"id"`
-	Role        string     `db:"role"`
-	JoiningDate *time.Time `db:"joining_date"`
-}
-
-func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]ActiveEmployeeRole, error) {
-	var employees []ActiveEmployeeRole
-	err := tx.Select(&employees, `
-		SELECT e.id, r.type AS role, e.joining_date
-		FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE e.status = 'active'
-	`)
-	return employees, err
+	return &employee, nil
 }

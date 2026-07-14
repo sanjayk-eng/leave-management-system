@@ -149,19 +149,6 @@ func (r *Repository) restoreEmployeeEquipment(tx *sqlx.Tx, employeeID uuid.UUID)
 	return nil
 }
 
-// ------------------ CHECK EMAIL EXISTS ------------------
-func (r *Repository) CheckEmailExists(email string) (bool, error) {
-	var existing string
-	err := r.DB.QueryRow(
-		`SELECT email FROM Tbl_Employee WHERE email=$1`, email,
-	).Scan(&existing)
-
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return err == nil, err
-}
-
 // ------------------ GET ROLE ID ------------------
 func (r *Repository) GetRoleID(role string) (string, error) {
 	var id string
@@ -176,23 +163,7 @@ func (r *Repository) GetAllRoles() ([]models.Role, error) {
 	return roles, err
 }
 
-// ------------------ CREATE EMPLOYEE ------------------
-func (r *Repository) InsertEmployee(tx *sqlx.Tx, fullName, email, roleID, password string, salary *float64, joining *time.Time) (uuid.UUID, error) {
-	var employeeID uuid.UUID
 
-	err := tx.QueryRow(`
-    INSERT INTO Tbl_Employee 
-    (full_name, email, role_id, password, salary, joining_date)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING id
-`, fullName, email, roleID, password, salary, joining).
-		Scan(&employeeID)
-
-	if err != nil {
-		return employeeID, err
-	}
-	return employeeID, nil
-}
 
 // ------------------ GET CURRENT ROLE NAME ------------------
 func (r *Repository) GetEmployeeCurrentRole(empID string) (string, error) {

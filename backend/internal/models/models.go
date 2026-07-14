@@ -1,8 +1,6 @@
 package models
 
 import (
-	"time"
-
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
@@ -20,27 +18,6 @@ type Role struct {
 }
 
 // ----------------- EMPLOYEE -----------------
-
-// EmployeeInput is used for create employee (API input + validation).
-type EmployeeInput struct {
-	ID              *uuid.UUID `json:"id,omitempty"` // optional UUID
-	FullName        string     `json:"full_name" validate:"required"`
-	Email           string     `json:"email" validate:"required,email"`
-	Role            string     `json:"role" validate:"required"`
-	Password        string     `json:"password,omitempty"`       // optional - auto-generated if not provided
-	ManagerID       *uuid.UUID `json:"manager_id,omitempty"`     // optional UUID
-	DesignationID   *uuid.UUID `json:"designation_id,omitempty"` // optional UUID
-	Salary          *float64   `json:"salary,omitempty"`         // optional
-	JoiningDate     *time.Time `json:"joining_date,omitempty"`   // optional
-	BirthDate       *time.Time `json:"birth_date,omitempty"`     // optional
-	EndingDate      *time.Time `json:"ending_date,omitempty"`    // optional
-	Status          *string    `json:"status,omitempty"`         // optional, new field
-	CreatedAt       *time.Time `json:"created_at,omitempty"`     // optional
-	UpdatedAt       *time.Time `json:"updated_at,omitempty"`     // optional
-	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
-	ManagerName     *string    `json:"manager_name,omitempty"`     // optional
-	DesignationName *string    `json:"designation_name,omitempty"` // optional
-}
 
 // ----------------- PAYROLL RUN -----------------
 type PayrollRunInput struct {

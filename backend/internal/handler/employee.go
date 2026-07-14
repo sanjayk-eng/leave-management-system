@@ -3,14 +3,13 @@ package handler
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	notifmodels "github.com/Zenithive/LeaveManagementSystem/pkg/notification/models"
@@ -99,10 +98,119 @@ func (h *HandlerFunc) GetEmployeeById(c *gin.Context) {
 	})
 }
 
+// func (h *HandlerFunc) CreateEmployee(c *gin.Context) {
+// 	role := c.GetString("role")
+// 	if role != accessrole.ROLE_SUPER_ADMIN && role != accessrole.ROLE_ADMIN && role != accessrole.ROLE_HR {
+// 		errors.RespondWithError(c, http.StatusUnauthorized, "not permitted")
+// 		return
+// 	}
+
+// 	var input models.EmployeeInput
+// 	if err := c.ShouldBindJSON(&input); err != nil {
+// 		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+
+// 	// HR and ADMIN cannot create SUPERADMIN users
+// 	if (role == "ADMIN" || role == "HR") && input.Role == "SUPERADMIN" {
+// 		errors.RespondWithError(c, 403, "HR and ADMIN cannot create SUPERADMIN users")
+// 		return
+// 	}
+// 	// EMAIL EXIST CHECK
+// 	exists, err := h.Query.CheckEmailExists(input.Email)
+// 	if err != nil {
+// 		errors.RespondWithError(c, 500, err.Error())
+// 		return
+// 	}
+// 	if exists {
+// 		errors.RespondWithError(c, 400, "email already exists")
+// 		return
+// 	}
+
+// 	// GET ROLE ID
+// 	roleID, err := h.Query.GetRoleID(input.Role)
+// 	if err != nil {
+// 		errors.RespondWithError(c, 400, "role not found")
+// 		return
+// 	}
+
+// 	// GENERATE SECURE PASSWORD (combination format)
+// 	generatedPassword, err := security.GenerateSecurePassword()
+// 	if err != nil {
+// 		errors.RespondWithError(c, 500, "failed to generate secure password")
+// 		return
+// 	}
+
+// 	// HASH PASSWORD
+// 	hash, err := security.HashPassword(generatedPassword)
+// 	if err != nil {
+// 		errors.RespondWithError(c, 500, "failed to hash password")
+// 		return
+// 	}
+
+// 	// SET DEFAULT SALARY TO 0 IF NOT PROVIDED
+// 	if input.Salary == nil {
+// 		zeroSalary := 0.0
+// 		input.Salary = &zeroSalary
+// 	}
+
+// 	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
+// 		// 1. Insert employee
+// 		id, err := h.Query.InsertEmployee(tx, input.FullName, input.Email, roleID, hash, input.Salary, input.JoiningDate)
+// 		if err != nil || id == uuid.Nil {
+// 			return errors.CustomErr(500, "failed to create employee")
+// 		}
+// 		data, err := h.Query.GetAllLeaveType()
+// 		if err != nil {
+// 			return errors.CustomErr(500, "failed to allocate leave balance: ")
+// 		}
+
+// 		// Determine if the employee is joining in the current year → prorate their leave.
+// 		// If joining_date is nil or from a prior year, allocate the full entitlement.
+// 		currentYear := time.Now().Year()
+// 		isJoiningThisYear := input.JoiningDate != nil && input.JoiningDate.Year() == currentYear
+
+// 		for _, leaveType := range data {
+// 			isEarlyLeave := leaveType.IsEarly != nil && *leaveType.IsEarly
+// 			if !isEarlyLeave {
+// 				entitlement := leaveType.DefaultEntitlement
+// 				if input.Role == accessrole.ROLE_INTERN && leaveType.InternEntitlement != nil {
+// 					entitlement = *leaveType.InternEntitlement
+// 				}
+// 				// Prorate only when the employee joins mid-year in the current year.
+// 				if isJoiningThisYear {
+// 					entitlement = service.CalculateProratedLeave(entitlement, int(input.JoiningDate.Month()))
+// 				}
+// 				if err := h.Query.CreateLeaveBalance(tx, id, leaveType.ID, entitlement); err != nil {
+// 					return errors.CustomErr(500, "failed to allocate leave balance: "+err.Error())
+// 				}
+// 			}
+// 		}
+// 		return nil
+// 	}); err != nil {
+// 		errors.RespondWithError(c, 500, err.Error())
+// 		return
+// 	}
+
+// 	// Publish EmployeeCreated notification — async, non-blocking
+// 	h.NotificationSvc.Publish(notification.Event{
+// 		Type: notification.EmployeeCreated,
+// 		Data: &notifmodels.EmployeeNotificationData{
+// 			EmployeeName:      input.FullName,
+// 			EmployeeEmail:     input.Email,
+// 			GeneratedPassword: generatedPassword,
+// 		},
+// 	})
+
+//		c.JSON(201, gin.H{
+//			"message":  "employee created successfully",
+//			"password": generatedPassword,
+//		})
+//	}
 func (h *HandlerFunc) CreateEmployee(c *gin.Context) {
-	role := c.GetString("role")
-	if role != accessrole.ROLE_SUPER_ADMIN && role != accessrole.ROLE_ADMIN && role != accessrole.ROLE_HR {
-		errors.RespondWithError(c, http.StatusUnauthorized, "not permitted")
+	roleID, err := common.GetRoleID(c)
+	if err != nil {
+		errors.Error(c, err)
 		return
 	}
 
@@ -112,100 +220,13 @@ func (h *HandlerFunc) CreateEmployee(c *gin.Context) {
 		return
 	}
 
-	// HR and ADMIN cannot create SUPERADMIN users
-	if (role == "ADMIN" || role == "HR") && input.Role == "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "HR and ADMIN cannot create SUPERADMIN users")
-		return
-	}
-	// EMAIL EXIST CHECK
-	exists, err := h.Query.CheckEmailExists(input.Email)
-	if err != nil {
-		errors.RespondWithError(c, 500, err.Error())
-		return
-	}
-	if exists {
-		errors.RespondWithError(c, 400, "email already exists")
+	if err := h.EmployeeService.Create(c.Request.Context(), roleID, &input); err != nil {
+		errors.Error(c, err)
 		return
 	}
 
-	// GET ROLE ID
-	roleID, err := h.Query.GetRoleID(input.Role)
-	if err != nil {
-		errors.RespondWithError(c, 400, "role not found")
-		return
-	}
-
-	// GENERATE SECURE PASSWORD (combination format)
-	generatedPassword, err := security.GenerateSecurePassword()
-	if err != nil {
-		errors.RespondWithError(c, 500, "failed to generate secure password")
-		return
-	}
-
-	// HASH PASSWORD
-	hash, err := security.HashPassword(generatedPassword)
-	if err != nil {
-		errors.RespondWithError(c, 500, "failed to hash password")
-		return
-	}
-
-	// SET DEFAULT SALARY TO 0 IF NOT PROVIDED
-	if input.Salary == nil {
-		zeroSalary := 0.0
-		input.Salary = &zeroSalary
-	}
-
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		// 1. Insert employee
-		id, err := h.Query.InsertEmployee(tx, input.FullName, input.Email, roleID, hash, input.Salary, input.JoiningDate)
-		if err != nil || id == uuid.Nil {
-			return errors.CustomErr(500, "failed to create employee")
-		}
-		data, err := h.Query.GetAllLeaveType()
-		if err != nil {
-			return errors.CustomErr(500, "failed to allocate leave balance: ")
-		}
-
-		// Determine if the employee is joining in the current year → prorate their leave.
-		// If joining_date is nil or from a prior year, allocate the full entitlement.
-		currentYear := time.Now().Year()
-		isJoiningThisYear := input.JoiningDate != nil && input.JoiningDate.Year() == currentYear
-
-		for _, leaveType := range data {
-			isEarlyLeave := leaveType.IsEarly != nil && *leaveType.IsEarly
-			if !isEarlyLeave {
-				entitlement := leaveType.DefaultEntitlement
-				if input.Role == accessrole.ROLE_INTERN && leaveType.InternEntitlement != nil {
-					entitlement = *leaveType.InternEntitlement
-				}
-				// Prorate only when the employee joins mid-year in the current year.
-				if isJoiningThisYear {
-					entitlement = service.CalculateProratedLeave(entitlement, int(input.JoiningDate.Month()))
-				}
-				if err := h.Query.CreateLeaveBalance(tx, id, leaveType.ID, entitlement); err != nil {
-					return errors.CustomErr(500, "failed to allocate leave balance: "+err.Error())
-				}
-			}
-		}
-		return nil
-	}); err != nil {
-		errors.RespondWithError(c, 500, err.Error())
-		return
-	}
-
-	// Publish EmployeeCreated notification — async, non-blocking
-	h.NotificationSvc.Publish(notification.Event{
-		Type: notification.EmployeeCreated,
-		Data: &notifmodels.EmployeeNotificationData{
-			EmployeeName:      input.FullName,
-			EmployeeEmail:     input.Email,
-			GeneratedPassword: generatedPassword,
-		},
-	})
-
-	c.JSON(201, gin.H{
-		"message":  "employee created successfully",
-		"password": generatedPassword,
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "employee created successfully",
 	})
 }
 func (h *HandlerFunc) UpdateEmployeeRole(c *gin.Context) {
@@ -457,161 +478,199 @@ func (h *HandlerFunc) UpdateEmployeeManager(c *gin.Context) {
 // UpdateEmployeeInfo - PATCH /api/employee/:id
 // Anyone can update their own name
 // Only SUPERADMIN and ADMIN can update email and salary
+// func (h *HandlerFunc) UpdateEmployeeInfo(c *gin.Context) {
+// 	// 1️ Get current user info
+// 	currentUserID, _ := uuid.Parse(c.GetString("user_id"))
+// 	role := c.GetString("role")
+
+// 	// 2️ Parse Employee ID
+// 	empIDStr := c.Param("id")
+// 	empID, err := uuid.Parse(empIDStr)
+// 	if err != nil {
+// 		errors.RespondWithError(c, 400, "invalid employee ID")
+// 		return
+// 	}
+
+// 	// 3️ Check if employee exists
+// 	existingEmp, err := h.Query.GetEmployeeByID(empID)
+// 	if err != nil {
+// 		errors.RespondWithError(c, 404, "employee not found")
+// 		return
+// 	}
+
+// 	// 3.5️ HR and ADMIN cannot edit SUPERADMIN
+// 	if (role == "ADMIN" || role == "HR") && existingEmp.Role == "SUPERADMIN" {
+// 		errors.RespondWithError(c, 403, "HR and ADMIN cannot modify SUPERADMIN users")
+// 		return
+// 	}
+
+// 	// 4️ Bind input JSON
+// 	var input struct {
+// 		FullName    *string    `json:"full_name"`
+// 		Email       *string    `json:"email"`
+// 		Salary      *float64   `json:"salary"`
+// 		JoiningDate *time.Time `json:"joining_date"`
+// 		BirthDate   *time.Time `json:"birth_date"`
+// 		EndingDate  *time.Time `json:"ending_date"`
+// 	}
+// 	if err := c.ShouldBindJSON(&input); err != nil {
+// 		errors.RespondWithError(c, 400, "invalid input: "+err.Error())
+// 		return
+// 	}
+
+// 	// 5️ Validate birth_date — must be in the past (future dates not allowed)
+// 	if input.BirthDate != nil {
+// 		today := time.Now().Truncate(24 * time.Hour)
+// 		bd := input.BirthDate.Truncate(24 * time.Hour)
+// 		if !bd.Before(today) {
+// 			errors.RespondWithError(c, 400, "birth_date must be a past date")
+// 			return
+// 		}
+// 	}
+
+// 	// 6️ Permission checks
+// 	isAdmin := role == "SUPERADMIN" || role == "ADMIN" || role == "HR"
+// 	isSelf := currentUserID == empID
+
+// 	// Check if trying to update email, salary, joining_date, birth_date, or ending_date
+// 	if (input.Email != nil || input.Salary != nil || input.JoiningDate != nil || input.BirthDate != nil || input.EndingDate != nil) && !isAdmin {
+// 		errors.RespondWithError(c, 403, "only SUPERADMIN aADMIN , HR can update email, salary, joining date, and ending date")
+// 		return
+// 	}
+
+// 	// Check if trying to update someone else's name
+// 	if input.FullName != nil && !isSelf && !isAdmin {
+// 		errors.RespondWithError(c, 403, "you can only update your own name")
+// 		return
+// 	}
+
+// 	// 6️ Validate and update email if provided
+// 	var finalEmail string
+// 	if input.Email != nil {
+// 		emailDomain := os.Getenv("COMPANY_EMAIL_DOMAIN")
+// 		if emailDomain != "" && !strings.HasSuffix(*input.Email, "@"+emailDomain) {
+// 			errors.RespondWithError(c, 400, "email must end with @"+emailDomain)
+// 			return
+// 		}
+
+// 		// Check if email is being changed and if new email already exists
+// 		if existingEmp.Email != *input.Email {
+// 			exists, err := h.Query.CheckEmailExists(*input.Email)
+// 			if err != nil {
+// 				errors.RespondWithError(c, 500, "failed to check email: "+err.Error())
+// 				return
+// 			}
+// 			if exists {
+// 				errors.RespondWithError(c, 400, "email already exists")
+// 				return
+// 			}
+// 		}
+// 		finalEmail = *input.Email
+// 	} else {
+// 		finalEmail = existingEmp.Email
+// 	}
+
+// 	// 7️ Prepare final values
+// 	finalName := existingEmp.FullName
+// 	if input.FullName != nil {
+// 		finalName = *input.FullName
+// 	}
+
+// 	finalSalary := existingEmp.Salary
+// 	if input.Salary != nil {
+// 		finalSalary = input.Salary
+// 	}
+
+// 	finalJoiningDate := existingEmp.JoiningDate
+// 	if input.JoiningDate != nil {
+// 		finalJoiningDate = input.JoiningDate
+// 	}
+
+// 	finalBirthDate := existingEmp.BirthDate
+// 	if input.BirthDate != nil {
+// 		finalBirthDate = input.BirthDate
+// 	}
+
+// 	finalEndingDate := existingEmp.EndingDate
+// 	if input.EndingDate != nil {
+// 		finalEndingDate = input.EndingDate
+// 	}
+
+// 	// 8️ Update employee info — wrap in transaction if joining_date is changing
+// 	// so we can recalculate leave balances atomically.
+// 	if input.JoiningDate != nil {
+// 		if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
+// 			if err := h.Query.UpdateEmployeeInfoTx(tx, empID, finalName, finalEmail, finalSalary, finalJoiningDate, finalBirthDate, finalEndingDate); err != nil {
+// 				return errors.CustomErr(500, "failed to update employee: "+err.Error())
+// 			}
+// 			empRole, err := h.Query.GetEmployeeRole(empID)
+// 			if err != nil {
+// 				return errors.CustomErr(500, "failed to fetch employee role: "+err.Error())
+// 			}
+// 			currentYear := time.Now().Year()
+// 			if err := h.Query.RecalculateLeaveBalancesForJoiningDateChange(tx, empID, finalJoiningDate, empRole, currentYear); err != nil {
+// 				return errors.CustomErr(500, "failed to recalculate leave balances: "+err.Error())
+// 			}
+// 			return nil
+// 		}); err != nil {
+// 			errors.RespondWithError(c, 500, err.Error())
+// 			return
+// 		}
+// 	} else {
+// 		if err := h.Query.UpdateEmployeeInfo(empID, finalName, finalEmail, finalSalary, finalJoiningDate, finalBirthDate, finalEndingDate); err != nil {
+// 			errors.RespondWithError(c, 500, "failed to update employee: "+err.Error())
+// 			return
+// 		}
+// 	}
+
+//		// 9️ Response
+//		c.JSON(200, gin.H{
+//			"message":     "employee information updated successfully",
+//			"employee_id": empID,
+//		})
+//	}
 func (h *HandlerFunc) UpdateEmployeeInfo(c *gin.Context) {
-	// 1️ Get current user info
-	currentUserID, _ := uuid.Parse(c.GetString("user_id"))
-	role := c.GetString("role")
 
-	// 2️ Parse Employee ID
-	empIDStr := c.Param("id")
-	empID, err := uuid.Parse(empIDStr)
+	actorUserID, err := uuid.Parse(c.GetString("user_id"))
 	if err != nil {
-		errors.RespondWithError(c, 400, "invalid employee ID")
+		errors.RespondWithError(c, http.StatusUnauthorized, "invalid user id")
 		return
 	}
 
-	// 3️ Check if employee exists
-	existingEmp, err := h.Query.GetEmployeeByID(empID)
+	actorRoleID, err := common.GetRoleID(c)
 	if err != nil {
-		errors.RespondWithError(c, 404, "employee not found")
+		errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	// 3.5️ HR and ADMIN cannot edit SUPERADMIN
-	if (role == "ADMIN" || role == "HR") && existingEmp.Role == "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "HR and ADMIN cannot modify SUPERADMIN users")
+	var req models.UpdateEmployeeInput
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// 4️ Bind input JSON
-	var input struct {
-		FullName    *string    `json:"full_name"`
-		Email       *string    `json:"email"`
-		Salary      *float64   `json:"salary"`
-		JoiningDate *time.Time `json:"joining_date"`
-		BirthDate   *time.Time `json:"birth_date"`
-		EndingDate  *time.Time `json:"ending_date"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		errors.RespondWithError(c, 400, "invalid input: "+err.Error())
+	employeeID := c.Param("id")
+
+	if employeeID == "" {
+		errors.RespondWithError(c, http.StatusBadRequest, "employee id required")
 		return
 	}
 
-	// 5️ Validate birth_date — must be in the past (future dates not allowed)
-	if input.BirthDate != nil {
-		today := time.Now().Truncate(24 * time.Hour)
-		bd := input.BirthDate.Truncate(24 * time.Hour)
-		if !bd.Before(today) {
-			errors.RespondWithError(c, 400, "birth_date must be a past date")
-			return
-		}
-	}
-
-	// 6️ Permission checks
-	isAdmin := role == "SUPERADMIN" || role == "ADMIN" || role == "HR"
-	isSelf := currentUserID == empID
-
-	// Check if trying to update email, salary, joining_date, birth_date, or ending_date
-	if (input.Email != nil || input.Salary != nil || input.JoiningDate != nil || input.BirthDate != nil || input.EndingDate != nil) && !isAdmin {
-		errors.RespondWithError(c, 403, "only SUPERADMIN aADMIN , HR can update email, salary, joining date, and ending date")
+	if err := h.EmployeeService.Update(
+		c.Request.Context(),
+		actorUserID,
+		actorRoleID,
+		employeeID,
+		&req,
+	); err != nil {
+		errors.Error(c, err)
 		return
 	}
 
-	// Check if trying to update someone else's name
-	if input.FullName != nil && !isSelf && !isAdmin {
-		errors.RespondWithError(c, 403, "you can only update your own name")
-		return
-	}
-
-	// 6️ Validate and update email if provided
-	var finalEmail string
-	if input.Email != nil {
-		emailDomain := os.Getenv("COMPANY_EMAIL_DOMAIN")
-		if emailDomain != "" && !strings.HasSuffix(*input.Email, "@"+emailDomain) {
-			errors.RespondWithError(c, 400, "email must end with @"+emailDomain)
-			return
-		}
-
-		// Check if email is being changed and if new email already exists
-		if existingEmp.Email != *input.Email {
-			exists, err := h.Query.CheckEmailExists(*input.Email)
-			if err != nil {
-				errors.RespondWithError(c, 500, "failed to check email: "+err.Error())
-				return
-			}
-			if exists {
-				errors.RespondWithError(c, 400, "email already exists")
-				return
-			}
-		}
-		finalEmail = *input.Email
-	} else {
-		finalEmail = existingEmp.Email
-	}
-
-	// 7️ Prepare final values
-	finalName := existingEmp.FullName
-	if input.FullName != nil {
-		finalName = *input.FullName
-	}
-
-	finalSalary := existingEmp.Salary
-	if input.Salary != nil {
-		finalSalary = input.Salary
-	}
-
-	finalJoiningDate := existingEmp.JoiningDate
-	if input.JoiningDate != nil {
-		finalJoiningDate = input.JoiningDate
-	}
-
-	finalBirthDate := existingEmp.BirthDate
-	if input.BirthDate != nil {
-		finalBirthDate = input.BirthDate
-	}
-
-	finalEndingDate := existingEmp.EndingDate
-	if input.EndingDate != nil {
-		finalEndingDate = input.EndingDate
-	}
-
-	// 8️ Update employee info — wrap in transaction if joining_date is changing
-	// so we can recalculate leave balances atomically.
-	if input.JoiningDate != nil {
-		if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-			if err := h.Query.UpdateEmployeeInfoTx(tx, empID, finalName, finalEmail, finalSalary, finalJoiningDate, finalBirthDate, finalEndingDate); err != nil {
-				return errors.CustomErr(500, "failed to update employee: "+err.Error())
-			}
-			empRole, err := h.Query.GetEmployeeRole(empID)
-			if err != nil {
-				return errors.CustomErr(500, "failed to fetch employee role: "+err.Error())
-			}
-			currentYear := time.Now().Year()
-			if err := h.Query.RecalculateLeaveBalancesForJoiningDateChange(tx, empID, finalJoiningDate, empRole, currentYear); err != nil {
-				return errors.CustomErr(500, "failed to recalculate leave balances: "+err.Error())
-			}
-			return nil
-		}); err != nil {
-			errors.RespondWithError(c, 500, err.Error())
-			return
-		}
-	} else {
-		if err := h.Query.UpdateEmployeeInfo(empID, finalName, finalEmail, finalSalary, finalJoiningDate, finalBirthDate, finalEndingDate); err != nil {
-			errors.RespondWithError(c, 500, "failed to update employee: "+err.Error())
-			return
-		}
-	}
-
-	// 9️ Response
-	c.JSON(200, gin.H{
-		"message":     "employee information updated successfully",
-		"employee_id": empID,
+	c.JSON(http.StatusOK, gin.H{
+		"message": "employee information updated successfully",
 	})
-}
-
-// GetEmployeeReports - GET /api/employees/:id/reports
-func (s *HandlerFunc) GetEmployeeReports(c *gin.Context) {
-	c.JSON(200, gin.H{"message": "Get employee reports"})
 }
 
 // UpdateEmployeePassword - PATCH /api/employee/:id/password

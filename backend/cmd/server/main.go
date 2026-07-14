@@ -32,7 +32,7 @@ func main() {
 
 	// ── Config + Timezone ─────────────────────────────────────────────────────
 	env := config.LoadENV()
-	
+
 	// Initialize application timezone before any time operations.
 	// This must happen before cron, birthday calculations, or any time.Now() calls.
 	timezone.Initialize(env.TIMEZONE)
@@ -76,7 +76,12 @@ func main() {
 	notifSvc.Start(ctx)
 	defer notifSvc.Stop()
 
+	// role_repo
+	roleRepo := repositories.NewRoleRepository(db)
+	hrbcService := service.NewHrbc(roleRepo)
+
 	// ── Domain services ──────────────────────────────────────────────────────
+
 	leaveApproverFlowRepo := repositories.NewLeaveApprovalFlowRepository(db)
 	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo)
 
@@ -109,6 +114,9 @@ func main() {
 	assetService := service.NewAssetService(db, repository)
 
 	// ── HTTP handler ─────────────────────────────────────────────────────────
+
+	employeeRepo := repositories.NewEmployeeRepository(db)
+	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo , *repo)
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,
@@ -116,6 +124,7 @@ func main() {
 		notifSvc, holidayservice,
 		permissionSvc,
 		assetService,
+		employeeSvc,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

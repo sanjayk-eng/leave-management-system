@@ -106,14 +106,6 @@ func (s *HandlerFunc) GetLeaveBalances(c *gin.Context) {
 // AdjustLeaveBalance - POST /api/leave-balances/adjust
 // AdjustLeaveBalance - POST /api/leave-balances/:id/adjust
 func (s *HandlerFunc) AdjustLeaveBalance(c *gin.Context) {
-	// 1️ Role check - Only ADMIN/HR allowed
-	roleRaw, _ := c.Get("role")
-	role := roleRaw.(string)
-	if role != "ADMIN" && role != "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "Not authorized to adjust leave balances")
-		return
-	}
-
 	// 2️ Get employee ID from params
 	employeeIDParam := c.Param("id")
 	employeeID, err := uuid.Parse(employeeIDParam)

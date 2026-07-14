@@ -28,12 +28,50 @@ func NewPermissionService(db *sqlx.DB, repo repositories.PermissionRepository) P
 	return &permissionService{db: db, repo: repo}
 }
 
+type permissionIndex struct {
+	groups        []models.ResourceGroup
+	enabled       map[int]bool                 // permission_id -> is_enabled (for this role)
+	byID          map[int]models.PermissionRow // permission_id -> full row (label, action, ...)
+	resourceOf    map[int]string               // permission_id -> resource name
+	readIDByRes   map[string]int               // resource -> its "read" permission_id
+	siblingsByRes map[string][]int             // resource -> all permission_ids on that resource
+}
+
+func (s *permissionService) loadPermissionIndex(ctx context.Context, roleID int) (*permissionIndex, error) {
+	groups, err := s.repo.GetRolePermissionsGrouped(ctx, roleID)
+	if err != nil {
+		return nil, err
+	}
+
+	idx := &permissionIndex{
+		groups:        groups,
+		enabled:       make(map[int]bool, 64),
+		byID:          make(map[int]models.PermissionRow, 64),
+		resourceOf:    make(map[int]string, 64),
+		readIDByRes:   make(map[string]int),
+		siblingsByRes: make(map[string][]int),
+	}
+
+	for _, g := range groups {
+		for _, p := range g.Permissions {
+			idx.byID[p.PermissionID] = p
+			idx.resourceOf[p.PermissionID] = g.Resource
+			idx.siblingsByRes[g.Resource] = append(idx.siblingsByRes[g.Resource], p.PermissionID)
+
+			if p.IsEnabled {
+				idx.enabled[p.PermissionID] = true
+			}
+			if p.Action == "read" {
+				idx.readIDByRes[g.Resource] = p.PermissionID
+			}
+		}
+	}
+
+	return idx, nil
+}
+
 func (s *permissionService) GetRolePermissions(ctx context.Context, callerRoleID, targetRoleID int) (*models.RolePermissionResponse, error) {
 
-	// ── Hierarchy check ────────────────────────────────────────────────────────
-	// Caller must have a strictly higher priority than the target role.
-	// SUPERADMIN (priority 6) is handled by the middleware bypass — it never
-	// reaches here — so we enforce the rule for everyone else.
 	if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
 		return nil, err
 	}
@@ -42,16 +80,45 @@ func (s *permissionService) GetRolePermissions(ctx context.Context, callerRoleID
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusNotFound, "role not found")
 	}
-	resources, err := s.repo.GetRolePermissionsGrouped(ctx, targetRoleID)
+
+	targetIdx, err := s.loadPermissionIndex(ctx, targetRoleID)
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to fetch permissions: "+err.Error())
 	}
 
+	callerIdx, err := s.loadPermissionIndex(ctx, callerRoleID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to resolve caller visibility: "+err.Error())
+	}
+
+	visibleResources := filterVisibleToCaller(targetIdx.groups, callerIdx.enabled)
+
 	return &models.RolePermissionResponse{
 		RoleID:    targetRoleID,
 		RoleName:  roleName,
-		Resources: resources,
+		Resources: visibleResources,
 	}, nil
+}
+
+func filterVisibleToCaller(groups []models.ResourceGroup, callerEnabled map[int]bool) []models.ResourceGroup {
+	visible := make([]models.ResourceGroup, 0, len(groups))
+
+	for _, g := range groups {
+		kept := make([]models.PermissionRow, 0, len(g.Permissions))
+		for _, p := range g.Permissions {
+			if callerEnabled[p.PermissionID] {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) > 0 {
+			visible = append(visible, models.ResourceGroup{
+				Resource:    g.Resource,
+				Permissions: kept,
+			})
+		}
+	}
+
+	return visible
 }
 
 func (s *permissionService) TogglePermissions(ctx context.Context, callerRoleID, targetRoleID int, input *models.TogglePermissionInput) error {
@@ -60,7 +127,6 @@ func (s *permissionService) TogglePermissions(ctx context.Context, callerRoleID,
 		return errors.CustomErr(http.StatusBadRequest, "at least one permission toggle is required")
 	}
 
-	// ── Hierarchy check ────────────────────────────────────────────────────────
 	if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
 		return err
 	}
@@ -69,30 +135,32 @@ func (s *permissionService) TogglePermissions(ctx context.Context, callerRoleID,
 		return errors.CustomErr(http.StatusNotFound, "role not found")
 	}
 
-	// ── Validate caller has all permissions they're trying to grant ──
-	// This enforces cascading permission inheritance:
-	// SUPERADMIN disables X → ADMIN cannot enable X for anyone
-	if err := s.enforceCallerPermissions(ctx, callerRoleID, input); err != nil {
+	// Cascading permission inheritance: SUPERADMIN disables X → ADMIN cannot
+	// enable X for anyone below them.
+	callerIdx, err := s.loadPermissionIndex(ctx, callerRoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to fetch caller permissions: "+err.Error())
+	}
+	if err := s.enforceCallerPermissions(callerIdx, input); err != nil {
 		return err
 	}
 
-	// ── Validate dependency rules before touching the DB ──
-	if err := s.validatePermissionDependencies(ctx, targetRoleID, input); err != nil {
+	targetIdx, err := s.loadPermissionIndex(ctx, targetRoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to load permissions for validation")
+	}
+	if err := s.validatePermissionDependencies(targetIdx, input); err != nil {
 		return err
 	}
 
-	err := database.ExecuteTransaction(ctx, s.db, func(tx *sqlx.Tx) error {
+	return database.ExecuteTransaction(ctx, s.db, func(tx *sqlx.Tx) error {
 		if err := s.repo.BulkToggle(ctx, tx, targetRoleID, input.Permissions); err != nil {
 			return errors.CustomErr(http.StatusBadRequest, err.Error())
 		}
 		return nil
 	})
-
-	return err
 }
 
-// enforceHierarchy returns 403 if the caller's priority is not strictly greater
-// than the target role's priority. Fetches both priorities from Tbl_Role.
 func (s *permissionService) enforceHierarchy(ctx context.Context, callerRoleID, targetRoleID int) error {
 	callerPriority, err := s.repo.GetRolePriority(ctx, callerRoleID)
 	if err != nil {
@@ -113,119 +181,41 @@ func (s *permissionService) Check(ctx context.Context, roleID int, resource, act
 	return s.repo.CheckPermission(ctx, roleID, resource, action)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// enforceCallerPermissions validates that the caller has all the permissions
-// they are trying to grant to the target role.
-//
-// Business Rule (Cascading Permission Inheritance):
-//   If SUPERADMIN disables permission X for their own role, then no lower role
-//   (ADMIN, HR, etc.) can enable that permission for any role below them.
-//
-// Algorithm:
-//   1. Build a map of permission IDs → permission details (label, resource, action)
-//   2. Build a set of permission IDs that the caller has ENABLED
-//   3. For each permission the caller wants to enable on the target:
-//      - Check if the caller has that permission enabled
-//      - If not, deny with user-friendly label
-//
-// Time Complexity: O(P) where P = number of permissions (~40-50)
-// Space Complexity: O(P) for the maps
-// ─────────────────────────────────────────────────────────────────────────────
-func (s *permissionService) enforceCallerPermissions(ctx context.Context, callerRoleID int, input *models.TogglePermissionInput) error {
-	// Fetch caller's permissions
-	callerGroups, err := s.repo.GetRolePermissionsGrouped(ctx, callerRoleID)
-	if err != nil {
-		return errors.CustomErr(http.StatusInternalServerError, "failed to fetch caller permissions: "+err.Error())
-	}
-
-	// Build two maps for O(1) lookup:
-	// 1. permission_id → permission details (for error messages)
-	// 2. permission_id → is_enabled (for validation)
-	type permDetails struct {
-		label    string
-		resource string
-		action   string
-	}
-	permInfo := make(map[int]permDetails, 64)
-	callerEnabledPerms := make(map[int]bool, 64)
-
-	for _, group := range callerGroups {
-		for _, perm := range group.Permissions {
-			permInfo[perm.PermissionID] = permDetails{
-				label:    perm.Label,
-				resource: group.Resource,
-				action:   perm.Action,
-			}
-			if perm.IsEnabled {
-				callerEnabledPerms[perm.PermissionID] = true
-			}
-		}
-	}
-
-	// Validate each permission being enabled
+func (s *permissionService) enforceCallerPermissions(callerIdx *permissionIndex, input *models.TogglePermissionInput) error {
 	var deniedPermissions []string
+
 	for _, toggle := range input.Permissions {
-		// Only check when trying to ENABLE a permission
+		// Only enabling a permission requires the caller to hold it themselves.
 		if !toggle.IsEnabled {
 			continue
 		}
+		if callerIdx.enabled[toggle.PermissionID] {
+			continue
+		}
 
-		// Check if caller has this permission enabled
-		if !callerEnabledPerms[toggle.PermissionID] {
-			info, exists := permInfo[toggle.PermissionID]
-			if exists {
-				deniedPermissions = append(deniedPermissions, info.label)
-			} else {
-				deniedPermissions = append(deniedPermissions, fmt.Sprintf("Permission ID %d", toggle.PermissionID))
-			}
+		if p, exists := callerIdx.byID[toggle.PermissionID]; exists {
+			deniedPermissions = append(deniedPermissions, p.Label)
+		} else {
+			deniedPermissions = append(deniedPermissions, fmt.Sprintf("Permission ID %d", toggle.PermissionID))
 		}
 	}
 
-	if len(deniedPermissions) > 0 {
-		if len(deniedPermissions) == 1 {
-			return errors.CustomErr(http.StatusForbidden,
-				fmt.Sprintf("you cannot grant the permission '%s' because you don't have it enabled in your role", deniedPermissions[0]))
-		}
+	if len(deniedPermissions) == 0 {
+		return nil
+	}
+	if len(deniedPermissions) == 1 {
 		return errors.CustomErr(http.StatusForbidden,
-			fmt.Sprintf("you cannot grant the following permissions because you don't have them enabled in your role:\n  • %s",
-				strings.Join(deniedPermissions, "\n  • ")))
+			fmt.Sprintf("you cannot grant the permission '%s' because you don't have it enabled in your role", deniedPermissions[0]))
 	}
-
-	return nil
+	return errors.CustomErr(http.StatusForbidden,
+		fmt.Sprintf("you cannot grant the following permissions because you don't have them enabled in your role:\n  • %s",
+			strings.Join(deniedPermissions, "\n  • ")))
 }
 
-func (s *permissionService) validatePermissionDependencies(ctx context.Context, targetRoleID int, input *models.TogglePermissionInput) error {
-	groups, err := s.repo.GetRolePermissionsGrouped(ctx, targetRoleID)
-	if err != nil {
-		return errors.CustomErr(http.StatusInternalServerError, "failed to load permissions for validation")
-	}
-	type permInfo struct {
-		action    string
-		resource  string
-		label     string
-		isEnabled bool
-	}
-	byID := make(map[int]permInfo, 64)
-	readPermByResource := make(map[string]int)
-	siblingsByResource := make(map[string][]int)
-
-	for _, g := range groups {
-		for _, p := range g.Permissions {
-			byID[p.PermissionID] = permInfo{
-				action:    p.Action,
-				resource:  g.Resource,
-				label:     p.Label,
-				isEnabled: p.IsEnabled,
-			}
-			siblingsByResource[g.Resource] = append(siblingsByResource[g.Resource], p.PermissionID)
-			if p.Action == "read" {
-				readPermByResource[g.Resource] = p.PermissionID
-			}
-		}
-	}
-	afterState := make(map[int]bool, len(byID))
-	for id, info := range byID {
-		afterState[id] = info.isEnabled
+func (s *permissionService) validatePermissionDependencies(targetIdx *permissionIndex, input *models.TogglePermissionInput) error {
+	afterState := make(map[int]bool, len(targetIdx.byID))
+	for id, p := range targetIdx.byID {
+		afterState[id] = p.IsEnabled
 	}
 	for _, t := range input.Permissions {
 		afterState[t.PermissionID] = t.IsEnabled
@@ -234,31 +224,31 @@ func (s *permissionService) validatePermissionDependencies(ctx context.Context, 
 	var violations []string
 
 	for _, t := range input.Permissions {
-		info, exists := byID[t.PermissionID]
+		info, exists := targetIdx.byID[t.PermissionID]
 		if !exists {
 			continue
 		}
+		resource := targetIdx.resourceOf[t.PermissionID]
 
-		// ── Rule 1: enabling any non-read action requires read to be on ──
-		if t.IsEnabled && info.action != "read" {
-			readID, hasRead := readPermByResource[info.resource]
-			if hasRead && !afterState[readID] {
-				readInfo := byID[readID]
+		// Rule 1
+		if t.IsEnabled && info.Action != "read" {
+			if readID, hasRead := targetIdx.readIDByRes[resource]; hasRead && !afterState[readID] {
+				readInfo := targetIdx.byID[readID]
 				violations = append(violations, fmt.Sprintf("cannot enable '%s': '%s' must be enabled first (resource: %s)",
-					info.label, readInfo.label, info.resource))
+					info.Label, readInfo.Label, resource))
 			}
 		}
 
-		// ── Rule 2: disabling read requires all siblings to be off too ──
-		if !t.IsEnabled && info.action == "read" {
-			for _, sibID := range siblingsByResource[info.resource] {
+		// Rule 2
+		if !t.IsEnabled && info.Action == "read" {
+			for _, sibID := range targetIdx.siblingsByRes[resource] {
 				if sibID == t.PermissionID {
 					continue
 				}
 				if afterState[sibID] {
-					sibInfo := byID[sibID]
+					sibInfo := targetIdx.byID[sibID]
 					violations = append(violations, fmt.Sprintf("cannot disable '%s': '%s' must be disabled first (resource: %s)",
-						info.label, sibInfo.label, info.resource))
+						info.Label, sibInfo.Label, resource))
 				}
 			}
 		}

@@ -6,6 +6,58 @@ import (
 	"github.com/google/uuid"
 )
 
+type Employee struct {
+	ID       uuid.UUID `db:"id"`
+	FullName string    `db:"full_name"`
+	Email    string    `db:"email"`
+	RoleID   int       `db:"role_id"`
+	Password string    `db:"password"`
+
+	ManagerID     *uuid.UUID `db:"manager_id"`
+	DesignationID *uuid.UUID `db:"designation_id"`
+
+	Salary      *float64   `db:"salary"`
+	BirthDate   *time.Time `db:"birth_date"`
+	JoiningDate *time.Time `db:"joining_date"`
+	EndingDate  *time.Time `db:"ending_date"`
+
+	Status    string     `db:"status"`
+	DeletedAt *time.Time `db:"deleted_at"`
+
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+type UpdateEmployeeInput struct {
+	FullName    *string    `json:"full_name" binding:"omitempty,min=2,max=100"`
+	Email       *string    `json:"email" binding:"omitempty,email"`
+	Salary      *float64   `json:"salary" binding:"omitempty,gte=0"`
+	BirthDate   *time.Time `json:"birth_date,omitempty"`
+	JoiningDate *time.Time `json:"joining_date,omitempty"`
+	EndingDate  *time.Time `json:"ending_date,omitempty"`
+}
+
+// EmployeeInput is used for create employee (API input + validation).
+type EmployeeInput struct {
+	ID              *uuid.UUID `json:"id,omitempty"` // optional UUID
+	FullName        string     `json:"full_name" validate:"required"`
+	Email           string     `json:"email" validate:"required,email"`
+	Role            string     `json:"role" validate:"required"`
+	Password        string     `json:"password,omitempty"`       // optional - auto-generated if not provided
+	ManagerID       *uuid.UUID `json:"manager_id,omitempty"`     // optional UUID
+	DesignationID   *uuid.UUID `json:"designation_id,omitempty"` // optional UUID
+	Salary          *float64   `json:"salary,omitempty"`         // optional
+	JoiningDate     *time.Time `json:"joining_date,omitempty"`   // optional
+	BirthDate       *time.Time `json:"birth_date,omitempty"`     // optional
+	EndingDate      *time.Time `json:"ending_date,omitempty"`    // optional
+	Status          *string    `json:"status,omitempty"`         // optional, new field
+	CreatedAt       *time.Time `json:"created_at,omitempty"`     // optional
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`     // optional
+	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
+	ManagerName     *string    `json:"manager_name,omitempty"`     // optional
+	DesignationName *string    `json:"designation_name,omitempty"` // optional
+}
+
 // EmployeeFilterParams - Query parameters for filtering, sorting, and pagination
 type EmployeeFilterParams struct {
 	// Pagination

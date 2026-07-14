@@ -35,17 +35,16 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	employees := r.Group("/api/employee")
 	employees.Use(middleware.AuthMiddleware(h)) // Protect employee routes
 	{
-		employees.GET("", h.GetEmployee)                                 // List all employees (SUPER_ADMIN, ADMIN/HR)
-		employees.GET("/my-team", h.GetMyTeam)                           // Get manager's team members (MANAGER only)
-		employees.GET("/:id", h.GetEmployeeById)                         // Get employee details (Self/Manager/Admin)
-		employees.POST("", h.CreateEmployee)                             // Create employee (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id", h.UpdateEmployeeInfo)                    // Update employee info (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/password", h.UpdateEmployeePassword)       // Update employee password (SUPER_ADMIN, ADMIN, HR)
-		employees.PATCH("/:id/role", h.UpdateEmployeeRole)               // Change employee role (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/manager", h.UpdateEmployeeManager)         // Set/change manager (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/designation", h.UpdateEmployeeDesignation) // Assign/update designation (SUPER_ADMIN, ADMIN, HR)
-		employees.PUT("/deactivate/:id", h.DeleteEmployeeStatus)         // Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)
-		employees.GET("/:id/reports", h.GetEmployeeReports)              // Get direct reports (Self/Manager/Admin)
+		employees.GET("", h.GetEmployee)                                                                                                       // List all employees (SUPER_ADMIN, ADMIN/HR)
+		employees.GET("/my-team", h.GetMyTeam)                                                                                                 // Get manager's team members (MANAGER only)
+		employees.GET("/:id", h.GetEmployeeById)                                                                                               // Get employee details (Self/Manager/Admin)
+		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)           // Create employee (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo) // Update employee info (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/password", h.UpdateEmployeePassword)                                                                             // Update employee password (SUPER_ADMIN, ADMIN, HR)
+		employees.PATCH("/:id/role", h.UpdateEmployeeRole)                                                                                     // Change employee role (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/manager", h.UpdateEmployeeManager)                                                                               // Set/change manager (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/designation", h.UpdateEmployeeDesignation)                                                                       // Assign/update designation (SUPER_ADMIN, ADMIN, HR)
+		employees.PUT("/deactivate/:id", h.DeleteEmployeeStatus)                                                                               // Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
 		employees.GET("/birthdays/today", h.GetTodayBirthdays)
 		employees.GET("/birthdays/upcomming", h.GetBirthdays) // filter_type=current_month
 	}
@@ -134,7 +133,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Settings -----------------
 	settings := r.Group("/api/settings")
-	settings.Use(middleware.AuthMiddleware(h),middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionMangmentCompanyInfo))) // Only admin/superadmin
+	settings.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionMangmentCompanyInfo))) // Only admin/superadmin
 	{
 		settings.GET("", h.GetCompanySettings)                      // Get current settings
 		settings.PUT("", h.UpdateCompanySettings)                   // Update settings

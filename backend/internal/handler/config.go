@@ -29,6 +29,7 @@ type HandlerFunc struct {
 	Holidayservice           service.HolidayService
 	PermissionSvc            service.PermissionService // RBAC permission toggle
 	AssetService             service.AssetService
+	EmployeeService          service.EmployeeService
 }
 
 // NewHandler constructs the handler with all required dependencies.
@@ -44,6 +45,8 @@ func NewHandler(
 	holidayservice service.HolidayService,
 	permissionSvc service.PermissionService,
 	assetService service.AssetService,
+	employeeSvc service.EmployeeService,
+
 ) *HandlerFunc {
 	return &HandlerFunc{
 		Env:                      env,
@@ -60,6 +63,7 @@ func NewHandler(
 		Holidayservice:           holidayservice,
 		PermissionSvc:            permissionSvc,
 		AssetService:             assetService,
+		EmployeeService:          employeeSvc,
 	}
 }
 
