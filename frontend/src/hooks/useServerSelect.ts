@@ -10,6 +10,8 @@ interface UseServerSelectOptions<T> {
   fetcher: (search: string, page: number) => Promise<{ items: T[]; totalPages: number }>;
   toOption: (item: T) => ServerSelectOption;
   debounceMs?: number;
+  /** Set to false to defer the initial fetch until you're ready (e.g. dialog open) */
+  enabled?: boolean;
 }
 
 interface UseServerSelectReturn {
@@ -25,6 +27,7 @@ export function useServerSelect<T>({
   fetcher,
   toOption,
   debounceMs = 300,
+  enabled = true,
 }: UseServerSelectOptions<T>): UseServerSelectReturn {
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState<ServerSelectOption[]>([]);
@@ -34,24 +37,20 @@ export function useServerSelect<T>({
 
   const debouncedSearch = useDebounce(search, debounceMs);
 
-  // Use a request-id counter instead of AbortController so we never
-  // accidentally abort the very first request before it completes.
   const reqIdRef = useRef(0);
-  const hasMounted = useRef(false);
+  const hasFetched = useRef(false);
 
   const fetchPage = useCallback(async (q: string, p: number, append: boolean) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
     try {
       const result = await fetcher(q, p);
-      // Discard stale responses
       if (reqId !== reqIdRef.current) return;
       const mapped = result.items.map(toOption);
       setOptions(prev => append ? [...prev, ...mapped] : mapped);
       setTotalPages(result.totalPages);
       setPage(p);
     } catch (err: unknown) {
-      // Only clear on non-abort errors so stale results don't linger
       if (reqId === reqIdRef.current) {
         setOptions(prev => append ? prev : []);
       }
@@ -62,16 +61,18 @@ export function useServerSelect<T>({
     }
   }, [fetcher, toOption]);
 
-  // Initial load immediately on mount (no debounce), then debounced on search change
+  // Initial load fires only when enabled=true (first time it becomes true)
+  // Subsequent calls fire on debounced search change (also guarded by enabled)
   useEffect(() => {
-    if (!hasMounted.current) {
-      hasMounted.current = true;
+    if (!enabled) return;
+    if (!hasFetched.current) {
+      hasFetched.current = true;
       fetchPage('', 1, false);
       return;
     }
     fetchPage(debouncedSearch, 1, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
+  }, [enabled, debouncedSearch]);
 
   const onSearch = useCallback((q: string) => setSearch(q), []);
 

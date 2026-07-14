@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEmployees } from "@/hooks/useEmployees";
-import { useDesignations } from "@/hooks/useDesignations";
 import { useDebounce } from "@/hooks/useDebounce";
 import { getCurrentUser, ApiError } from "@/lib/api";
 import { leaveBalanceService, employeeService } from "@/services";
@@ -87,7 +86,47 @@ const Employees = () => {
   const [sortBy,            setSortBy]            = useState<SortCol | ''>('');
   const [sortDir,           setSortDir]           = useState<'asc' | 'desc'>('asc');
 
-  const { designations } = useDesignations();
+  // ── dialog state — declared early so lazy hooks below can read them ───────────
+  const [dialogOpen,            setDialogOpen]            = useState(false);
+  const [roleDialogOpen,        setRoleDialogOpen]        = useState(false);
+  const [managerDialogOpen,     setManagerDialogOpen]     = useState(false);
+  const [designationDialogOpen, setDesignationDialogOpen] = useState(false);
+  const [leaveAdjustDialogOpen, setLeaveAdjustDialogOpen] = useState(false);
+  const [editInfoDialogOpen,    setEditInfoDialogOpen]    = useState(false);
+  const [passwordDialogOpen,    setPasswordDialogOpen]    = useState(false);
+  const [deactivateDialogOpen,  setDeactivateDialogOpen]  = useState(false);
+
+  const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
+  const [newRole,              setNewRole]              = useState("");
+  const [newManagerId,         setNewManagerId]         = useState("");
+  const [newDesignationId,     setNewDesignationId]     = useState("");
+  const [isUpdatingDesignation,setIsUpdatingDesignation]= useState(false);
+  const [isAdjustingLeave,     setIsAdjustingLeave]     = useState(false);
+  const [isUpdatingPassword,   setIsUpdatingPassword]   = useState(false);
+  const [newPassword,          setNewPassword]          = useState("");
+  const [confirmPassword,      setConfirmPassword]      = useState("");
+
+  const [adjustmentData, setAdjustmentData] = useState({ leave_type_id: "", quantity: "", reason: "" });
+  const [editInfoForm,   setEditInfoForm]   = useState({
+    full_name: "", email: "", salary: 0, joining_date: "", ending_date: "", birth_date: "",
+  });
+  const [formData, setFormData] = useState({
+    full_name: "", email: "", role: "", salary: "", joining_date: "", ending_date: "",
+  });
+
+  // ── lazy: fetch designations only when the filter dropdown or assign dialog is used
+  // Silent on 403/401 — user may not have designation permission, filter just shows empty
+  const { data: designationData } = useQuery({
+    queryKey: ['designations'],
+    queryFn: async () => {
+      const { designationService } = await import('@/services/designationService');
+      return designationService.getAll();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    throwOnError: false,
+  });
+  const designations = designationData ?? [];
 
   // debounce search input
   const debouncedSearch   = useDebounce(searchQuery,   500);
@@ -126,10 +165,18 @@ const Employees = () => {
   // 403/401 → hide write controls and filters (same pattern as Designations page)
   const isAccessDenied = error instanceof ApiError && (error.status === 403 || error.status === 401);
 
-  // ── server-driven manager select ─────────────────────────────────────────────
-  const managerSelect = useManagerSelect();
+  // ── lazy: manager list only fetches when "Assign Manager" dialog opens ────────
+  const managerSelect = useManagerSelect(managerDialogOpen);
 
-  // ── unified sort handler — mirrors useTableSort in shared.tsx (no stale closure)
+  // ── lazy: leave policies only fetches when "Adjust Leave Balance" dialog opens
+  const { data: leavePolicies } = useQuery({
+    queryKey: ['leavePolicies'],
+    queryFn: async () => { const { leaveService } = await import('@/services'); return leaveService.getAllPolicies(); },
+    enabled: leaveAdjustDialogOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ── unified sort handler ──────────────────────────────────────────────────────
   const handleSort = useCallback((col: string) => {
     const c = col as SortCol;
     setSortBy(prev => {
@@ -142,39 +189,6 @@ const Employees = () => {
     });
     setCurrentPage(1);
   }, []);
-
-  // ── dialog state ─────────────────────────────────────────────────────────────
-  const [dialogOpen,            setDialogOpen]            = useState(false);
-  const [roleDialogOpen,        setRoleDialogOpen]        = useState(false);
-  const [managerDialogOpen,     setManagerDialogOpen]     = useState(false);
-  const [designationDialogOpen, setDesignationDialogOpen] = useState(false);
-  const [leaveAdjustDialogOpen, setLeaveAdjustDialogOpen] = useState(false);
-  const [editInfoDialogOpen,    setEditInfoDialogOpen]    = useState(false);
-  const [passwordDialogOpen,    setPasswordDialogOpen]    = useState(false);
-  const [deactivateDialogOpen,  setDeactivateDialogOpen]  = useState(false);
-
-  const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
-  const [newRole,              setNewRole]              = useState("");
-  const [newManagerId,         setNewManagerId]         = useState("");
-  const [newDesignationId,     setNewDesignationId]     = useState("");
-  const [isUpdatingDesignation,setIsUpdatingDesignation]= useState(false);
-  const [isAdjustingLeave,     setIsAdjustingLeave]     = useState(false);
-  const [isUpdatingPassword,   setIsUpdatingPassword]   = useState(false);
-  const [newPassword,          setNewPassword]          = useState("");
-  const [confirmPassword,      setConfirmPassword]      = useState("");
-
-  const [adjustmentData, setAdjustmentData] = useState({ leave_type_id: "", quantity: "", reason: "" });
-  const [editInfoForm,   setEditInfoForm]   = useState({
-    full_name: "", email: "", salary: 0, joining_date: "", ending_date: "", birth_date: "",
-  });
-  const [formData, setFormData] = useState({
-    full_name: "", email: "", role: "", salary: "", joining_date: "", ending_date: "",
-  });
-
-  const { data: leavePolicies } = useQuery({
-    queryKey: ['leavePolicies'],
-    queryFn: async () => { const { leaveService } = await import('@/services'); return leaveService.getAllPolicies(); },
-  });
 
   // ── action handlers ───────────────────────────────────────────────────────────
   const handleAddEmployee = (e: React.FormEvent) => {

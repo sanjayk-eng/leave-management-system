@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { employeeService } from "@/services";
 import { getCurrentUser, ApiError } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { SortableTableHead } from "@/components/equipment/shared";
 import { ServerPagination } from "@/components/ServerPagination";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
@@ -53,17 +54,36 @@ function avatarColour(index: number) {
   return AVATAR_COLOURS[index % AVATAR_COLOURS.length];
 }
 
+// ── Sortable columns (mirrors /employee API sort_by values) ───────────────────
+type SortCol = 'name' | 'email' | 'role' | 'salary' | 'joining_date' | 'birth_date' | 'status';
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MyTeam = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize,    setPageSize]    = useState(10);
+  const [sortBy,      setSortBy]      = useState<SortCol | "">("");
+  const [sortDir,     setSortDir]     = useState<"asc" | "desc">("asc");
 
   // Debounce the search — fires API only after 500 ms of no typing
   const debouncedSearch = useDebounce(searchQuery, 500);
 
   const currentUser = getCurrentUser();
+
+  // Unified sort handler — same pattern as Employees page
+  const handleSort = useCallback((col: string) => {
+    const c = col as SortCol;
+    setSortBy(prev => {
+      if (prev === c) {
+        setSortDir(d => d === "asc" ? "desc" : "asc");
+        return prev;
+      }
+      setSortDir("asc");
+      return c;
+    });
+    setCurrentPage(1);
+  }, []);
 
   // Step 1 — fetch current user's profile to get full_name (needed as manager filter)
   const { data: myProfile, isLoading: profileLoading, error: profileError } = useQuery({
@@ -73,47 +93,45 @@ const MyTeam = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Step 2 — server-side paginated fetch of direct reports
-  // placeholderData keeps the previous page visible while the new one loads → no flicker
-  // queryKey uses debouncedSearch so the query only re-runs after typing settles
+  // Step 2 — server-side paginated + sorted fetch of direct reports
   const { data: teamData, isLoading: teamLoading, isFetching, error: teamError } = useQuery({
-    queryKey: ["myTeam", myProfile?.full_name, currentPage, pageSize, debouncedSearch],
+    queryKey: ["myTeam", myProfile?.full_name, currentPage, pageSize, debouncedSearch, sortBy, sortDir],
     queryFn:  () =>
       employeeService.getAll({
-        manager:   myProfile!.full_name,
-        page:      currentPage,
-        page_size: pageSize,
-        search:    debouncedSearch || undefined,
+        manager:    myProfile!.full_name,
+        page:       currentPage,
+        page_size:  pageSize,
+        search:     debouncedSearch || undefined,
+        sort_by:    sortBy || undefined,
+        sort_order: sortBy ? sortDir : undefined,
       }),
-    enabled:          !!myProfile?.full_name,
-    staleTime:        3 * 60 * 1000,
-    placeholderData:  keepPreviousData,
+    enabled:         !!myProfile?.full_name,
+    staleTime:       3 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
-  // The first meaningful error — profile error takes priority
-  const fetchError = (profileError ?? teamError) as Error | null;
-  // 403/401 → show access denied, hide search and table
+  const fetchError    = (profileError ?? teamError) as Error | null;
   const isAccessDenied = fetchError instanceof ApiError && (fetchError.status === 403 || fetchError.status === 401);
 
-  // Only show full skeleton on the very first load (no data yet)
-  const showSkeleton = profileLoading || (teamLoading && !teamData);
-  // Fade table while re-fetching (page / search change) but keep old rows visible
+  const showSkeleton  = profileLoading || (teamLoading && !teamData);
   const isSoftLoading = isFetching && !teamLoading;
+
   const members    = teamData?.employees   ?? [];
   const totalCount = teamData?.total_count ?? 0;
   const totalPages = teamData?.total_pages ?? 0;
 
-  // true while user is still typing (search not yet debounced)
   const isTyping = searchQuery !== debouncedSearch;
 
-  // Stats
   const activeCount   = members.filter((m) => m.status === "active").length;
   const inactiveCount = members.filter((m) => m.status !== "active").length;
 
   const handleSearch = (value: string) => {
     setSearchQuery(value);
-    setCurrentPage(1); // reset to page 1 on new search
+    setCurrentPage(1);
   };
+
+  // shared props for SortableTableHead
+  const sh = { sortBy: sortBy as string, sortDir, onSort: handleSort };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -148,7 +166,8 @@ const MyTeam = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-emerald-600">{activeCount}</p>
-              <p className="text-xs text-muted-foreground">Active (this page)</p>            </div>
+              <p className="text-xs text-muted-foreground">Active (this page)</p>
+            </div>
           </CardContent>
         </Card>
 
@@ -207,7 +226,8 @@ const MyTeam = () => {
               error={fetchError}
               onRetry={isAccessDenied ? undefined : () => window.location.reload()}
             />
-          ) : (            <>
+          ) : (
+            <>
               <div
                 className={`rounded-lg border overflow-x-auto transition-opacity duration-150 ${
                   isSoftLoading ? "opacity-60 pointer-events-none" : "opacity-100"
@@ -216,14 +236,14 @@ const MyTeam = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[200px]">Employee</TableHead>
-                      <TableHead className="min-w-[200px] hidden sm:table-cell">Email</TableHead>
-                      <TableHead className="min-w-[120px]">Role</TableHead>
+                      <SortableTableHead column="name"         label="Employee"    {...sh} className="min-w-[200px]" />
+                      <SortableTableHead column="email"        label="Email"       {...sh} className="min-w-[200px] hidden sm:table-cell" />
+                      <SortableTableHead column="role"         label="Role"        {...sh} className="min-w-[120px]" />
                       <TableHead className="min-w-[160px] hidden md:table-cell">Designation</TableHead>
-                      <TableHead className="min-w-[110px] hidden md:table-cell">Salary</TableHead>
-                      <TableHead className="min-w-[130px] hidden lg:table-cell">Joined</TableHead>
-                      <TableHead className="min-w-[130px] hidden xl:table-cell">Birthday</TableHead>
-                      <TableHead className="min-w-[90px]">Status</TableHead>
+                      <SortableTableHead column="salary"       label="Salary"      {...sh} className="min-w-[110px] hidden md:table-cell" />
+                      <SortableTableHead column="joining_date" label="Joined"      {...sh} className="min-w-[130px] hidden lg:table-cell" />
+                      <SortableTableHead column="birth_date"   label="Birthday"    {...sh} className="min-w-[130px] hidden xl:table-cell" />
+                      <SortableTableHead column="status"       label="Status"      {...sh} className="min-w-[90px]" />
                     </TableRow>
                   </TableHeader>
 

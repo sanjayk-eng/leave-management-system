@@ -131,7 +131,7 @@ export function useEmployeeSelect() {
 }
 
 /** Server-driven searchable dropdown for manager assignment (HR, MANAGER, ADMIN, SUPERADMIN only) */
-export function useManagerSelect() {
+export function useManagerSelect(enabled = false) {
   const fetcher = useCallback(async (search: string, page: number) => {
     const res = await employeeService.getAll({
       search: search || undefined,
@@ -146,5 +146,5 @@ export function useManagerSelect() {
     (emp: Employee) => ({ value: emp.id, label: `${emp.full_name} (${emp.role})` }),
     [],
   );
-  return useServerSelect({ fetcher, toOption });
+  return useServerSelect({ fetcher, toOption, enabled });
 }
