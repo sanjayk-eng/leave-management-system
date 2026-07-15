@@ -233,37 +233,3 @@ func (h *HandlerFunc) DeleteDesignation(c *gin.Context) {
 		"message": "designation deleted successfully. Employee designation_id set to NULL.",
 	})
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// actorInfo — resolved from the Gin context for every mutating handler.
-// ─────────────────────────────────────────────────────────────────────────────
-
-type actorInfo struct {
-	ID   uuid.UUID
-	Name string
-	Role string
-}
-
-// resolveActor extracts actor identity from the JWT claims set by AuthMiddleware.
-// Returns an error only if the user_id claim is missing or unparseable.
-func (h *HandlerFunc) resolveActor(c *gin.Context) (actorInfo, error) {
-	empID, err := common.GetEmployeeId(c)
-	if err != nil {
-		return actorInfo{}, err
-	}
-
-	name := c.GetString("full_name") // set by AuthMiddleware
-	role := c.GetString("role")
-
-	// Fallback: fetch from DB if middleware didn't set full_name.
-	if name == "" {
-		if emp, dbErr := h.Query.GetEmployeeByID(empID); dbErr == nil && emp != nil {
-			name = emp.FullName
-		}
-		if name == "" {
-			name = empID.String() // last resort — never return blank actor name
-		}
-	}
-
-	return actorInfo{ID: empID, Name: name, Role: role}, nil
-}

@@ -9,6 +9,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetActivityMeta - GET /api/logs/meta
+//
+// Returns every registered component and action from the backend's single
+// source of truth (audit.GetMeta). The frontend uses this to populate
+// filter dropdowns dynamically — no hardcoded lists on the client side.
+// Adding a new action to audit.GetMeta + BuildDescription is all that's
+// needed for it to appear in the UI.
+//
+// Public within the auth boundary — no extra RBAC needed beyond the
+// existing log:read permission applied to the parent route group.
+func (h *HandlerFunc) GetActivityMeta(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"message": "audit meta fetched successfully",
+		"data":    audit.GetMeta(),
+	})
+}
+
 // GetActivityFeed - GET /api/logs
 //
 // Returns the human-readable audit activity feed.
@@ -28,6 +45,7 @@ func (h *HandlerFunc) GetActivityFeed(c *gin.Context) {
 		ActorID:    c.Query("actor_id"),
 		Component:  c.Query("component"),
 		Action:     c.Query("action"),
+		Search:     c.Query("search"),
 		Page:       parseIntQuery(c, "page", 1),
 		PageSize:   parseIntQuery(c, "page_size", 20),
 	}

@@ -132,8 +132,36 @@ export interface ActivityFeedFilter {
   actor_id?: string;
   component?: string;
   action?: string;
+  search?: string;
   page?: number;
   page_size?: number;
+}
+
+// ─── Audit meta — served by GET /api/logs/meta ───────────────────────────────
+
+/** One action entry in the meta catalogue. */
+export interface AuditActionMeta {
+  component: string;
+  action: string;
+  label: string;
+}
+
+/** One component group with its nested actions. */
+export interface AuditComponentMeta {
+  value: string;
+  label: string;
+  actions: AuditActionMeta[];
+}
+
+/** Shape of GET /api/logs/meta response.data */
+export interface AuditMeta {
+  components: AuditComponentMeta[];
+  actions: AuditActionMeta[];
+}
+
+export interface AuditMetaResponse {
+  message: string;
+  data: AuditMeta;
 }
 
 export type LeaveTimingType = 'FIRST_HALF' | 'SECOND_HALF' | 'FULL' | 'EARLY';

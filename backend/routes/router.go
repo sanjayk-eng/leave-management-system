@@ -160,9 +160,13 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	logs := r.Group("/api/logs")
 	logs.Use((middleware.AuthMiddleware(h)))
 	{
-		// GET /api/logs — paginated activity feed (read-side only, no raw diffs)
+		// GET /api/logs      — paginated activity feed (read-side only, no raw diffs)
 		// Query params: resource_id, actor_id, component, action, page, page_size
 		logs.GET("", middleware.RequirePermission(h, "log", "read"), h.GetActivityFeed)
+
+		// GET /api/logs/meta — live catalogue of every component + action.
+		// Frontend filter dropdowns are built from this — zero hardcoding.
+		logs.GET("/meta", middleware.RequirePermission(h, "log", "read"), h.GetActivityMeta)
 	}
 
 	// ----------------- Permissions (RBAC) -----------------

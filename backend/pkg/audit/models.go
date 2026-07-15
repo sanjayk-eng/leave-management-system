@@ -138,8 +138,11 @@ type ActivityFilter struct {
 	ActorID    string // filter to everything a specific actor did
 	Component  string // filter to a specific domain component
 	Action     string // filter to a specific action
-	Page       int    // 1-indexed; defaults to 1
-	PageSize   int    // defaults to 20; max 100
+	// Search does a case-insensitive substring match across actor_name,
+	// description, and resource_name — powers the free-text search box.
+	Search   string
+	Page     int // 1-indexed; defaults to 1
+	PageSize int // defaults to 20; max 100
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,31 +1,29 @@
-import { ActivityEntry } from '@/types';
-import { Badge } from '@/components/ui/badge';
+/**
+ * LogsTable — activity feed table with both infinite-scroll AND a visible
+ * pagination bar at the bottom.
+ *
+ * - IntersectionObserver sentinel auto-loads the next page when the user
+ *   scrolls near the bottom (append mode).
+ * - ServerPagination bar at the bottom lets users jump to any page directly
+ *   (replace mode — jumps to that page, doesn't append).
+ */
+import { useEffect, useRef } from 'react';
+import { ActivityEntry, ActivityPagination } from '@/types';
+import { Badge }     from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell,
+  TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ServerPagination } from '@/components/ServerPagination';
-import { ActivityPagination } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  User,
-  Calendar,
-  DollarSign,
-  Settings,
-  Briefcase,
-  Sun,
-  Shield,
-  FileText,
-  Package,
-  Activity,
+  User, Calendar, DollarSign, Settings,
+  Briefcase, Sun, Shield, FileText, Package, Activity,
 } from 'lucide-react';
 
-// ─── Component icon map ───────────────────────────────────────────────────────
+// ─── Display helpers ──────────────────────────────────────────────────────────
 
 const COMPONENT_ICON: Record<string, React.ReactNode> = {
   designation:   <Briefcase  className="h-3.5 w-3.5" />,
@@ -39,33 +37,22 @@ const COMPONENT_ICON: Record<string, React.ReactNode> = {
   asset:         <Package    className="h-3.5 w-3.5" />,
   permission:    <Shield     className="h-3.5 w-3.5" />,
 };
-
 const componentIcon = (c: string) =>
   COMPONENT_ICON[c.toLowerCase()] ?? <Activity className="h-3.5 w-3.5" />;
 
-// ─── Action badge colour ──────────────────────────────────────────────────────
-
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
-
-const actionVariant = (action: string): BadgeVariant => {
-  if (action.endsWith('.created') || action.endsWith('.applied'))   return 'default';
-  if (action.endsWith('.updated') || action.endsWith('.approved'))  return 'secondary';
-  if (action.endsWith('.deleted') || action.endsWith('.rejected'))  return 'destructive';
+const actionVariant = (a: string): BadgeVariant => {
+  if (a.endsWith('.created') || a.endsWith('.applied'))  return 'default';
+  if (a.endsWith('.updated') || a.endsWith('.approved')) return 'secondary';
+  if (a.endsWith('.deleted') || a.endsWith('.rejected')) return 'destructive';
   return 'outline';
 };
-
-// Pretty-print "designation.created" → "Created"
-const actionLabel = (action: string) => {
-  const parts = action.split('.');
-  const verb = parts[parts.length - 1] ?? action;
+const actionLabel = (a: string) => {
+  const verb = a.split('.').pop() ?? a;
   return verb.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
-
-// Pretty-print component name
 const componentLabel = (c: string) =>
   c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-// ─── Role badge colour ────────────────────────────────────────────────────────
 
 const roleBadgeClass = (role: string) => {
   switch (role.toUpperCase()) {
@@ -79,14 +66,29 @@ const roleBadgeClass = (role: string) => {
   }
 };
 
+// ─── Skeleton rows for loading state ─────────────────────────────────────────
+
+const SkeletonRow = () => (
+  <TableRow>
+    {[200, 120, 100, 280, 130, 140].map((w, i) => (
+      <TableCell key={i} className={i === 0 ? 'pl-4' : i === 5 ? 'pr-4' : ''}>
+        <Skeleton className={`h-4`} style={{ width: w }} />
+      </TableCell>
+    ))}
+  </TableRow>
+);
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface LogsTableProps {
-  entries:    ActivityEntry[];
-  pagination: ActivityPagination;
-  loading?:   boolean;
-  onPageChange:     (page: number)     => void;
-  onPageSizeChange: (pageSize: number) => void;
+  entries:          ActivityEntry[];
+  pagination:       ActivityPagination;
+  loading:          boolean;
+  loadingMore:      boolean;
+  hasMore:          boolean;
+  onLoadMore:       () => void;
+  onPageChange:     (page: number) => void;
+  onPageSizeChange: (size: number) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -94,10 +96,27 @@ interface LogsTableProps {
 export const LogsTable = ({
   entries,
   pagination,
-  loading = false,
+  loading,
+  loadingMore,
+  hasMore,
+  onLoadMore,
   onPageChange,
   onPageSizeChange,
 }: LogsTableProps) => {
+  // Sentinel ref — IntersectionObserver watches this div at the list bottom
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) onLoadMore(); },
+      { rootMargin: '120px' }, // trigger a little before reaching the very bottom
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onLoadMore]);
 
   // ── Empty state ──────────────────────────────────────────────────────────
   if (!loading && entries.length === 0) {
@@ -109,7 +128,7 @@ export const LogsTable = ({
           </div>
           <p className="font-medium">No activity found</p>
           <p className="text-sm text-muted-foreground max-w-xs">
-            Try clearing the filters or come back after some actions have been recorded.
+            Try adjusting the filters or search term.
           </p>
         </CardContent>
       </Card>
@@ -122,12 +141,12 @@ export const LogsTable = ({
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
             Activity Log
-            {loading && (
+            {(loading || loadingMore) && (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             )}
           </span>
           <span className="text-sm font-normal text-muted-foreground">
-            {pagination.total.toLocaleString()}{' '}
+            {entries.length.toLocaleString()} of {pagination.total.toLocaleString()}{' '}
             {pagination.total === 1 ? 'entry' : 'entries'}
           </span>
         </CardTitle>
@@ -148,8 +167,13 @@ export const LogsTable = ({
             </TableHeader>
 
             <TableBody>
+              {/* Skeleton rows on first load */}
+              {loading && entries.length === 0 &&
+                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+              }
+
               {entries.map(entry => (
-                <TableRow key={entry.id} className="group">
+                <TableRow key={entry.id} className="group hover:bg-muted/30 transition-colors">
                   {/* Actor */}
                   <TableCell className="pl-4">
                     <div className="flex items-center gap-2">
@@ -160,9 +184,7 @@ export const LogsTable = ({
                         <p className="text-sm font-medium truncate leading-tight">
                           {entry.actor_name}
                         </p>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium leading-5 ${roleBadgeClass(entry.actor_role)}`}
-                        >
+                        <span className={`inline-flex items-center rounded-full border px-1.5 text-[10px] font-medium leading-5 ${roleBadgeClass(entry.actor_role)}`}>
                           {entry.actor_role}
                         </span>
                       </div>
@@ -179,16 +201,14 @@ export const LogsTable = ({
 
                   {/* Action */}
                   <TableCell>
-                    <Badge variant={actionVariant(entry.action)} className="text-xs font-medium">
+                    <Badge variant={actionVariant(entry.action)} className="text-xs font-medium whitespace-nowrap">
                       {actionLabel(entry.action)}
                     </Badge>
                   </TableCell>
 
-                  {/* Description — the pre-rendered human-readable sentence */}
+                  {/* Description — pre-rendered sentence stored in DB */}
                   <TableCell className="max-w-xs">
-                    <p className="text-sm text-foreground leading-snug line-clamp-2">
-                      {entry.description}
-                    </p>
+                    <p className="text-sm leading-snug line-clamp-2">{entry.description}</p>
                   </TableCell>
 
                   {/* Resource */}
@@ -200,25 +220,31 @@ export const LogsTable = ({
                   </TableCell>
 
                   {/* Time */}
-                  <TableCell className="pr-4">
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                        {new Date(entry.created_at).toLocaleString()}
-                      </p>
-                    </div>
+                  <TableCell className="pr-4 text-right">
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">
+                      {new Date(entry.created_at).toLocaleString()}
+                    </p>
                   </TableCell>
                 </TableRow>
               ))}
+
+              {/* Skeleton rows while appending */}
+              {loadingMore &&
+                Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={`more-${i}`} />)
+              }
             </TableBody>
           </Table>
         </div>
 
-        {/* Pagination */}
-        {pagination.total_pages > 0 && (
-          <div className="px-4">
+        {/* Invisible scroll sentinel — triggers loadMore via IntersectionObserver */}
+        <div ref={sentinelRef} className="h-1" aria-hidden />
+
+        {/* Visible pagination bar — lets users jump to any page directly */}
+        {pagination.total_pages > 1 && (
+          <div className="px-4 border-t">
             <ServerPagination
               currentPage={pagination.page}
               pageSize={pagination.page_size}
@@ -226,10 +252,17 @@ export const LogsTable = ({
               totalPages={pagination.total_pages}
               onPageChange={onPageChange}
               onPageSizeChange={onPageSizeChange}
-              pageSizeOptions={[10, 20, 50, 100]}
+              pageSizeOptions={[20, 50, 100]}
               itemName="entries"
             />
           </div>
+        )}
+
+        {/* End-of-feed label when everything is loaded via scroll */}
+        {!hasMore && !loading && entries.length > 0 && pagination.total_pages <= 1 && (
+          <p className="py-3 text-center text-xs text-muted-foreground">
+            All {pagination.total.toLocaleString()} {pagination.total === 1 ? 'entry' : 'entries'} loaded
+          </p>
         )}
       </CardContent>
     </Card>

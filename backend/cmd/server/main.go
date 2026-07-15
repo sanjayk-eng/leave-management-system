@@ -99,7 +99,7 @@ func main() {
 	// ── Domain services ──────────────────────────────────────────────────────
 
 	leaveApproverFlowRepo := repositories.NewLeaveApprovalFlowRepository(db)
-	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo)
+	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo, auditSvc)
 
 	leavePolicyRepo := repositories.NewLeavePolicy(db)
 	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leavePolicyRepo, repo)
@@ -117,6 +117,7 @@ func main() {
 		leaveFlowLogRepo,
 		repo,
 		notifSvc, // injected — leaveflow publishes events, never touches email directly
+		auditSvc, // injected — leaveflow logs audit entries asynchronously
 	)
 	holidayRepo := repositories.NewHolidayRepository(db)
 	holidayservice := service.NewHolidayService(holidayRepo)

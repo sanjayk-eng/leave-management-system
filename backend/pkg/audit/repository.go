@@ -129,6 +129,17 @@ func (r *postgresRepository) GetActivity(ctx context.Context, f ActivityFilter) 
 		args = append(args, f.Action)
 		argIdx++
 	}
+	if f.Search != "" {
+		// Case-insensitive substring match across the three most-searched columns.
+		// Using ILIKE with a parameterised pattern — never interpolated.
+		pattern := "%" + f.Search + "%"
+		where += fmt.Sprintf(
+			" AND (actor_name ILIKE $%d OR description ILIKE $%d OR resource_name ILIKE $%d)",
+			argIdx, argIdx+1, argIdx+2,
+		)
+		args = append(args, pattern, pattern, pattern)
+		argIdx += 3
+	}
 
 	// Count query for pagination metadata
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM tbl_audit_log %s`, where)

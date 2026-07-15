@@ -3,6 +3,7 @@ package leaveflow
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveprocess"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/constant"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
@@ -30,7 +32,7 @@ type LeaveFlowService interface {
 	ActionLeave(ctx context.Context, req models.ActionLeaveReq, leaveID string, empID uuid.UUID, role string) error
 	GetLeaves(ctx context.Context, empID uuid.UUID, role string, month int, year int) (gin.H, error)
 	GetMyLeave(empID uuid.UUID, month int, year int) (gin.H, error)
-	CancleLeave(c context.Context, leaveId string) (string, error)
+	CancleLeave(c context.Context, leaveId string, actorID uuid.UUID, actorRole string) (string, error)
 	UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput, role string) error
 }
 
@@ -44,10 +46,21 @@ type leaveFlow struct {
 	LeaveFlowLogService service.LeaveFlowLog
 	LeavePolicyService  service.LeavePolicyService
 	NotificationSvc     notification.Service // nil-safe: notifications skipped if not wired
+	AuditSvc            audit.Service        // nil-safe: audit skipped if not wired
 	registry            *leaveprocess.ProcessorRegistry
 }
 
-func NewLeaveFlow(db *sqlx.DB, leaveFlowLogService service.LeaveFlowLog, leavePolicyService service.LeavePolicyService, leaveFlowRepo repositories.LeaveFlowRepository, leavePolicyRepo repositories.LeavePolicyRepository, leaveFlowLogRepo repositories.LeaveFlowLog, commRepo *repositories.Repository, notifSvc notification.Service) LeaveFlowService {
+func NewLeaveFlow(
+	db *sqlx.DB,
+	leaveFlowLogService service.LeaveFlowLog,
+	leavePolicyService service.LeavePolicyService,
+	leaveFlowRepo repositories.LeaveFlowRepository,
+	leavePolicyRepo repositories.LeavePolicyRepository,
+	leaveFlowLogRepo repositories.LeaveFlowLog,
+	commRepo *repositories.Repository,
+	notifSvc notification.Service,
+	auditSvc audit.Service,
+) LeaveFlowService {
 	return &leaveFlow{
 		DB:                  db,
 		Repo:                leaveFlowRepo,
@@ -58,6 +71,7 @@ func NewLeaveFlow(db *sqlx.DB, leaveFlowLogService service.LeaveFlowLog, leavePo
 		LeaveFlowLogService: leaveFlowLogService,
 		LeavePolicyService:  leavePolicyService,
 		NotificationSvc:     notifSvc,
+		AuditSvc:            auditSvc,
 		registry:            leaveprocess.NewProcessorRegistry(),
 	}
 }
@@ -120,6 +134,32 @@ func (s *leaveFlow) Create(ctx context.Context, leave *models.LeaveInput, role s
 
 	// Publish notification asynchronously — after the transaction committed
 	s.publishLeaveApplied(ctx, leave, leaveTypeRres.Name, Days, leaveID.String())
+
+	// Audit — async, after tx commits. Actor = the employee who applied.
+	// Pure create: OldValue is nil (no leave existed before).
+	if s.AuditSvc != nil {
+		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(leave.EmployeeID)
+		s.AuditSvc.Log(audit.AuditEntry{
+			ActorID:      leave.EmployeeID,
+			ActorName:    actorDetails.FullName,
+			ActorRole:    role,
+			Component:    "leave",
+			Action:       "leave.applied",
+			ResourceType: "Leave",
+			ResourceID:   leaveID.String(),
+			ResourceName: fmt.Sprintf("%s (%s → %s)", leaveTypeRres.Name,
+				leave.StartDate.Format("2006-01-02"),
+				leave.EndDate.Format("2006-01-02")),
+			NewValue: map[string]interface{}{
+				"leave_type": leaveTypeRres.Name,
+				"start_date": leave.StartDate.Format("2006-01-02"),
+				"end_date":   leave.EndDate.Format("2006-01-02"),
+				"days":       Days,
+				"reason":     leave.Reason,
+			},
+		})
+	}
+
 	return nil
 }
 
@@ -191,10 +231,44 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 		}
 	}
 
+	// Audit — async, after notifications. Actor = the approver (empID).
+	if s.AuditSvc != nil {
+		auditAction := map[string]string{
+			"APPROVE":  "leave.approved",
+			"REJECT":   "leave.rejected",
+			"WITHDRAW": "leave.withdrawn",
+		}[action]
+		if auditAction == "" {
+			auditAction = "leave." + strings.ToLower(action)
+		}
+
+		// Resolve leave type name for the resource label
+		leaveTypeName := leavePolicy.Name
+
+		s.AuditSvc.Log(audit.AuditEntry{
+			ActorID:      empID,
+			ActorName:    approverDetails.FullName,
+			ActorRole:    role,
+			Component:    "leave",
+			Action:       auditAction,
+			ResourceType: "Leave",
+			ResourceID:   leaveID,
+			ResourceName: fmt.Sprintf("%s (%s → %s)", leaveTypeName,
+				leave.StartDate.Format("2006-01-02"),
+				leave.EndDate.Format("2006-01-02")),
+			NewValue: map[string]interface{}{
+				"action":     action,
+				"remarks":    req.Remarks,
+				"leave_type": leaveTypeName,
+				"status":     leave.Status,
+			},
+		})
+	}
+
 	return nil
 }
 
-func (s *leaveFlow) CancleLeave(ctx context.Context, leaveId string) (string, error) {
+func (s *leaveFlow) CancleLeave(ctx context.Context, leaveId string, actorID uuid.UUID, actorRole string) (string, error) {
 	leave, err := s.Repo.GetByID(ctx, leaveId)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -216,6 +290,30 @@ func (s *leaveFlow) CancleLeave(ctx context.Context, leaveId string) (string, er
 
 	// Publish cancellation notification after successful status update
 	s.publishLeaveAction(ctx, notification.LeaveCancelled, leave, "", "", "", leaveId)
+
+	// Audit — async, after status update
+	if s.AuditSvc != nil {
+		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(actorID)
+		leaveTypeName := ""
+		if lt, err := s.LeavePolicyRepo.GetById(ctx, strconv.Itoa(leave.LeaveTypeID)); err == nil {
+			leaveTypeName = lt.Name
+		}
+		s.AuditSvc.Log(audit.AuditEntry{
+			ActorID:      actorID,
+			ActorName:    actorDetails.FullName,
+			ActorRole:    actorRole,
+			Component:    "leave",
+			Action:       "leave.cancelled",
+			ResourceType: "Leave",
+			ResourceID:   leaveId,
+			ResourceName: fmt.Sprintf("%s (%s → %s)", leaveTypeName,
+				leave.StartDate.Format("2006-01-02"),
+				leave.EndDate.Format("2006-01-02")),
+			OldValue: map[string]interface{}{"status": leave.Status},
+			NewValue: map[string]interface{}{"status": constant.LEAVE_CANCELLED},
+		})
+	}
+
 	return leaveId, nil
 }
 
@@ -364,6 +462,32 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 		Days,
 		leaveUUID.String(),
 	)
+
+	// Audit — async, after tx. Full before/after diff.
+	// OldValue = snapshot before this update was applied.
+	if s.AuditSvc != nil {
+		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(empID)
+		s.AuditSvc.Log(audit.AuditEntry{
+			ActorID:      empID,
+			ActorName:    actorDetails.FullName,
+			ActorRole:    role,
+			Component:    "leave",
+			Action:       "leave.updated",
+			ResourceType: "Leave",
+			ResourceID:   leaveUUID.String(),
+			ResourceName: fmt.Sprintf("%s (%s → %s)", leaveTypeRes.Name,
+				leave.StartDate.Format("2006-01-02"),
+				leave.EndDate.Format("2006-01-02")),
+			NewValue: map[string]interface{}{
+				"leave_type": leaveTypeRes.Name,
+				"start_date": leave.StartDate.Format("2006-01-02"),
+				"end_date":   leave.EndDate.Format("2006-01-02"),
+				"days":       Days,
+				"reason":     leave.Reason,
+			},
+		})
+	}
+
 	return nil
 }
 

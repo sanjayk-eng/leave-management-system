@@ -110,14 +110,20 @@ func (h *HandlerFunc) GetAllMyLeave(c *gin.Context) {
 }
 
 func (h *HandlerFunc) CancelLeave(c *gin.Context) {
-	// Parse leave ID from URL
 	leaveID := c.Param("id")
 	if leaveID == "" {
 		errors.RespondWithError(c, http.StatusBadRequest, "leave_id is required")
 		return
 	}
-	h.LeaveFlowService.CancleLeave(c, leaveID)
 
+	// Resolve actor for audit — best-effort, cancel still proceeds on failure
+	actorID, _ := common.GetEmployeeId(c)
+	actorRole := c.GetString("role")
+
+	if _, err := h.LeaveFlowService.CancleLeave(c, leaveID, actorID, actorRole); err != nil {
+		errors.Error(c, err)
+		return
+	}
 	c.JSON(200, gin.H{
 		"message":  "Leave cancelled successfully",
 		"leave_id": leaveID,

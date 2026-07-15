@@ -1,19 +1,36 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { RefreshCw, X } from 'lucide-react';
-import { ActivityFeedFilter } from '@/types';
+/**
+ * LogsFilter — search + component/action filter bar for the Activity Log.
+ *
+ * • Free-text search input (debounced 350 ms in useLogs) — searches actor name,
+ *   description, and resource name via the backend ?search= param.
+ * • Component + Action dropdowns use SearchableSelect (the same component used
+ *   on the asset/employee pages) fed from GET /api/logs/meta — zero hardcoding.
+ * • Selecting a component narrows the Action dropdown to that component's actions.
+ * • All filter options come from the API; adding a new action on the backend
+ *   makes it appear here automatically.
+ */
+import { useMemo } from 'react';
+import { Button }   from '@/components/ui/button';
+import { Input }    from '@/components/ui/input';
+import { Label }    from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SearchableSelect } from '@/components/SearchableSelect';
+import { RefreshCw, X, Search, SlidersHorizontal } from 'lucide-react';
+import { AuditComponentMeta, AuditActionMeta } from '@/types';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface LogsFilterProps {
-  filter: ActivityFeedFilter;
+  // Current values
+  searchRaw:  string;
+  component:  string;
+  action:     string;
+  // Meta catalogue from GET /api/logs/meta
+  components:   AuditComponentMeta[];
+  actions:      AuditActionMeta[];
+  metaLoading:  boolean;
+  // Handlers
+  onSearch:          (v: string) => void;
   onComponentChange: (v: string) => void;
   onActionChange:    (v: string) => void;
   onClear:           () => void;
@@ -21,161 +38,140 @@ interface LogsFilterProps {
   loading:           boolean;
 }
 
-// All component values defined on the backend BuildDescription
-const COMPONENTS = [
-  { value: 'designation',   label: 'Designation'    },
-  { value: 'employee',      label: 'Employee'       },
-  { value: 'leave',         label: 'Leave'          },
-  { value: 'leave_balance', label: 'Leave Balance'  },
-  { value: 'leave_policy',  label: 'Leave Policy'   },
-  { value: 'holiday',       label: 'Holiday'        },
-  { value: 'settings',      label: 'Settings'       },
-  { value: 'payroll',       label: 'Payroll'        },
-  { value: 'asset',         label: 'Asset'          },
-  { value: 'permission',    label: 'Permission'     },
-];
-
-// All dot-namespaced actions defined on the backend
-const ACTIONS = [
-  // designation
-  { value: 'designation.created', label: 'Designation — Created'   },
-  { value: 'designation.updated', label: 'Designation — Updated'   },
-  { value: 'designation.deleted', label: 'Designation — Deleted'   },
-  // employee
-  { value: 'employee.created',            label: 'Employee — Created'            },
-  { value: 'employee.updated',            label: 'Employee — Updated'            },
-  { value: 'employee.role_updated',       label: 'Employee — Role Updated'       },
-  { value: 'employee.manager_updated',    label: 'Employee — Manager Updated'    },
-  { value: 'employee.designation_updated',label: 'Employee — Designation Updated'},
-  { value: 'employee.password_changed',   label: 'Employee — Password Changed'   },
-  { value: 'employee.activated',          label: 'Employee — Activated'          },
-  { value: 'employee.deactivated',        label: 'Employee — Deactivated'        },
-  // leave
-  { value: 'leave.applied',   label: 'Leave — Applied'   },
-  { value: 'leave.approved',  label: 'Leave — Approved'  },
-  { value: 'leave.rejected',  label: 'Leave — Rejected'  },
-  { value: 'leave.cancelled', label: 'Leave — Cancelled' },
-  { value: 'leave.withdrawn', label: 'Leave — Withdrawn' },
-  { value: 'leave.updated',   label: 'Leave — Updated'   },
-  // balance
-  { value: 'leave_balance.adjusted', label: 'Leave Balance — Adjusted' },
-  // policy
-  { value: 'leave_policy.created', label: 'Leave Policy — Created' },
-  { value: 'leave_policy.updated', label: 'Leave Policy — Updated' },
-  { value: 'leave_policy.deleted', label: 'Leave Policy — Deleted' },
-  // holiday
-  { value: 'holiday.created', label: 'Holiday — Created' },
-  { value: 'holiday.deleted', label: 'Holiday — Deleted' },
-  // settings
-  { value: 'settings.updated', label: 'Settings — Updated' },
-  // payroll
-  { value: 'payroll.run',       label: 'Payroll — Run'       },
-  { value: 'payroll.finalized', label: 'Payroll — Finalized' },
-  // asset
-  { value: 'asset.created',    label: 'Asset — Created'    },
-  { value: 'asset.updated',    label: 'Asset — Updated'    },
-  { value: 'asset.deleted',    label: 'Asset — Deleted'    },
-  { value: 'asset.assigned',   label: 'Asset — Assigned'   },
-  { value: 'asset.unassigned', label: 'Asset — Unassigned' },
-  // permission
-  { value: 'permission.updated', label: 'Permission — Updated' },
-];
-
-const ALL = 'all';
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export const LogsFilter = ({
-  filter,
+  searchRaw,
+  component,
+  action,
+  components,
+  actions,
+  metaLoading,
+  onSearch,
   onComponentChange,
   onActionChange,
   onClear,
   onRefresh,
   loading,
 }: LogsFilterProps) => {
-  const [search, setSearch] = useState('');
+
+  // Convert meta → SearchableSelect option shape
+  const componentOptions = useMemo(
+    () => components.map(c => ({ value: c.value, label: c.label })),
+    [components],
+  );
+
+  // Narrow actions to selected component; show all if none selected
+  const actionOptions = useMemo(() => {
+    const base = component
+      ? actions.filter(a => a.component === component)
+      : actions;
+    return base.map(a => ({ value: a.action, label: a.label }));
+  }, [actions, component]);
+
+  // If selected action no longer belongs to the new component, treat as "all"
+  const safeAction = useMemo(
+    () => (action && actionOptions.some(o => o.value === action) ? action : 'all'),
+    [action, actionOptions],
+  );
 
   const activeFilters =
-    (filter.component ? 1 : 0) + (filter.action ? 1 : 0);
-
-  const filteredActions = search
-    ? ACTIONS.filter(a => a.label.toLowerCase().includes(search.toLowerCase()))
-    : ACTIONS;
+    (component ? 1 : 0) + (action ? 1 : 0) + (searchRaw.trim() ? 1 : 0);
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      {/* Component filter */}
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs font-medium text-muted-foreground">Component</Label>
-        <Select
-          value={filter.component ?? ALL}
-          onValueChange={v => onComponentChange(v === ALL ? '' : v)}
+    <div className="rounded-lg border bg-card p-3 space-y-3">
+
+      {/* ── Row 1: free-text search ─────────────────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+        <Input
+          value={searchRaw}
+          onChange={e => onSearch(e.target.value)}
+          placeholder="Search by actor, description or resource…"
+          className="h-8 text-sm flex-1 max-w-sm"
           disabled={loading}
-        >
-          <SelectTrigger className="h-8 w-40 text-sm">
-            <SelectValue placeholder="All components" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All components</SelectItem>
-            {COMPONENTS.map(c => (
-              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
       </div>
 
-      {/* Action filter */}
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs font-medium text-muted-foreground">Action</Label>
-        <Select
-          value={filter.action ?? ALL}
-          onValueChange={v => onActionChange(v === ALL ? '' : v)}
-          disabled={loading}
-        >
-          <SelectTrigger className="h-8 w-52 text-sm">
-            <SelectValue placeholder="All actions" />
-          </SelectTrigger>
-          <SelectContent>
-            {/* Searchable input inside the dropdown */}
-            <div className="px-2 py-1.5">
-              <Input
-                placeholder="Search actions…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-7 text-xs"
-              />
-            </div>
-            <SelectItem value={ALL}>All actions</SelectItem>
-            {filteredActions.map(a => (
-              <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* ── Row 2: dropdowns + actions ──────────────────────────────────── */}
+      <div className="flex flex-wrap items-end gap-3">
 
-      {/* Clear filters */}
-      {activeFilters > 0 && (
+        {/* Label */}
+        <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground self-end mb-0.5">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filters
+        </div>
+
+        {/* Component */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">Component</Label>
+          {metaLoading ? (
+            <Skeleton className="h-8 w-44" />
+          ) : (
+            <SearchableSelect
+              options={componentOptions}
+              value={component || 'all'}
+              onValueChange={v => {
+                onActionChange(''); // clear action on component change
+                onComponentChange(v === 'all' ? '' : v);
+              }}
+              placeholder="All components"
+              searchPlaceholder="Search components…"
+              allOptionLabel="All components"
+              showAllOption
+              disabled={loading}
+              className="w-44 h-8 text-sm"
+            />
+          )}
+        </div>
+
+        {/* Action */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">Action</Label>
+          {metaLoading ? (
+            <Skeleton className="h-8 w-52" />
+          ) : (
+            <SearchableSelect
+              options={actionOptions}
+              value={safeAction}
+              onValueChange={v => onActionChange(v === 'all' ? '' : v)}
+              placeholder="All actions"
+              searchPlaceholder="Search actions…"
+              allOptionLabel={`All actions${component ? ` (${actionOptions.length})` : ''}`}
+              showAllOption
+              disabled={loading || actionOptions.length === 0}
+              emptyMessage="No matching actions"
+              className="w-52 h-8 text-sm"
+            />
+          )}
+        </div>
+
+        {/* Clear */}
+        {activeFilters > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            disabled={loading}
+            className="h-8 gap-1.5 text-muted-foreground hover:text-foreground self-end"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear ({activeFilters})
+          </Button>
+        )}
+
+        {/* Refresh */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          onClick={onClear}
+          onClick={onRefresh}
           disabled={loading}
-          className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+          className="h-8 gap-1.5 ml-auto self-end"
         >
-          <X className="h-3.5 w-3.5" />
-          Clear ({activeFilters})
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
         </Button>
-      )}
-
-      {/* Refresh */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRefresh}
-        disabled={loading}
-        className="h-8 gap-1.5 ml-auto"
-      >
-        <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-        Refresh
-      </Button>
+      </div>
     </div>
   );
 };
