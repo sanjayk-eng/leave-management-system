@@ -53,8 +53,7 @@ CREATE TYPE permission_action AS ENUM (
     'change_password',
     'update_role',
     'assign_manager',
-    'activate',
-    'deactivate',
+    'status_management'
     'designation_management',
     'read_salary',
 
@@ -111,10 +110,9 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('employee', 'change_password',       'Change Password',       'Reset or change an employee account password',                      TRUE),
     ('employee', 'update_role',           'Update Role',           'Change an employee role (e.g. EMPLOYEE → MANAGER)',                 TRUE),
     ('employee', 'assign_manager',        'Assign Manager',        'Link an employee to a manager in the reporting hierarchy',          TRUE),
-    ('employee', 'activate',              'Activate Employee',     'Re-activate a deactivated employee account',                        TRUE),
-    ('employee', 'deactivate',            'Deactivate Employee',   'Deactivate (soft-delete) an employee account',                      TRUE),
+    ('employee', 'status_management',              'Activate/Deactivate Employee',     'Re-activate / deactivated employee account',                        TRUE),
     ('employee', 'designation_management','Manage Designation',    'Assign , view , update an employee job designation',                      TRUE),
-    ('employee', 'read_salary','read salary',    'View Employee Salary',                      TRUE),
+    ('employee', 'read_salary','View salary',    'View Employee Salary',                      TRUE),
 
     -- LEAVE
     ('leave', 'apply',    'Apply Leave',    'Submit &Edit a pending leave request',      TRUE),
@@ -209,8 +207,7 @@ FROM (VALUES
     ('employee', 'change_password',       'all',  TRUE),
     ('employee', 'update_role',           'all',  TRUE),
     ('employee', 'assign_manager',        'all',  TRUE),
-    ('employee', 'activate',              'all',  TRUE),
-    ('employee', 'deactivate',            'all',  TRUE),
+    ('employee', 'status_management',              'all',  TRUE),
     ('employee', 'designation_management','all',  TRUE),
     ('leave',   'apply',                    'own',  FALSE),
     ('leave',    'read',                  'all',  FALSE),
@@ -251,8 +248,7 @@ FROM (VALUES
     ('employee', 'update_role',           'all',  TRUE),
     ('employee', 'read_salary',           'all',  TRUE),
     ('employee', 'assign_manager',        'all',  TRUE),
-    ('employee', 'activate',              'all',  TRUE),
-    ('employee', 'deactivate',            'all',  TRUE),
+    ('employee', 'status_management',              'all',  TRUE),
     ('employee', 'designation_management','all',  TRUE),
     ('leave','apply',    'own',  FALSE),
     ('leave','read',     'all',  FALSE),
@@ -276,8 +272,7 @@ FROM (VALUES
     ('asset', 'remove', 'all', FALSE),
     ('asset', 'assign', 'all', FALSE),
     ('permission', 'read',  'all', FALSE),
-    ('permission', 'edit',  'all', FALSE),
-    ('log', 'read',  'all', FALSE)
+    ('permission', 'edit',  'all', FALSE)
 ) AS v(resource, action, scope, req_sen)
 JOIN tbl_permission p ON p.resource::TEXT = v.resource AND p.action::TEXT = v.action
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -294,7 +289,6 @@ FROM (VALUES
     ('leave',         'reject',   'team'),
     ('leave',         'cancel',   'own'),
     ('leave',         'withdraw', 'own'),
-    ('log',            'read',    'team'),
     ('leave_report',   'read',    'team'),
     ('payslip',   'read',    'own')
 ) AS v(resource, action, scope)
@@ -307,7 +301,6 @@ SELECT 5, p.id, v.scope, FALSE, TRUE
 FROM (VALUES
     ('leave',         'apply',    'own'),
     ('leave',         'cancel',   'own'),
-    ('log',            'read',    'own'),
     ('leave_report',   'read',    'own'),
     ('payslip',   'read',    'own')
 ) AS v(resource, action, scope)
@@ -320,7 +313,6 @@ SELECT 6, p.id, v.scope, FALSE, TRUE
 FROM (VALUES
     ('leave',         'apply',    'own'),
     ('leave',         'cancel',   'own'),
-    ('log',            'read',    'own'),
     ('leave_report',   'read',    'own'),
     ('payslip',   'read',    'own')
 ) AS v(resource, action, scope)

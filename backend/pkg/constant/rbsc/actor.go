@@ -17,8 +17,7 @@ const (
 	ActionUpdateRole        Action = "update_role"
 	ActionAssignManager     Action = "assign_manager"
 	ActionUnassignManager   Action = "unassign_manager"
-	ActionActivate          Action = "activate"
-	ActionDeactivate        Action = "deactivate"
+	ActionStateManage       Action = "status_management"
 	ActionDesignationManage Action = "designation_management"
 
 	// ── Leave workflow ───────────────────────────────────────────────────────

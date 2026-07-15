@@ -35,16 +35,16 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	employees := r.Group("/api/employee")
 	employees.Use(middleware.AuthMiddleware(h)) // Protect employee routes
 	{
-		employees.GET("", h.GetEmployee)                                                                                                                              // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
-		employees.GET("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployeeById)                             // Get employee details (Self/Manager/Admin)
-		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)                                  // Create employee (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo)                        // Update employee info (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword) // Update employee password (SUPER_ADMIN, ADMIN, HR)
-		employees.PATCH("/:id/role", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionUpdateRole)), h.UpdateEmployeeRole)             // Change employee role (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/manager", h.UpdateEmployeeManager)                                                                                                      // Set/change manager (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/designation", h.UpdateEmployeeDesignation)                                                                                              // Assign/update designation (SUPER_ADMIN, ADMIN, HR)
-		employees.PUT("/deactivate/:id", h.DeleteEmployeeStatus) 
-		                                                                                                     // Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
+		employees.GET("", h.GetEmployee)                                                                                                                                       // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
+		employees.GET("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployeeById)                                      // Get employee details (Self/Manager/Admin)
+		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)                                           // Create employee (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo)                                 // Update employee info (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword)          // Update employee password (SUPER_ADMIN, ADMIN, HR)
+		employees.PATCH("/:id/role", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionUpdateRole)), h.UpdateEmployeeRole)                      // Change employee role (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/manager", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAssignManager)), h.UpdateEmployeeManager)             // Set/change manager (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/designation", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)), h.UpdateEmployeeDesignation) // Assign/update designation (SUPER_ADMIN, ADMIN, HR)
+		employees.PUT("/deactivate/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionStateManage)), h.DeleteEmployeeStatus)
+		// Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
 		employees.GET("/birthdays/today", h.GetTodayBirthdays)
 		employees.GET("/birthdays/upcomming", h.GetBirthdays) // filter_type=current_month
 	}
