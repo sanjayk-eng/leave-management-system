@@ -6,6 +6,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	authsvc "github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	"github.com/go-playground/validator/v10"
 )
@@ -30,6 +31,7 @@ type HandlerFunc struct {
 	PermissionSvc            service.PermissionService // RBAC permission toggle
 	AssetService             service.AssetService
 	EmployeeService          service.EmployeeService
+	AuditSvc                 audit.Service // async audit log — never nil after NewHandler
 }
 
 // NewHandler constructs the handler with all required dependencies.
@@ -46,7 +48,7 @@ func NewHandler(
 	permissionSvc service.PermissionService,
 	assetService service.AssetService,
 	employeeSvc service.EmployeeService,
-
+	auditSvc audit.Service,
 ) *HandlerFunc {
 	return &HandlerFunc{
 		Env:                      env,
@@ -64,6 +66,7 @@ func NewHandler(
 		PermissionSvc:            permissionSvc,
 		AssetService:             assetService,
 		EmployeeService:          employeeSvc,
+		AuditSvc:                 auditSvc,
 	}
 }
 

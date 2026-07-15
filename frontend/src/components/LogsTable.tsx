@@ -1,115 +1,116 @@
-import { SystemLog, LogAction, LogComponent } from '@/types';
+import { ActivityEntry } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { ServerPagination } from '@/components/ServerPagination';
+import { ActivityPagination } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
-import { User, Calendar, DollarSign, Settings, Briefcase, Sun, Shield, FileText } from 'lucide-react';
+import {
+  User,
+  Calendar,
+  DollarSign,
+  Settings,
+  Briefcase,
+  Sun,
+  Shield,
+  FileText,
+  Package,
+  Activity,
+} from 'lucide-react';
+
+// ─── Component icon map ───────────────────────────────────────────────────────
+
+const COMPONENT_ICON: Record<string, React.ReactNode> = {
+  designation:   <Briefcase  className="h-3.5 w-3.5" />,
+  employee:      <User       className="h-3.5 w-3.5" />,
+  leave:         <Calendar   className="h-3.5 w-3.5" />,
+  leave_balance: <Calendar   className="h-3.5 w-3.5" />,
+  leave_policy:  <FileText   className="h-3.5 w-3.5" />,
+  holiday:       <Sun        className="h-3.5 w-3.5" />,
+  settings:      <Settings   className="h-3.5 w-3.5" />,
+  payroll:       <DollarSign className="h-3.5 w-3.5" />,
+  asset:         <Package    className="h-3.5 w-3.5" />,
+  permission:    <Shield     className="h-3.5 w-3.5" />,
+};
+
+const componentIcon = (c: string) =>
+  COMPONENT_ICON[c.toLowerCase()] ?? <Activity className="h-3.5 w-3.5" />;
+
+// ─── Action badge colour ──────────────────────────────────────────────────────
+
+type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
+
+const actionVariant = (action: string): BadgeVariant => {
+  if (action.endsWith('.created') || action.endsWith('.applied'))   return 'default';
+  if (action.endsWith('.updated') || action.endsWith('.approved'))  return 'secondary';
+  if (action.endsWith('.deleted') || action.endsWith('.rejected'))  return 'destructive';
+  return 'outline';
+};
+
+// Pretty-print "designation.created" → "Created"
+const actionLabel = (action: string) => {
+  const parts = action.split('.');
+  const verb = parts[parts.length - 1] ?? action;
+  return verb.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
+
+// Pretty-print component name
+const componentLabel = (c: string) =>
+  c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+// ─── Role badge colour ────────────────────────────────────────────────────────
+
+const roleBadgeClass = (role: string) => {
+  switch (role.toUpperCase()) {
+    case 'SUPERADMIN': return 'bg-purple-100 text-purple-700 border-purple-200';
+    case 'ADMIN':      return 'bg-blue-100   text-blue-700   border-blue-200';
+    case 'HR':         return 'bg-cyan-100   text-cyan-700   border-cyan-200';
+    case 'MANAGER':    return 'bg-amber-100  text-amber-700  border-amber-200';
+    case 'EMPLOYEE':   return 'bg-green-100  text-green-700  border-green-200';
+    case 'INTERN':     return 'bg-gray-100   text-gray-600   border-gray-200';
+    default:           return 'bg-muted      text-muted-foreground border-border';
+  }
+};
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface LogsTableProps {
-  logs: SystemLog[];
-  totalCount: number;
-  daysFilter: number;
-  dateFrom: string;
-  loading?: boolean;
+  entries:    ActivityEntry[];
+  pagination: ActivityPagination;
+  loading?:   boolean;
+  onPageChange:     (page: number)     => void;
+  onPageSizeChange: (pageSize: number) => void;
 }
 
-const getActionBadgeVariant = (action: LogAction) => {
-  switch (action) {
-    case 'CREATE':
-      return 'default'; // Green
-    case 'UPDATE':
-      return 'secondary'; // Yellow/Orange
-    case 'DELETE':
-      return 'destructive'; // Red
-    case 'LOGIN':
-      return 'outline'; // Blue
-    case 'LOGOUT':
-      return 'outline'; // Blue
-    default:
-      return 'outline';
-  }
-};
+// ─── Component ────────────────────────────────────────────────────────────────
 
-const getComponentIcon = (component: LogComponent) => {
-  const iconProps = { className: 'h-4 w-4' };
-  
-  switch (component) {
-    case 'EMPLOYEE':
-      return <User {...iconProps} />;
-    case 'LEAVE':
-      return <Calendar {...iconProps} />;
-    case 'PAYROLL':
-      return <DollarSign {...iconProps} />;
-    case 'SETTINGS':
-      return <Settings {...iconProps} />;
-    case 'DESIGNATION':
-      return <Briefcase {...iconProps} />;
-    case 'HOLIDAY':
-      return <Sun {...iconProps} />;
-    case 'AUTH':
-      return <Shield {...iconProps} />;
-    default:
-      return <FileText {...iconProps} />;
-  }
-};
+export const LogsTable = ({
+  entries,
+  pagination,
+  loading = false,
+  onPageChange,
+  onPageSizeChange,
+}: LogsTableProps) => {
 
-const getComponentDisplayName = (component: LogComponent) => {
-  switch (component) {
-    case 'EMPLOYEE':
-      return 'Employee';
-    case 'LEAVE':
-      return 'Leave';
-    case 'PAYROLL':
-      return 'Payroll';
-    case 'SETTINGS':
-      return 'Settings';
-    case 'DESIGNATION':
-      return 'Designation';
-    case 'HOLIDAY':
-      return 'Holiday';
-    case 'AUTH':
-      return 'Authentication';
-    default:
-      return component;
-  }
-};
-
-export const LogsTable = ({ logs, totalCount, daysFilter, dateFrom, loading = false }: LogsTableProps) => {
-  if (logs.length === 0) {
-    const isToday = daysFilter === 1;
-    const dateRangeText = isToday 
-      ? 'today' 
-      : `in the last ${daysFilter} ${daysFilter === 1 ? 'day' : 'days'}`;
-    
-    const fromDateText = dateFrom 
-      ? ` (from ${new Date(dateFrom).toLocaleDateString()})` 
-      : '';
-
+  // ── Empty state ──────────────────────────────────────────────────────────
+  if (!loading && entries.length === 0) {
     return (
       <Card>
-        <CardContent className="p-8 text-center">
-          <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No system activities found</h3>
-          <div className="space-y-2 text-muted-foreground">
-            <p>
-              No logs were recorded {dateRangeText}{fromDateText}.
-            </p>
-            {isToday && (
-              <p className="text-sm">
-                This could mean no users were active today, or try selecting a longer time period.
-              </p>
-            )}
-            {daysFilter > 1 && (
-              <p className="text-sm">
-                Try selecting a different time period or check if the system was active during this time.
-              </p>
-            )}
+        <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <Activity className="h-6 w-6 text-muted-foreground" />
           </div>
-          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
-            <p className="text-sm text-muted-foreground">
-              💡 <strong>Tip:</strong> System logs include user logins, data changes, and administrative actions.
-            </p>
-          </div>
+          <p className="font-medium">No activity found</p>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Try clearing the filters or come back after some actions have been recorded.
+          </p>
         </CardContent>
       </Card>
     );
@@ -117,63 +118,96 @@ export const LogsTable = ({ logs, totalCount, daysFilter, dateFrom, loading = fa
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
-            System Logs
+            Activity Log
             {loading && (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             )}
           </span>
-          <div className="text-sm font-normal text-muted-foreground">
-            {totalCount} {totalCount === 1 ? 'entry' : 'entries'} • Last {daysFilter} {daysFilter === 1 ? 'day' : 'days'}
-            {dateFrom && (
-              <span className="ml-2">
-                (from {new Date(dateFrom).toLocaleDateString()})
-              </span>
-            )}
-          </div>
+          <span className="text-sm font-normal text-muted-foreground">
+            {pagination.total.toLocaleString()}{' '}
+            {pagination.total === 1 ? 'entry' : 'entries'}
+          </span>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+
+      <CardContent className="p-0">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Component</TableHead>
-                <TableHead>Time</TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="pl-4 w-[200px]">Actor</TableHead>
+                <TableHead className="w-[130px]">Component</TableHead>
+                <TableHead className="w-[110px]">Action</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[140px]">Resource</TableHead>
+                <TableHead className="w-[150px] pr-4">Time</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
-              {logs.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="font-medium">
+              {entries.map(entry => (
+                <TableRow key={entry.id} className="group">
+                  {/* Actor */}
+                  <TableCell className="pl-4">
                     <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      {log.user_name}
+                      <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <User className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate leading-tight">
+                          {entry.actor_name}
+                        </p>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium leading-5 ${roleBadgeClass(entry.actor_role)}`}
+                        >
+                          {entry.actor_role}
+                        </span>
+                      </div>
                     </div>
                   </TableCell>
+
+                  {/* Component */}
                   <TableCell>
-                    <Badge variant={getActionBadgeVariant(log.action)}>
-                      {log.action}
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      {componentIcon(entry.component)}
+                      <span>{componentLabel(entry.component)}</span>
+                    </div>
+                  </TableCell>
+
+                  {/* Action */}
+                  <TableCell>
+                    <Badge variant={actionVariant(entry.action)} className="text-xs font-medium">
+                      {actionLabel(entry.action)}
                     </Badge>
                   </TableCell>
+
+                  {/* Description — the pre-rendered human-readable sentence */}
+                  <TableCell className="max-w-xs">
+                    <p className="text-sm text-foreground leading-snug line-clamp-2">
+                      {entry.description}
+                    </p>
+                  </TableCell>
+
+                  {/* Resource */}
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      {getComponentIcon(log.component)}
-                      <span>{getComponentDisplayName(log.component)}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{entry.resource_name}</p>
+                      <p className="text-xs text-muted-foreground">{entry.resource_type}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <div className="flex flex-col">
-                      <span>
-                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
-                      </span>
-                      <span className="text-xs">
-                        {new Date(log.created_at).toLocaleString()}
-                      </span>
+
+                  {/* Time */}
+                  <TableCell className="pr-4">
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        {new Date(entry.created_at).toLocaleString()}
+                      </p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -181,6 +215,22 @@ export const LogsTable = ({ logs, totalCount, daysFilter, dateFrom, loading = fa
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination */}
+        {pagination.total_pages > 0 && (
+          <div className="px-4">
+            <ServerPagination
+              currentPage={pagination.page}
+              pageSize={pagination.page_size}
+              totalItems={pagination.total}
+              totalPages={pagination.total_pages}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+              pageSizeOptions={[10, 20, 50, 100]}
+              itemName="entries"
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

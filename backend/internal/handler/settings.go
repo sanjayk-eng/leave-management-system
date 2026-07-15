@@ -9,8 +9,8 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	accessrole "github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -81,15 +81,34 @@ func (h *HandlerFunc) UpdateCompanySettings(c *gin.Context) {
 
 	// 5. Execute Database Transaction
 	err = database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		if err := h.Query.UpdateCompanySettings(tx, input, logoPath); err != nil {
-			return err
-		}
-		return h.Query.AddLog(models.NewCommon(constant.CompanySettings, constant.ActionUpdate, empID), tx)
+		return h.Query.UpdateCompanySettings(tx, input, logoPath)
 	})
 	if err != nil {
 		errors.RespondWithError(c, 500, "Failed to update settings: "+err.Error())
 		return
 	}
+
+	// Audit — async, after tx commits.
+	// OldValue is omitted here because fetching the full settings snapshot
+	// before-and-after requires a second query; add it if diff visibility is needed.
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      empID,
+		ActorName:    c.GetString("full_name"),
+		ActorRole:    role,
+		Component:    "settings",
+		Action:       "settings.updated",
+		ResourceType: "CompanySettings",
+		ResourceID:   "company-settings",
+		ResourceName: "Company Settings",
+		NewValue: map[string]interface{}{
+			"working_days_per_month":    input.WorkingDaysPerMonth,
+			"allow_manager_add_leave":   input.AllowManagerAddLeave,
+			"company_name":              input.CompanyName,
+			"primary_color":             input.PrimaryColor,
+			"secondary_color":           input.SecondaryColor,
+			"birthday_message_template": input.BirthdayMessageTemplate,
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Company settings updated successfully",

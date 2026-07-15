@@ -99,25 +99,41 @@ export interface Designation {
   description?: string;
 }
 
-export type LogAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
+// ─── Audit / Activity Log (new API) ──────────────────────────────────────────
 
-export type LogComponent = 'EMPLOYEE' | 'LEAVE' | 'PAYROLL' | 'SETTINGS' | 'DESIGNATION' | 'HOLIDAY' | 'AUTH';
-
-export interface SystemLog {
+/** Read-side shape — what the feed API returns per entry. No raw diffs. */
+export interface ActivityEntry {
   id: string;
-  user_name: string;
-  action: LogAction;
-  component: LogComponent;
+  actor_name: string;
+  actor_role: string;
+  component: string;
+  action: string;
+  resource_type: string;
+  resource_name: string;
+  description: string;
   created_at: string;
 }
 
-export interface LogsResponse {
-  data: {
-    logs: SystemLog[];
-    total_count: number;
-    days_filter: number;
-    date_from: string;
-  };
+export interface ActivityPagination {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface ActivityFeedResponse {
+  message: string;
+  pagination: ActivityPagination;
+  data: ActivityEntry[];
+}
+
+export interface ActivityFeedFilter {
+  resource_id?: string;
+  actor_id?: string;
+  component?: string;
+  action?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export type LeaveTimingType = 'FIRST_HALF' | 'SECOND_HALF' | 'FULL' | 'EARLY';

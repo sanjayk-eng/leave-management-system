@@ -1,123 +1,165 @@
 import { useLogs } from '@/hooks/useLogs';
 import { LogsFilter } from '@/components/LogsFilter';
 import { LogsTable } from '@/components/LogsTable';
-import { LoadingState } from '@/components/LoadingState';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Activity } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Activity,
+  FileText,
+  Users,
+  Clock,
+} from 'lucide-react';
 
+// ─── Stat card skeleton ───────────────────────────────────────────────────────
+const StatSkeleton = () => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-4 w-4 rounded" />
+    </CardHeader>
+    <CardContent>
+      <Skeleton className="h-8 w-16 mb-1" />
+      <Skeleton className="h-3 w-32" />
+    </CardContent>
+  </Card>
+);
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 const Logs = () => {
   const {
-    logs,
+    entries,
+    pagination,
     loading,
     error,
-    totalCount,
-    daysFilter,
-    setDaysFilter,
-    dateFrom,
-    fetchLogs,
-    refreshLogs,
+    filter,
+    setComponent,
+    setAction,
+    setPage,
+    setPageSize,
+    clearFilters,
+    refresh,
   } = useLogs();
 
-  if (loading && logs.length === 0) {
-    return <LoadingState message="Loading system logs..." />;
-  }
-
-  if (error && logs.length === 0) {
+  // Full-page error (first load, no data yet)
+  if (error && entries.length === 0) {
     return (
       <ErrorDisplay
         error={new Error(error)}
-        onRetry={() => setDaysFilter(daysFilter)}
+        onRetry={refresh}
       />
     );
   }
 
+  const isFirstLoad = loading && entries.length === 0;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Activity className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">System Logs</h1>
-            <p className="text-muted-foreground">
-              Monitor and track all system activities and user actions
-            </p>
-          </div>
+
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-primary/10 rounded-lg">
+          <Activity className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>
+          <p className="text-sm text-muted-foreground">
+            Audit trail — every state-changing action, who did it, and what changed.
+          </p>
         </div>
       </div>
 
-      {/* Stats Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Logs</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Last {daysFilter} {daysFilter === 1 ? 'day' : 'days'}
-            </p>
-          </CardContent>
-        </Card>
+      {/* ── Stats row ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {isFirstLoad ? (
+          <>
+            <StatSkeleton />
+            <StatSkeleton />
+            <StatSkeleton />
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Entries</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {pagination.total.toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {filter.component || filter.action
+                    ? 'matching current filters'
+                    : 'across all time'}
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Date Range</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{daysFilter}</div>
-            <p className="text-xs text-muted-foreground">
-              {daysFilter === 1 ? 'Day' : 'Days'} filter active
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Current Page</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {pagination.page}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">
+                    / {pagination.total_pages || 1}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {pagination.page_size} entries per page
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">From Date</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold">
-              {dateFrom ? new Date(dateFrom).toLocaleDateString() : 'N/A'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Starting date
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Showing</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {entries.length}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  entries on this page
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
-      {/* Filter Controls */}
+      {/* ── Filters ─────────────────────────────────────────────────────── */}
       <LogsFilter
-        currentDays={daysFilter}
-        onFilterChange={setDaysFilter}
-        onRefresh={refreshLogs}
+        filter={filter}
+        onComponentChange={setComponent}
+        onActionChange={setAction}
+        onClear={clearFilters}
+        onRefresh={refresh}
         loading={loading}
       />
 
-      {/* Error Display (if error occurs during refresh) */}
-      {error && logs.length > 0 && (
+      {/* Inline error banner (refresh failed but we still have old data) */}
+      {error && entries.length > 0 && (
         <ErrorDisplay
           error={new Error(error)}
-          onRetry={() => setDaysFilter(daysFilter)}
+          onRetry={refresh}
           compact
         />
       )}
 
-      {/* Logs Table */}
+      {/* ── Table ───────────────────────────────────────────────────────── */}
       <LogsTable
-        logs={logs}
-        totalCount={totalCount}
-        daysFilter={daysFilter}
-        dateFrom={dateFrom}
+        entries={entries}
+        pagination={pagination}
         loading={loading}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
+
     </div>
   );
 };

@@ -6,47 +6,44 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Designation CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
 // CreateDesignation - POST /api/designations
-// Only ADMIN, SUPERADMIN, and HR can create designations
 func (h *HandlerFunc) CreateDesignation(c *gin.Context) {
-	// 1️ Permission check
-	empId, err := common.GetEmployeeId(c)
+	// ── WHO ──────────────────────────────────────────────────────────────────
+	actor, err := h.resolveActor(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
 		return
 	}
 
-	// 2️ Bind input JSON
-	var input *models.DesignationInput
-
+	// ── Input ─────────────────────────────────────────────────────────────────
+	var input models.DesignationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
 	}
-
 	if err := h.Validator.Struct(input); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
+		errors.RespondWithError(c, http.StatusBadRequest, "validation failed: "+err.Error())
 		return
 	}
 
-	// 3️ Create designation
+	// ── Persist (DB work only inside tx) ──────────────────────────────────────
 	var designationID string
 	err = database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		designationID, err = h.Query.CreateDesignation(tx, input)
+		designationID, err = h.Query.CreateDesignation(tx, &input)
 		if err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "failed to create designation: "+err.Error())
-		}
-		logData := models.NewCommon(constant.ComponentDesignation, constant.ActionCreate, empId)
-		if err := h.Query.AddLog(logData, tx); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to create  degisnation log: "+err.Error())
 		}
 		return nil
 	})
@@ -55,7 +52,23 @@ func (h *HandlerFunc) CreateDesignation(c *gin.Context) {
 		return
 	}
 
-	// 4️ Response
+	// ── Audit (async, after tx commits) ───────────────────────────────────────
+	// Pure create — OldValue is intentionally nil.
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "designation",
+		Action:       "designation.created",
+		ResourceType: "Designation",
+		ResourceID:   designationID,
+		ResourceName: input.DesignationName,
+		NewValue: map[string]interface{}{
+			"designation_name": input.DesignationName,
+			"description":      input.Description,
+		},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message":        "designation created successfully",
 		"designation_id": designationID,
@@ -63,16 +76,12 @@ func (h *HandlerFunc) CreateDesignation(c *gin.Context) {
 }
 
 // GetAllDesignations - GET /api/designations
-// All authenticated users can view designations
 func (h *HandlerFunc) GetAllDesignations(c *gin.Context) {
-	// 1️ Fetch all designations
 	designations, err := h.Query.GetAllDesignations()
 	if err != nil {
 		errors.RespondWithError(c, http.StatusInternalServerError, "failed to fetch designations: "+err.Error())
 		return
 	}
-
-	// 2️ Response
 	c.JSON(http.StatusOK, gin.H{
 		"message":      "designations fetched successfully",
 		"designations": designations,
@@ -80,24 +89,17 @@ func (h *HandlerFunc) GetAllDesignations(c *gin.Context) {
 }
 
 // GetDesignationByID - GET /api/designations/:id
-// All authenticated users can view a specific designation
 func (h *HandlerFunc) GetDesignationByID(c *gin.Context) {
-	// 1️ Parse designation ID
-	designationIDStr := c.Param("id")
-	designationID, err := uuid.Parse(designationIDStr)
+	designationID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid designation ID")
 		return
 	}
-
-	// 2️ Fetch designation
 	designation, err := h.Query.GetDesignationByID(designationID)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusNotFound, "designation not found")
 		return
 	}
-
-	// 3️ Response
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "designation fetched successfully",
 		"designation": designation,
@@ -105,58 +107,73 @@ func (h *HandlerFunc) GetDesignationByID(c *gin.Context) {
 }
 
 // UpdateDesignation - PATCH /api/designations/:id
-// Only ADMIN, SUPERADMIN, and HR can update designations
 func (h *HandlerFunc) UpdateDesignation(c *gin.Context) {
-	// 1️ Permission check
+	// ── WHO ──────────────────────────────────────────────────────────────────
 	role := c.GetString("role")
 	if err := accessrole.Admin_SuperAdmin_Hr(role, "only ADMIN, SUPERADMIN, and HR can update designations"); err != nil {
 		errors.RespondWithError(c, http.StatusForbidden, err.Error())
 		return
 	}
-
-	empId, err := common.GetEmployeeId(c)
+	actor, err := h.resolveActor(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
 		return
 	}
 
-	// 2️ Parse designation ID
-	designationIDStr := c.Param("id")
-	designationID, err := uuid.Parse(designationIDStr)
+	// ── ON WHAT ───────────────────────────────────────────────────────────────
+	designationID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid designation ID")
 		return
 	}
 
-	// 3️ Bind input JSON
-	var input *models.DesignationInput
+	// Fetch the BEFORE snapshot for the diff.
+	before, err := h.Query.GetDesignationByID(designationID)
+	if err != nil {
+		errors.RespondWithError(c, http.StatusNotFound, "designation not found")
+		return
+	}
+
+	// ── Input ─────────────────────────────────────────────────────────────────
+	var input models.DesignationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
 	}
-
 	if err := h.Validator.Struct(input); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
+		errors.RespondWithError(c, http.StatusBadRequest, "validation failed: "+err.Error())
 		return
 	}
 
-	// 4️ Update designation
+	// ── Persist ───────────────────────────────────────────────────────────────
 	err = database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		err = h.Query.UpdateDesignation(tx, designationID, input)
-		if err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to update designation: "+err.Error())
-		}
-		logData := models.NewCommon(constant.ComponentDesignation, constant.ActionUpdate, empId)
-		if err := h.Query.AddLog(logData, tx); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to create  degisnation log: "+err.Error())
-		}
-		return nil
+		return h.Query.UpdateDesignation(tx, designationID, &input)
 	})
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		errors.RespondWithError(c, http.StatusInternalServerError, "failed to update designation: "+err.Error())
 		return
 	}
-	// 5️ Response
+
+	// ── Audit (async) — full before/after diff ────────────────────────────────
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "designation",
+		Action:       "designation.updated",
+		ResourceType: "Designation",
+		ResourceID:   designationID.String(),
+		ResourceName: input.DesignationName,
+		OldValue: map[string]interface{}{
+			"designation_name": before.DesignationName,
+			"description":      before.Description,
+		},
+		NewValue: map[string]interface{}{
+			"designation_name": input.DesignationName,
+			"description":      input.Description,
+		},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":        "designation updated successfully",
 		"designation_id": designationID,
@@ -164,43 +181,89 @@ func (h *HandlerFunc) UpdateDesignation(c *gin.Context) {
 }
 
 // DeleteDesignation - DELETE /api/designations/:id
-// Only ADMIN, SUPERADMIN, and HR can delete designations
 func (h *HandlerFunc) DeleteDesignation(c *gin.Context) {
-
-	empId, err := common.GetEmployeeId(c)
+	// ── WHO ──────────────────────────────────────────────────────────────────
+	actor, err := h.resolveActor(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
 		return
 	}
 
-	// 2️ Parse designation ID
-	designationIDStr := c.Param("id")
-
-	designationID, err := uuid.Parse(designationIDStr)
+	// ── ON WHAT ───────────────────────────────────────────────────────────────
+	designationID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid designation ID "+err.Error())
+		errors.RespondWithError(c, http.StatusBadRequest, "invalid designation ID: "+err.Error())
 		return
 	}
 
-	// 3️ Delete designation (will set employee designation_id to NULL due to ON DELETE SET NULL)
+	// Fetch BEFORE snapshot so the audit record is useful even after deletion.
+	before, err := h.Query.GetDesignationByID(designationID)
+	if err != nil {
+		errors.RespondWithError(c, http.StatusNotFound, "designation not found")
+		return
+	}
+
+	// ── Persist ───────────────────────────────────────────────────────────────
 	err = database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		err = h.Query.DeleteDesignation(tx, designationID)
-		if err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to delete designation: "+err.Error())
-		}
-		logData := models.NewCommon(constant.ComponentDesignation, constant.ActionDelete, empId)
-		if err := h.Query.AddLog(logData, tx); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to create  degisnation log: "+err.Error())
-		}
-		return nil
+		return h.Query.DeleteDesignation(tx, designationID)
 	})
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		errors.RespondWithError(c, http.StatusInternalServerError, "failed to delete designation: "+err.Error())
 		return
 	}
 
-	// 4️ Response
+	// ── Audit (async) — pure delete, NewValue is nil ──────────────────────────
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "designation",
+		Action:       "designation.deleted",
+		ResourceType: "Designation",
+		ResourceID:   designationID.String(),
+		ResourceName: before.DesignationName,
+		OldValue: map[string]interface{}{
+			"designation_name": before.DesignationName,
+			"description":      before.Description,
+		},
+		// NewValue intentionally nil — resource no longer exists.
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "designation deleted successfully. Employee designation_id set to NULL.",
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// actorInfo — resolved from the Gin context for every mutating handler.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type actorInfo struct {
+	ID   uuid.UUID
+	Name string
+	Role string
+}
+
+// resolveActor extracts actor identity from the JWT claims set by AuthMiddleware.
+// Returns an error only if the user_id claim is missing or unparseable.
+func (h *HandlerFunc) resolveActor(c *gin.Context) (actorInfo, error) {
+	empID, err := common.GetEmployeeId(c)
+	if err != nil {
+		return actorInfo{}, err
+	}
+
+	name := c.GetString("full_name") // set by AuthMiddleware
+	role := c.GetString("role")
+
+	// Fallback: fetch from DB if middleware didn't set full_name.
+	if name == "" {
+		if emp, dbErr := h.Query.GetEmployeeByID(empID); dbErr == nil && emp != nil {
+			name = emp.FullName
+		}
+		if name == "" {
+			name = empID.String() // last resort — never return blank actor name
+		}
+	}
+
+	return actorInfo{ID: empID, Name: name, Role: role}, nil
 }

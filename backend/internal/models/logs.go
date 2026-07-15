@@ -1,30 +1,9 @@
+// Package models — logs.go
+//
+// The old tbl_log / Common / LogResponse types have been removed.
+// All audit logging now goes through pkg/audit.AuditEntry (write side)
+// and pkg/audit.ActivityEntry (read side).
+//
+// This file is intentionally left empty (package declaration only) so that
+// existing imports of the models package continue to compile.
 package models
-
-import (
-	"time"
-
-	"github.com/google/uuid"
-)
-
-// ----------------- LOG -----------------
-type LogResponse struct {
-	ID        int       `json:"id" db:"id"`
-	UserName  string    `json:"user_name" db:"user_name"`
-	Action    string    `json:"action" db:"action"`
-	Component string    `json:"component" db:"component"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-}
-
-type Common struct {
-	Component  string
-	Action     string
-	FromUserID uuid.UUID
-}
-
-func NewCommon(component, action string, fromUserID uuid.UUID) *Common {
-	return &Common{
-		Component:  component,
-		Action:     action,
-		FromUserID: fromUserID,
-	}
-}

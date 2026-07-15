@@ -160,7 +160,9 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	logs := r.Group("/api/logs")
 	logs.Use((middleware.AuthMiddleware(h)))
 	{
-		logs.GET("", h.GetLogs) // Get logs filtered by days (SUPERADMIN only)
+		// GET /api/logs — paginated activity feed (read-side only, no raw diffs)
+		// Query params: resource_id, actor_id, component, action, page, page_size
+		logs.GET("", middleware.RequirePermission(h, "log", "read"), h.GetActivityFeed)
 	}
 
 	// ----------------- Permissions (RBAC) -----------------

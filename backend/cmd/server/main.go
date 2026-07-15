@@ -15,6 +15,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/repositories"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification/handlers"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification/providers"
@@ -76,6 +77,21 @@ func main() {
 	notifSvc.Start(ctx)
 	defer notifSvc.Stop()
 
+	// ── Audit log system ─────────────────────────────────────────────────────
+	// Follows the same async channel pattern as NotificationSvc.
+	// Worker pool writes to tbl_audit_log; reads bypass the channel entirely.
+	auditRepo := audit.NewRepository(db, logger)
+	auditCfg := audit.DefaultConfig() // Workers:2, Buffer:512
+	auditSvc := audit.NewService(auditRepo, auditCfg, logger)
+	auditSvc.Start(ctx)
+	defer auditSvc.Stop()
+
+	// Partition cron — creates next month's partition on the 25th of each month.
+	// Also runs once on boot to cover the current month.
+	partitionCron := audit.NewPartitionCron(db, logger)
+	partitionCron.Start()
+	defer partitionCron.Stop()
+
 	// role_repo
 	roleRepo := repositories.NewRoleRepository(db)
 	hrbcService := service.NewHrbc(roleRepo)
@@ -125,6 +141,7 @@ func main() {
 		permissionSvc,
 		assetService,
 		employeeSvc,
+		auditSvc,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

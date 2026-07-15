@@ -85,7 +85,7 @@ const App = () => (
               </Route>
               <Route path="/designations" element={<AuthGuard><DesignationRoute><Layout><Designations /></Layout></DesignationRoute></AuthGuard>} />
               <Route path="/equipment" element={<AuthGuard><AssetRoute><Layout><Equipment /></Layout></AssetRoute></AuthGuard>} />
-              <Route path="/logs" element={<AuthGuard><SuperAdminRoute><Layout><Logs /></Layout></SuperAdminRoute></AuthGuard>} />
+              <Route path="/logs" element={<AuthGuard><AdminRoute><Layout><Logs /></Layout></AdminRoute></AuthGuard>} />
               <Route path="/leave-monthly-report" element={<AuthGuard><LeaveReportRoute><Layout><LeaveMonthlyReport /></Layout></LeaveReportRoute></AuthGuard>} />
               <Route path="*" element={<AuthGuard><NotFound /></AuthGuard>} />
             </Routes>
