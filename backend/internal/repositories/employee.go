@@ -25,6 +25,8 @@ type EmployeeRepository interface {
 	GetAllEmployees(ctx context.Context, params models.EmployeeFilterParams, access models.EmployeeAccessFilter) (*models.PaginatedEmployeeResponse, error)
 	GetOrgHierarchyMap(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error)
 	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
+	UpdateManager(ctx context.Context, empID, managerID uuid.UUID) error
+	UpdateDesignation(ctx context.Context, empID uuid.UUID, designationID *uuid.UUID) error
 }
 
 type employeeRepository struct {
@@ -399,4 +401,37 @@ func (r *employeeRepository) GetEmployeeByID(empID uuid.UUID) (*models.EmployeeR
 	)
 
 	return &emp, err
+}
+
+func (r *employeeRepository) UpdateManager(ctx context.Context, empID, managerID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE Tbl_Employee SET manager_id = $1, updated_at = NOW() WHERE id = $2`,
+		managerID, empID,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateManager id=%s: %w", empID, err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("UpdateManager id=%s: employee not found", empID)
+	}
+
+	return nil
+}
+
+func (r *employeeRepository) UpdateDesignation(ctx context.Context, empID uuid.UUID, designationID *uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE Tbl_Employee SET designation_id = $1, updated_at = NOW() WHERE id = $2`,
+		designationID, empID,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateDesignation id=%s: %w", empID, err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("UpdateDesignation id=%s: employee not found", empID)
+	}
+	return nil
 }

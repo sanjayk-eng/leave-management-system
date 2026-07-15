@@ -146,3 +146,26 @@ type BirthdayEmployee struct {
 	RemainingHours   int        `json:"remaining_hours,omitempty"`
 	RemainingMinutes int        `json:"remaining_minutes,omitempty"`
 }
+
+type UpdateManagerInput struct {
+	ManagerID string `json:"manager_id" binding:"required"`
+}
+
+type ManagerUpdateResult struct {
+	EmployeeID string `json:"employee_id"`
+	ManagerID  string `json:"manager_id"`
+}
+
+type StatusUpdateResult struct {
+	EmployeeID string `json:"employee_id"`
+	NewStatus  string `json:"new_status"`
+}
+type UpdateDesignationInput struct {
+	DesignationID *string `json:"designation_id"`
+}
+
+type DesignationUpdateResult struct {
+	EmployeeID    string     `json:"employee_id"`
+	DesignationID *uuid.UUID `json:"designation_id"`
+	Removed       bool       `json:"-"`
+}

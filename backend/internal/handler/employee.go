@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
@@ -12,7 +11,6 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/pkg/timezone"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 )
 
 type UpdateManagerInput struct {
@@ -127,136 +125,46 @@ func (h *HandlerFunc) UpdateEmployeeRole(c *gin.Context) {
 }
 
 func (h *HandlerFunc) DeleteEmployeeStatus(c *gin.Context) {
+	actorRoleID := c.GetInt("role_id")
+	empID := c.Param("id")
 
-	// Read ID
-	idParam := c.Param("id")
-	empID, err := uuid.Parse(idParam)
-	if err != nil {
-		errors.RespondWithError(c, 400, "invalid employee id")
-		return
-	}
-
-	// Role check
-	role, _ := c.Get("role")
-	r := role.(string)
-
-	if r != "SUPERADMIN" && r != "ADMIN" && role != "HR" {
-		errors.RespondWithError(c, 401, "not permitted")
-		return
-	}
-
-	// Check if target employee exists (works for both active and deactive)
-	targetEmp, err := h.EmployeeService.GetEmployeeByID(empID)
+	result, err := h.EmployeeService.DeleteStatus(c.Request.Context(), actorRoleID, empID)
 	if err != nil {
 		errors.Error(c, err)
 		return
 	}
-	// HR and ADMIN cannot deactivate SUPERADMIN
-	if (r == "ADMIN") && targetEmp.Role == "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "HR and ADMIN cannot modify SUPERADMIN users")
-		return
-	}
 
-	var newStatus string
-	if err := database.ExecuteTransaction(c, h.Query.DB, func(tx *sqlx.Tx) error {
-		var txErr error
-		newStatus, txErr = h.Query.DeleteEmployeeStatus(tx, empID)
-		return txErr
-	}); err != nil {
-		errors.RespondWithError(c, 500, err.Error())
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"message":    "Employee status updated successfully",
-		"new_status": newStatus,
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "employee status updated successfully",
+		"employee_id": result.EmployeeID,
+		"new_status":  result.NewStatus,
 	})
 }
+
 func (h *HandlerFunc) UpdateEmployeeManager(c *gin.Context) {
-	// 1️ Permission check
-	role := c.GetString("role")
-	if role != "SUPERADMIN" && role != "ADMIN" && role != "HR" {
-		errors.RespondWithError(c, 401, "not permitted")
+	actorUserID, _ := uuid.Parse(c.GetString("user_id")) // best effort; zero UUID if missing/invalid, handled downstream
+	actorRoleID := c.GetInt("role_id")
+
+	empID := c.Param("id")
+
+	var input models.UpdateManagerInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
 	}
 
-	// 2️ Parse Employee ID
-	empID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		errors.RespondWithError(c, 400, "invalid employee ID")
-		return
-	}
-
-	// 2.5️ Check if target employee is SUPERADMIN
-	targetEmp, err := h.EmployeeService.GetEmployeeByID(empID)
+	result, err := h.EmployeeService.UpdateManager(c.Request.Context(), actorUserID, actorRoleID, empID, input.ManagerID)
 	if err != nil {
 		errors.Error(c, err)
 		return
 	}
 
-	// HR and ADMIN cannot assign manager to SUPERADMIN
-	if (role == "ADMIN" || role == "HR") && targetEmp.Role == "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "HR and ADMIN cannot modify SUPERADMIN users")
-		return
-	}
-
-	// 3️ Parse Manager ID
-	var input UpdateManagerInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		errors.RespondWithError(c, 400, "invalid input: "+err.Error())
-		return
-	}
-	managerID, err := uuid.Parse(input.ManagerID)
-	if err != nil {
-		errors.RespondWithError(c, 400, "invalid manager ID")
-		return
-	}
-
-	// 4️ Self assignment check
-	if empID == managerID {
-		errors.RespondWithError(c, 400, "cannot assign employee as their own manager")
-		return
-	}
-
-	// 4.5️ Prevent manager from assigning themselves to others
-	currentUserID, _ := uuid.Parse(c.GetString("user_id"))
-	if currentUserID == managerID && role != "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "you cannot assign yourself as a manager to others. Only SUPERADMIN can do this.")
-		return
-	}
-
-	// 6️ Validate Manager exists, active and role = MANAGER
-	var mgrRole, mgrStatus string
-	err = h.Query.DB.Get(&mgrRole, "SELECT r.type FROM Tbl_Employee e JOIN Tbl_Role r ON e.role_id = r.id WHERE e.id=$1", managerID)
-	if err != nil {
-		errors.RespondWithError(c, 404, "manager not found")
-		return
-	}
-	err = h.Query.DB.Get(&mgrStatus, "SELECT status FROM Tbl_Employee WHERE id=$1", managerID)
-	if err != nil || mgrStatus != "active" {
-		errors.RespondWithError(c, 403, "manager is deactivated")
-		return
-	}
-	if mgrRole != "MANAGER" {
-		errors.RespondWithError(c, 400, "assigned employee is not a manager")
-		return
-	}
-
-	// 7️ Update manager
-	err = h.Query.UpdateManager(empID, managerID)
-	if err != nil {
-		errors.RespondWithError(c, 500, "failed to update manager: "+err.Error())
-		return
-	}
-
-	// 8️ Success response
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message":     "manager updated successfully",
-		"employee_id": empID,
-		"manager_id":  managerID,
+		"employee_id": result.EmployeeID,
+		"manager_id":  result.ManagerID,
 	})
 }
-
 func (h *HandlerFunc) UpdateEmployeeInfo(c *gin.Context) {
 
 	actorUserID, err := uuid.Parse(c.GetString("user_id"))
@@ -329,80 +237,33 @@ func (h *HandlerFunc) UpdateEmployeePassword(c *gin.Context) {
 }
 
 // UpdateEmployeeDesignation - PATCH /api/employee/:id/designation
-// Only ADMIN, SUPERADMIN, and HR can assign/update employee designation
+// Route-level access gated by RequirePermission middleware; hierarchy rule
+// lives in the service.
 func (h *HandlerFunc) UpdateEmployeeDesignation(c *gin.Context) {
-	// 1️ Permission check
-	role := c.GetString("role")
-	if role != "SUPERADMIN" && role != "ADMIN" && role != "HR" {
-		errors.RespondWithError(c, http.StatusForbidden, "only ADMIN, SUPERADMIN, and HR can assign designations")
-		return
-	}
+	actorRoleID := c.GetInt("role_id")
+	empID := c.Param("id")
 
-	// 2️Parse Employee ID
-	empIDStr := c.Param("id")
-	empID, err := uuid.Parse(empIDStr)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid employee ID")
-		return
-	}
-
-	// 3️ Check if employee exists
-	targetEmp, err := h.EmployeeService.GetEmployeeByID(empID)
-	if err != nil {
-		errors.Error(c, err)
-		return
-	}
-
-	// 4️ HR and ADMIN cannot modify SUPERADMIN
-	if (role == "ADMIN" || role == "HR") && targetEmp.Role == "SUPERADMIN" {
-		errors.RespondWithError(c, http.StatusForbidden, "HR and ADMIN cannot modify SUPERADMIN users")
-		return
-	}
-
-	// 5️ Bind input JSON
-	var input struct {
-		DesignationID *string `json:"designation_id"` // Can be null to remove designation
-	}
+	var input models.UpdateDesignationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
 		return
 	}
 
-	// 6️ Parse and validate designation ID if provided
-	var designationID *uuid.UUID
-	if input.DesignationID != nil && *input.DesignationID != "" {
-		parsedID, err := uuid.Parse(*input.DesignationID)
-		if err != nil {
-			errors.RespondWithError(c, http.StatusBadRequest, "invalid designation ID")
-			return
-		}
-
-		// Check if designation exists
-		_, err = h.Query.GetDesignationByID(parsedID)
-		if err != nil {
-			errors.RespondWithError(c, http.StatusNotFound, "designation not found")
-			return
-		}
-		designationID = &parsedID
-	}
-
-	// 7️ Update employee designation
-	err = h.Query.UpdateEmployeeDesignation(empID, designationID)
+	result, err := h.EmployeeService.UpdateDesignation(c.Request.Context(), actorRoleID, empID, input.DesignationID)
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError, "failed to update designation: "+err.Error())
+		errors.Error(c, err)
 		return
 	}
 
-	// 8️ Response
 	message := "employee designation updated successfully"
-	if designationID == nil {
+	if result.Removed {
 		message = "employee designation removed successfully"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":        message,
-		"employee_id":    empID,
-		"designation_id": designationID,
+		"employee_id":    result.EmployeeID,
+		"designation_id": result.DesignationID,
 	})
 }
 

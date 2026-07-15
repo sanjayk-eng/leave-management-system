@@ -25,6 +25,9 @@ type EmployeeService interface {
 	UpdateRole(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, newRoleName string) (*models.RoleUpdateResult, error)
 	GetEmployees(ctx context.Context, actorID uuid.UUID, actorRoleID int, params models.EmployeeFilterParams) (*models.PaginatedEmployeeResponse, error)
 	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
+	UpdateManager(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, managerIDStr string) (*models.ManagerUpdateResult, error)
+	DeleteStatus(ctx context.Context, actorRoleID int, employeeID string) (*models.StatusUpdateResult, error)
+	UpdateDesignation(ctx context.Context, actorRoleID int, employeeID string, designationIDStr *string) (*models.DesignationUpdateResult, error)
 }
 
 const minPasswordLength = 8
@@ -523,4 +526,150 @@ func (s *employeeService) GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResp
 		return nil, errors.CustomErr(http.StatusInternalServerError, err.Error())
 	}
 	return res, nil
+}
+
+// ============================================================
+// UpdateManager
+// ============================================================
+
+func (s *employeeService) UpdateManager(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, managerIDStr string) (*models.ManagerUpdateResult, error) {
+	empID, err := uuid.Parse(employeeID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid employee id")
+	}
+
+	managerID, err := uuid.Parse(managerIDStr)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid manager id")
+	}
+
+	if empID == managerID {
+		return nil, errors.CustomErr(http.StatusBadRequest, "cannot assign employee as their own manager")
+	}
+
+	targetEmp, err := s.Repo.GetByID(empID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if err := s.HrbcService.HasPriorityAllow(actorRoleID, targetEmp.RoleID); err != nil {
+		return nil, err
+	}
+
+	if actorUserID == managerID {
+		isTop, err := s.HrbcService.IsHighestPriority(actorRoleID)
+		if err != nil {
+			return nil, err
+		}
+		if !isTop {
+			return nil, errors.CustomErr(http.StatusForbidden, "you cannot assign yourself as a manager to others")
+		}
+	}
+
+	if err := s.validateManagerCandidate(managerID); err != nil {
+		return nil, err
+	}
+
+	if err := s.Repo.UpdateManager(ctx, empID, managerID); err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to update manager: "+err.Error())
+	}
+
+	return &models.ManagerUpdateResult{
+		EmployeeID: empID.String(),
+		ManagerID:  managerID.String(),
+	}, nil
+}
+
+func (s *employeeService) validateManagerCandidate(managerID uuid.UUID) error {
+	manager, err := s.Repo.GetByID(managerID)
+	if err != nil {
+		return errors.CustomErr(http.StatusNotFound, "manager not found")
+	}
+
+	if manager.Status != "active" {
+		return errors.CustomErr(http.StatusForbidden, "manager is deactivated")
+	}
+
+	roleType, err := s.RoleRepo.GetRoleType(manager.RoleID)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to resolve manager role")
+	}
+	if roleType != accessrole.ROLE_MANAGER {
+		return errors.CustomErr(http.StatusBadRequest, "assigned employee is not a manager")
+	}
+
+	return nil
+}
+
+func (s *employeeService) DeleteStatus(ctx context.Context, actorRoleID int, employeeID string) (*models.StatusUpdateResult, error) {
+	empID, err := uuid.Parse(employeeID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid employee id")
+	}
+
+	targetEmp, err := s.Repo.GetByID(empID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if err := s.HrbcService.HasPriorityAllow(actorRoleID, targetEmp.RoleID); err != nil {
+		return nil, err
+	}
+
+	var newStatus string
+	if err := database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
+		var txErr error
+		newStatus, txErr = s.CommonRepo.DeleteEmployeeStatus(tx, empID)
+		return txErr
+	}); err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to update employee status: "+err.Error())
+	}
+
+	return &models.StatusUpdateResult{
+		EmployeeID: empID.String(),
+		NewStatus:  newStatus,
+	}, nil
+}
+
+// ============================================================
+// UpdateDesignation
+// ============================================================
+
+func (s *employeeService) UpdateDesignation(ctx context.Context, actorRoleID int, employeeID string, designationIDStr *string) (*models.DesignationUpdateResult, error) {
+	empID, err := uuid.Parse(employeeID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusBadRequest, "invalid employee id")
+	}
+
+	targetEmp, err := s.Repo.GetByID(empID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if err := s.HrbcService.HasPriorityAllow(actorRoleID, targetEmp.RoleID); err != nil {
+		return nil, err
+	}
+
+	var designationID *uuid.UUID
+	if designationIDStr != nil && *designationIDStr != "" {
+		parsedID, err := uuid.Parse(*designationIDStr)
+		if err != nil {
+			return nil, errors.CustomErr(http.StatusBadRequest, "invalid designation id")
+		}
+
+		if _, err := s.CommonRepo.GetDesignationByID(parsedID); err != nil {
+			return nil, errors.CustomErr(http.StatusNotFound, "designation not found")
+		}
+		designationID = &parsedID
+	}
+
+	if err := s.Repo.UpdateDesignation(ctx, empID, designationID); err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to update designation: "+err.Error())
+	}
+
+	return &models.DesignationUpdateResult{
+		EmployeeID:    empID.String(),
+		DesignationID: designationID,
+		Removed:       designationID == nil,
+	}, nil
 }

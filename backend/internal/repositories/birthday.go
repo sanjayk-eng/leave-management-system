@@ -84,14 +84,6 @@ func (r *Repository) GetEmployeeRole(employeeID uuid.UUID) (string, error) {
 	return role, err
 }
 
-// ------------------ UPDATE EMPLOYEE DESIGNATION ------------------
-func (r *Repository) UpdateEmployeeDesignation(empID uuid.UUID, designationID *uuid.UUID) error {
-	_, err := r.DB.Exec(`
-		UPDATE Tbl_Employee SET designation_id = $1, updated_at = NOW() WHERE id = $2
-	`, designationID, empID)
-	return err
-}
-
 // GetAllEmployees returns a paginated, filtered, sorted list of employees.
 // HR: salary is NULL. ADMIN/SUPERADMIN: salary included.
 // Filters: search (name/email/manager), role, designation, status, manager (exact).
