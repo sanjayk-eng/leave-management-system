@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 )
@@ -70,6 +72,24 @@ func (h *HandlerFunc) UpdateRolePermissions(c *gin.Context) {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — record which role's permissions were toggled.
+	actor := h.resolveActorBestEffort(c)
+	roleIDStr := strconv.Itoa(targetRoleID)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "permission",
+		Action:       "permission.updated",
+		ResourceType: "Role",
+		ResourceID:   roleIDStr,
+		ResourceName: fmt.Sprintf("Role #%d", targetRoleID),
+		NewValue: map[string]interface{}{
+			"target_role_id":    targetRoleID,
+			"permissions_count": len(input.Permissions),
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "permissions updated successfully",

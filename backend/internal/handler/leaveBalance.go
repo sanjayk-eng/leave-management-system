@@ -7,6 +7,7 @@ import (
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -188,6 +189,35 @@ func (s *HandlerFunc) AdjustLeaveBalance(c *gin.Context) {
 		errors.RespondWithError(c, 500, "Transaction commit failed")
 		return
 	}
+
+	// Audit — after commit. Resolve employee name best-effort for a readable resource label.
+	actor := s.resolveActorBestEffort(c)
+	empName := employeeID.String()
+	if emp, err := s.Query.GetEmployeeByID(employeeID); err == nil && emp != nil {
+		empName = emp.FullName
+	}
+	s.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "leave_balance",
+		Action:       "leave_balance.adjusted",
+		ResourceType: "LeaveBalance",
+		ResourceID:   employeeID.String(),
+		ResourceName: empName,
+		OldValue: map[string]interface{}{
+			"adjusted": balance.Adjusted,
+			"closing":  balance.Closing,
+		},
+		NewValue: map[string]interface{}{
+			"adjusted":      newAdjusted,
+			"closing":       newClosing,
+			"quantity_diff": input.Quantity,
+			"reason":        input.Reason,
+			"leave_type_id": input.LeaveTypeID,
+			"year":          currentYear,
+		},
+	})
 
 	c.JSON(200, gin.H{
 		"message":      "Leave balance adjusted successfully",

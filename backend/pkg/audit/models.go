@@ -199,6 +199,14 @@ func BuildDescription(e *AuditEntry) string {
 	case "leave.updated":
 		return fmt.Sprintf("%s updated the leave request \"%s\".", e.ActorName, e.ResourceName)
 
+	// ── Leave Approval Flow ───────────────────────────────────────────────────
+	case "leave_approval_flow.created":
+		return fmt.Sprintf("%s created leave approval flow \"%s\".", e.ActorName, e.ResourceName)
+	case "leave_approval_flow.updated":
+		return fmt.Sprintf("%s updated leave approval flow \"%s\".", e.ActorName, e.ResourceName)
+	case "leave_approval_flow.deleted":
+		return fmt.Sprintf("%s deleted leave approval flow \"%s\".", e.ActorName, e.ResourceName)
+
 	// ── Leave Balance ─────────────────────────────────────────────────────────
 	case "leave_balance.adjusted":
 		return fmt.Sprintf("%s manually adjusted the leave balance for \"%s\".", e.ActorName, e.ResourceName)

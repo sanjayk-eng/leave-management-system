@@ -65,6 +65,11 @@ func GetMeta() MetaResponse {
 		{Component: "leave", Action: "leave.withdrawn", Label: "Leave — Withdrawn"},
 		{Component: "leave", Action: "leave.updated",   Label: "Leave — Updated"},
 
+		// ── Leave Approval Flow ───────────────────────────────────────────
+		{Component: "leave_approval_flow", Action: "leave_approval_flow.created", Label: "Leave Approval Flow — Created"},
+		{Component: "leave_approval_flow", Action: "leave_approval_flow.updated", Label: "Leave Approval Flow — Updated"},
+		{Component: "leave_approval_flow", Action: "leave_approval_flow.deleted", Label: "Leave Approval Flow — Deleted"},
+
 		// ── Leave Balance ─────────────────────────────────────────────────
 		{Component: "leave_balance", Action: "leave_balance.adjusted", Label: "Leave Balance — Adjusted"},
 
@@ -103,7 +108,8 @@ func GetMeta() MetaResponse {
 		"designation":   "Designation",
 		"employee":      "Employee",
 		"leave":         "Leave",
-		"leave_balance": "Leave Balance",
+		"leave_approval_flow": "Leave Approval Flow",
+		"leave_balance":        "Leave Balance",
 		"leave_policy":  "Leave Policy",
 		"holiday":       "Holiday",
 		"settings":      "Settings",

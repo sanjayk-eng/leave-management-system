@@ -12,6 +12,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	accessrole "github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -119,6 +120,28 @@ func (h *HandlerFunc) RunPayroll(c *gin.Context) {
 		errors.RespondWithError(c, 500, "Failed to create payroll run: "+err.Error())
 		return
 	}
+
+	// Audit — record that a payroll preview was run.
+	actor := h.resolveActorBestEffort(c)
+	periodLabel := fmt.Sprintf("%02d/%d", input.Month, input.Year)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "payroll",
+		Action:       "payroll.run",
+		ResourceType: "PayrollRun",
+		ResourceID:   runID.String(),
+		ResourceName: periodLabel,
+		NewValue: map[string]interface{}{
+			"month":            input.Month,
+			"year":             input.Year,
+			"status":           "PREVIEW",
+			"employees_count":  len(employees),
+			"total_payroll":    totalPayroll,
+			"total_deductions": totalDeductions,
+		},
+	})
 
 	c.JSON(200, gin.H{
 		"payroll_run_id":   runID,
@@ -255,6 +278,27 @@ func (h *HandlerFunc) FinalizePayroll(c *gin.Context) {
 		errors.RespondWithError(c, 500, "Failed to commit: "+err.Error())
 		return
 	}
+
+	// Audit — record that payroll was finalized and locked.
+	actor := h.resolveActorBestEffort(c)
+	periodLabel := fmt.Sprintf("%02d/%d", run.Month, run.Year)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "payroll",
+		Action:       "payroll.finalized",
+		ResourceType: "PayrollRun",
+		ResourceID:   runID.String(),
+		ResourceName: periodLabel,
+		OldValue:     map[string]interface{}{"status": "PREVIEW"},
+		NewValue: map[string]interface{}{
+			"status":          "FINALIZED",
+			"month":           run.Month,
+			"year":            run.Year,
+			"payslips_count":  len(payslipIDs),
+		},
+	})
 
 	// --- Success Response ---
 	c.JSON(http.StatusOK, gin.H{

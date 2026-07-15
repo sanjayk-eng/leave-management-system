@@ -11,6 +11,7 @@ import (
 type HolidayRepository interface {
 	AddHoliday(ctx context.Context, name string, date time.Time, typ string) (string, error)
 	GetAllHolidays(ctx context.Context) ([]models.Holiday, error)
+	GetHolidayByID(ctx context.Context, id string) (*models.Holiday, error)
 	DeleteHoliday(ctx context.Context, id string) error
 }
 
@@ -61,6 +62,19 @@ func (r *holidayRepo) GetAllHolidays(ctx context.Context) ([]models.Holiday, err
 	}
 
 	return holidays, nil
+}
+
+func (r *holidayRepo) GetHolidayByID(ctx context.Context, id string) (*models.Holiday, error) {
+	var h models.Holiday
+	err := r.DB.QueryRowxContext(ctx, `
+		SELECT id, name, date, day, type, created_at, updated_at
+		FROM Tbl_Holiday
+		WHERE id = $1
+	`, id).StructScan(&h)
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 func (r *holidayRepo) DeleteHoliday(ctx context.Context, id string) error {
 	_, err := r.DB.ExecContext(ctx, `

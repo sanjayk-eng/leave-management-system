@@ -6,6 +6,7 @@ import (
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/timezone"
@@ -93,6 +94,25 @@ func (h *HandlerFunc) CreateEmployee(c *gin.Context) {
 		return
 	}
 
+	// Audit — actor is whoever triggered the creation (admin/HR/superadmin).
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.created",
+		ResourceType: "Employee",
+		ResourceID:   input.Email, // no returned UUID from Create; email is a stable unique identifier
+		ResourceName: input.FullName,
+		NewValue: map[string]interface{}{
+			"full_name":    input.FullName,
+			"email":        input.Email,
+			"role":         input.Role,
+			"joining_date": input.JoiningDate,
+		},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "employee created successfully",
 	})
@@ -116,6 +136,21 @@ func (h *HandlerFunc) UpdateEmployeeRole(c *gin.Context) {
 		return
 	}
 
+	// Audit — result carries old/new role for the diff.
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.role_updated",
+		ResourceType: "Employee",
+		ResourceID:   result.EmployeeID,
+		ResourceName: result.EmployeeID, // no name returned; use ID as fallback
+		OldValue:     map[string]interface{}{"role": result.OldRole},
+		NewValue:     map[string]interface{}{"role": result.NewRole},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "role updated successfully",
 		"employee_id": result.EmployeeID,
@@ -133,6 +168,24 @@ func (h *HandlerFunc) DeleteEmployeeStatus(c *gin.Context) {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — action is activated or deactivated depending on new status.
+	auditAction := "employee.deactivated"
+	if result.NewStatus == "active" {
+		auditAction = "employee.activated"
+	}
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       auditAction,
+		ResourceType: "Employee",
+		ResourceID:   result.EmployeeID,
+		ResourceName: result.EmployeeID,
+		NewValue:     map[string]interface{}{"status": result.NewStatus},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "employee status updated successfully",
@@ -158,6 +211,20 @@ func (h *HandlerFunc) UpdateEmployeeManager(c *gin.Context) {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — record who was assigned as the new manager.
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.manager_updated",
+		ResourceType: "Employee",
+		ResourceID:   result.EmployeeID,
+		ResourceName: result.EmployeeID,
+		NewValue:     map[string]interface{}{"manager_id": result.ManagerID},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "manager updated successfully",
@@ -204,6 +271,36 @@ func (h *HandlerFunc) UpdateEmployeeInfo(c *gin.Context) {
 		return
 	}
 
+	// Audit — record what fields were changed (non-nil fields = updated).
+	actor := h.resolveActorBestEffort(c)
+	newVal := map[string]interface{}{}
+	if req.FullName != nil {
+		newVal["full_name"] = *req.FullName
+	}
+	if req.Email != nil {
+		newVal["email"] = *req.Email
+	}
+	if req.Salary != nil {
+		newVal["salary"] = *req.Salary
+	}
+	if req.JoiningDate != nil {
+		newVal["joining_date"] = req.JoiningDate
+	}
+	if req.BirthDate != nil {
+		newVal["birth_date"] = req.BirthDate
+	}
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.updated",
+		ResourceType: "Employee",
+		ResourceID:   employeeID,
+		ResourceName: employeeID,
+		NewValue:     newVal,
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "employee information updated successfully",
 	})
@@ -230,6 +327,19 @@ func (h *HandlerFunc) UpdateEmployeePassword(c *gin.Context) {
 		return
 	}
 
+	// Audit — never log the password value itself, only the fact of the change.
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.password_changed",
+		ResourceType: "Employee",
+		ResourceID:   empID,
+		ResourceName: empID,
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "password updated successfully",
 		"employee_id": empID,
@@ -254,6 +364,24 @@ func (h *HandlerFunc) UpdateEmployeeDesignation(c *gin.Context) {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — record which designation was assigned or removed.
+	actor := h.resolveActorBestEffort(c)
+	newVal := map[string]interface{}{"removed": result.Removed}
+	if result.DesignationID != nil {
+		newVal["designation_id"] = result.DesignationID.String()
+	}
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "employee",
+		Action:       "employee.designation_updated",
+		ResourceType: "Employee",
+		ResourceID:   result.EmployeeID,
+		ResourceName: result.EmployeeID,
+		NewValue:     newVal,
+	})
 
 	message := "employee designation updated successfully"
 	if result.Removed {
