@@ -130,10 +130,16 @@ func main() {
 	repository := repositories.NewAssetRepository(db)
 	assetService := service.NewAssetService(db, repository)
 
+	// ── Designation  ───────────────────────────────────────────────────────
+	designationRepo := repositories.NewDesignationRepository(db)
+
 	// ── HTTP handler ─────────────────────────────────────────────────────────
 
 	employeeRepo := repositories.NewEmployeeRepository(db)
-	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo , *repo , permissionSvc)
+
+	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, auditSvc)
+
+	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc)
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,
@@ -143,6 +149,7 @@ func main() {
 		assetService,
 		employeeSvc,
 		auditSvc,
+		designationSvc,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

@@ -235,10 +235,24 @@ const Employees = () => {
     if (!selectedEmployee) return;
     try {
       setIsUpdatingDesignation(true);
-      const designationId = (newDesignationId === "" || newDesignationId === "NONE") ? null : newDesignationId;
-      await employeeService.updateDesignation(selectedEmployee.id, designationId);
+      const isRemoving = newDesignationId === "" || newDesignationId === "NONE";
+      if (isRemoving) {
+        // Remove: employee must have a current designation to clear
+        const currentDesignationId = selectedEmployee.designation_id;
+        if (!currentDesignationId) {
+          toast.info('Employee has no designation to remove');
+          setDesignationDialogOpen(false); setSelectedEmployee(null); setNewDesignationId("");
+          return;
+        }
+        const { designationService } = await import('@/services/designationService');
+        await designationService.removeEmployee(currentDesignationId, selectedEmployee.id);
+      } else {
+        // Assign: PATCH /designations/:designationId/assign-employee
+        const { designationService } = await import('@/services/designationService');
+        await designationService.assignEmployee(newDesignationId, selectedEmployee.id);
+      }
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      toast.success('Designation updated successfully');
+      toast.success(isRemoving ? 'Designation removed successfully' : 'Designation assigned successfully');
       setDesignationDialogOpen(false); setSelectedEmployee(null); setNewDesignationId("");
     } catch (err: unknown) { handleError(err); }
     finally { setIsUpdatingDesignation(false); }

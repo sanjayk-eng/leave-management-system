@@ -27,7 +27,6 @@ type EmployeeService interface {
 	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
 	UpdateManager(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, managerIDStr string) (*models.ManagerUpdateResult, error)
 	DeleteStatus(ctx context.Context, actorRoleID int, employeeID string) (*models.StatusUpdateResult, error)
-	UpdateDesignation(ctx context.Context, actorRoleID int, employeeID string, designationIDStr *string) (*models.DesignationUpdateResult, error)
 }
 
 const minPasswordLength = 8
@@ -631,45 +630,4 @@ func (s *employeeService) DeleteStatus(ctx context.Context, actorRoleID int, emp
 	}, nil
 }
 
-// ============================================================
-// UpdateDesignation
-// ============================================================
 
-func (s *employeeService) UpdateDesignation(ctx context.Context, actorRoleID int, employeeID string, designationIDStr *string) (*models.DesignationUpdateResult, error) {
-	empID, err := uuid.Parse(employeeID)
-	if err != nil {
-		return nil, errors.CustomErr(http.StatusBadRequest, "invalid employee id")
-	}
-
-	targetEmp, err := s.Repo.GetByID(empID)
-	if err != nil {
-		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
-	}
-
-	if err := s.HrbcService.HasPriorityAllow(actorRoleID, targetEmp.RoleID); err != nil {
-		return nil, err
-	}
-
-	var designationID *uuid.UUID
-	if designationIDStr != nil && *designationIDStr != "" {
-		parsedID, err := uuid.Parse(*designationIDStr)
-		if err != nil {
-			return nil, errors.CustomErr(http.StatusBadRequest, "invalid designation id")
-		}
-
-		if _, err := s.CommonRepo.GetDesignationByID(parsedID); err != nil {
-			return nil, errors.CustomErr(http.StatusNotFound, "designation not found")
-		}
-		designationID = &parsedID
-	}
-
-	if err := s.Repo.UpdateDesignation(ctx, empID, designationID); err != nil {
-		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to update designation: "+err.Error())
-	}
-
-	return &models.DesignationUpdateResult{
-		EmployeeID:    empID.String(),
-		DesignationID: designationID,
-		Removed:       designationID == nil,
-	}, nil
-}

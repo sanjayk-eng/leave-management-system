@@ -26,6 +26,8 @@ type EmployeeRepository interface {
 	GetOrgHierarchyMap(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error)
 	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
 	UpdateManager(ctx context.Context, empID, managerID uuid.UUID) error
+	// UpdateDesignation sets or clears an employee's designation_id.
+	// Used by DesignationService.AssignEmployee — not called from EmployeeService.
 	UpdateDesignation(ctx context.Context, empID uuid.UUID, designationID *uuid.UUID) error
 }
 

@@ -43,43 +43,36 @@ CREATE TYPE permission_resource AS ENUM (
 
 -- ── 2. Enum: permission_action ───────────────────────────────────────────────
 CREATE TYPE permission_action AS ENUM (
-    -- universal CRUD
     'add',
     'read',
     'edit',
     'remove',
 
-    -- employee lifecycle
     'change_password',
     'update_role',
     'assign_manager',
-    'status_management'
+    'status_management',
     'designation_management',
     'read_salary',
 
-    -- leave workflow
     'apply',
     'approve',
     'reject',
     'cancel',
     'withdraw',
 
-    -- balance
     'adjust',
 
-    -- payroll
     'run',
     'payroll_managment',
 
-    -- settings sub-actions
     'manage_holidays',
     'manage_leave_policy',
     'manage_leave_flow',
     'manage_birthdays',
     'manage_company_info',
-   'manage_leave_timing',
+    'manage_leave_timing',
 
-    -- equipment
     'assign'
 );
 

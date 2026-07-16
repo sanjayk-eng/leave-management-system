@@ -160,12 +160,4 @@ type StatusUpdateResult struct {
 	EmployeeID string `json:"employee_id"`
 	NewStatus  string `json:"new_status"`
 }
-type UpdateDesignationInput struct {
-	DesignationID *string `json:"designation_id"`
-}
 
-type DesignationUpdateResult struct {
-	EmployeeID    string     `json:"employee_id"`
-	DesignationID *uuid.UUID `json:"designation_id"`
-	Removed       bool       `json:"-"`
-}

@@ -346,54 +346,6 @@ func (h *HandlerFunc) UpdateEmployeePassword(c *gin.Context) {
 	})
 }
 
-// UpdateEmployeeDesignation - PATCH /api/employee/:id/designation
-// Route-level access gated by RequirePermission middleware; hierarchy rule
-// lives in the service.
-func (h *HandlerFunc) UpdateEmployeeDesignation(c *gin.Context) {
-	actorRoleID := c.GetInt("role_id")
-	empID := c.Param("id")
-
-	var input models.UpdateDesignationInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "invalid input: "+err.Error())
-		return
-	}
-
-	result, err := h.EmployeeService.UpdateDesignation(c.Request.Context(), actorRoleID, empID, input.DesignationID)
-	if err != nil {
-		errors.Error(c, err)
-		return
-	}
-
-	// Audit — record which designation was assigned or removed.
-	actor := h.resolveActorBestEffort(c)
-	newVal := map[string]interface{}{"removed": result.Removed}
-	if result.DesignationID != nil {
-		newVal["designation_id"] = result.DesignationID.String()
-	}
-	h.AuditSvc.Log(audit.AuditEntry{
-		ActorID:      actor.ID,
-		ActorName:    actor.Name,
-		ActorRole:    actor.Role,
-		Component:    "employee",
-		Action:       "employee.designation_updated",
-		ResourceType: "Employee",
-		ResourceID:   result.EmployeeID,
-		ResourceName: result.EmployeeID,
-		NewValue:     newVal,
-	})
-
-	message := "employee designation updated successfully"
-	if result.Removed {
-		message = "employee designation removed successfully"
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":        message,
-		"employee_id":    result.EmployeeID,
-		"designation_id": result.DesignationID,
-	})
-}
 
 func (h *HandlerFunc) GetTodayBirthdays(c *gin.Context) {
 

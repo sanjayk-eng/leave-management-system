@@ -4,10 +4,8 @@ import (
 	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func (h *HandlerFunc) CreateApprovelFlow(c *gin.Context) {
@@ -17,8 +15,13 @@ func (h *HandlerFunc) CreateApprovelFlow(c *gin.Context) {
 		return
 	}
 
-	actor := extractActor(c)
-	if err := h.LeaveApproverFlowService.CreateLeaveApproverFlow(c, &req, actor.id, actor.name, actor.role); err != nil {
+	actor, err := h.resolveActor(c)
+	if err != nil {
+		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
+		return
+	}
+
+	if err := h.LeaveApproverFlowService.CreateLeaveApproverFlow(c, &req, actor.ID, actor.Name, actor.Role); err != nil {
 		errors.Error(c, err)
 		return
 	}
@@ -52,8 +55,13 @@ func (h *HandlerFunc) UpdateLeaveApprovelFlow(c *gin.Context) {
 		return
 	}
 
-	actor := extractActor(c)
-	if err := h.LeaveApproverFlowService.UpdateLeaveApprovelFlow(c, id, &req, actor.id, actor.name, actor.role); err != nil {
+	actor, err := h.resolveActor(c)
+	if err != nil {
+		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
+		return
+	}
+
+	if err := h.LeaveApproverFlowService.UpdateLeaveApprovelFlow(c, id, &req, actor.ID, actor.Name, actor.Role); err != nil {
 		errors.Error(c, err)
 		return
 	}
@@ -70,8 +78,13 @@ func (h *HandlerFunc) DeleteLeaveApprovelFlow(c *gin.Context) {
 		return
 	}
 
-	actor := extractActor(c)
-	if err := h.LeaveApproverFlowService.DeleteLeaveApprovelFlow(c, id, actor.id, actor.name, actor.role); err != nil {
+	actor, err := h.resolveActor(c)
+	if err != nil {
+		errors.RespondWithError(c, http.StatusForbidden, "Access Denied")
+		return
+	}
+
+	if err := h.LeaveApproverFlowService.DeleteLeaveApprovelFlow(c, id, actor.ID, actor.Name, actor.Role); err != nil {
 		errors.Error(c, err)
 		return
 	}
@@ -79,22 +92,4 @@ func (h *HandlerFunc) DeleteLeaveApprovelFlow(c *gin.Context) {
 		"success": true,
 		"message": "approval flow deleted successfully",
 	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// actorCtx — lightweight actor snapshot from the JWT context.
-// Falls back gracefully so audit logging never blocks the request.
-// ─────────────────────────────────────────────────────────────────────────────
-
-type actorCtx struct {
-	id   uuid.UUID
-	name string
-	role string
-}
-
-func extractActor(c *gin.Context) actorCtx {
-	empID, _ := common.GetEmployeeId(c)
-	name := c.GetString("full_name")
-	role := c.GetString("role")
-	return actorCtx{id: empID, name: name, role: role}
 }

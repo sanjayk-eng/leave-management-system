@@ -42,7 +42,6 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword)          // Update employee password (SUPER_ADMIN, ADMIN, HR)
 		employees.PATCH("/:id/role", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionUpdateRole)), h.UpdateEmployeeRole)                      // Change employee role (SUPER_ADMIN, ADMIN/HR)
 		employees.PATCH("/:id/manager", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAssignManager)), h.UpdateEmployeeManager)             // Set/change manager (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/designation", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)), h.UpdateEmployeeDesignation) // Assign/update designation (SUPER_ADMIN, ADMIN, HR)
 		employees.PUT("/deactivate/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionStateManage)), h.DeleteEmployeeStatus)
 		// Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
 		employees.GET("/birthdays/today", h.GetTodayBirthdays)
@@ -151,11 +150,13 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	designations := r.Group("/api/designations")
 	designations.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)))
 	{
-		designations.POST("", h.CreateDesignation)       // Create designation (ADMIN, SUPERADMIN, HR)
-		designations.GET("", h.GetAllDesignations)       // Get all designations (All authenticated users)
-		designations.GET("/:id", h.GetDesignationByID)   // Get designation by ID (All authenticated users)
-		designations.PATCH("/:id", h.UpdateDesignation)  // Update designation (ADMIN, SUPERADMIN, HR)
-		designations.DELETE("/:id", h.DeleteDesignation) // Delete designation (ADMIN, SUPERADMIN, HR)
+		designations.POST("", h.CreateDesignation)                                              // Create designation
+		designations.GET("", h.GetAllDesignations)                                              // Get all designations
+		designations.GET("/:id", h.GetDesignationByID)                                          // Get by ID
+		designations.PATCH("/:id", h.UpdateDesignation)                                         // Update designation
+		designations.DELETE("/:id", h.DeleteDesignation)                                        // Delete designation
+		designations.PATCH("/:id/assign-employee", h.AssignEmployee)                            // Assign employee → designation
+		designations.DELETE("/:id/assign-employee/:employee_id", h.RemoveEmployee)              // Remove employee from designation
 	}
 	logs := r.Group("/api/logs")
 	logs.Use((middleware.AuthMiddleware(h)))
