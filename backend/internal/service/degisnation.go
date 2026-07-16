@@ -11,9 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// =====================================================
-// SERVICE INTERFACE
-// =====================================================
 
 type DesignationService interface {
 	Create(ctx context.Context, input *models.DesignationInput, actorID uuid.UUID, actorName, actorRole string) (string, error)
@@ -21,40 +18,51 @@ type DesignationService interface {
 	GetById(ctx context.Context, id uuid.UUID) (*models.Designation, error)
 	Update(ctx context.Context, id uuid.UUID, input *models.DesignationInput, actorID uuid.UUID, actorName, actorRole string) error
 	Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, actorName, actorRole string) error
-	// AssignEmployee assigns or removes a designation from an employee.
-	// Pass employeeID and a non-nil designationID to assign, nil to remove.
 	AssignEmployee(ctx context.Context, designationID uuid.UUID, employeeID uuid.UUID, actorID uuid.UUID, actorName, actorRole string) (*models.DesignationAssignResult, error)
-	// RemoveEmployee clears designation_id from an employee (sets it to NULL).
 	RemoveEmployee(ctx context.Context, designationID uuid.UUID, employeeID uuid.UUID, actorID uuid.UUID, actorName, actorRole string) error
 }
 
-// =====================================================
-// SERVICE STRUCT
-// =====================================================
-
 type designationService struct {
-	Repo        repositories.DesignationRepository
+	Repo         repositories.DesignationRepository
 	EmployeeRepo repositories.EmployeeRepository
-	AuditSvc    audit.Service // nil-safe: audit skipped if not wired
+	RoleRepo     repositories.RoleRepository
+	HrbcService  Hrbc
+	AuditSvc     audit.Service
 }
 
-// NewDesignationService constructs the service.
-// Pass employeeRepo so AssignEmployee can update Tbl_Employee.designation_id.
 func NewDesignationService(
 	repo repositories.DesignationRepository,
 	employeeRepo repositories.EmployeeRepository,
+	roleRepo repositories.RoleRepository,
+	hrbcService Hrbc,
 	auditSvc audit.Service,
 ) DesignationService {
 	return &designationService{
-		Repo:        repo,
+		Repo:         repo,
 		EmployeeRepo: employeeRepo,
-		AuditSvc:    auditSvc,
+		RoleRepo:     roleRepo,
+		HrbcService:  hrbcService,
+		AuditSvc:     auditSvc,
 	}
 }
 
-// =====================================================
-// CREATE
-// =====================================================
+
+func (s *designationService) logAudit(actorID uuid.UUID, entry audit.AuditEntry) {
+	if s.AuditSvc == nil || actorID == uuid.Nil {
+		return
+	}
+	s.AuditSvc.Log(entry)
+}
+
+
+func (s *designationService) authorizeEmployeeMutation(actorRole string, targetRoleID int) error {
+	actorRoleID, err := s.RoleRepo.GetRoleID(actorRole)
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to resolve actor role")
+	}
+	return s.HrbcService.HasPriorityAllow(actorRoleID, targetRoleID)
+}
+
 
 func (s *designationService) Create(ctx context.Context, input *models.DesignationInput, actorID uuid.UUID, actorName, actorRole string) (string, error) {
 	id, err := s.Repo.CreateDesignation(ctx, input)
@@ -62,30 +70,23 @@ func (s *designationService) Create(ctx context.Context, input *models.Designati
 		return "", errors.CustomErr(http.StatusInternalServerError, "failed to create designation: "+err.Error())
 	}
 
-	// Audit — async, after insert. Pure create: OldValue is nil.
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		s.AuditSvc.Log(audit.AuditEntry{
-			ActorID:      actorID,
-			ActorName:    actorName,
-			ActorRole:    actorRole,
-			Component:    "designation",
-			Action:       "designation.created",
-			ResourceType: "Designation",
-			ResourceID:   id,
-			ResourceName: input.DesignationName,
-			NewValue: map[string]interface{}{
-				"designation_name": input.DesignationName,
-				"description":      input.Description,
-			},
-		})
-	}
+	s.logAudit(actorID, audit.AuditEntry{
+		ActorID:      actorID,
+		ActorName:    actorName,
+		ActorRole:    actorRole,
+		Component:    "designation",
+		Action:       "designation.created",
+		ResourceType: "Designation",
+		ResourceID:   id,
+		ResourceName: input.DesignationName,
+		NewValue: map[string]interface{}{
+			"designation_name": input.DesignationName,
+			"description":      input.Description,
+		},
+	})
 
 	return id, nil
 }
-
-// =====================================================
-// GET ALL
-// =====================================================
 
 func (s *designationService) Get(ctx context.Context) ([]models.Designation, error) {
 	designations, err := s.Repo.Get(ctx)
@@ -95,10 +96,6 @@ func (s *designationService) Get(ctx context.Context) ([]models.Designation, err
 	return designations, nil
 }
 
-// =====================================================
-// GET BY ID
-// =====================================================
-
 func (s *designationService) GetById(ctx context.Context, id uuid.UUID) (*models.Designation, error) {
 	designation, err := s.Repo.GetDesignationByID(ctx, id)
 	if err != nil {
@@ -107,155 +104,115 @@ func (s *designationService) GetById(ctx context.Context, id uuid.UUID) (*models
 	return designation, nil
 }
 
-// =====================================================
-// UPDATE
-// =====================================================
-
 func (s *designationService) Update(ctx context.Context, id uuid.UUID, input *models.DesignationInput, actorID uuid.UUID, actorName, actorRole string) error {
-	// Fetch BEFORE snapshot for the audit diff.
-	var before *models.Designation
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		before, _ = s.Repo.GetDesignationByID(ctx, id) // best-effort
-	}
+	
+	before, _ := s.Repo.GetDesignationByID(ctx, id)
 
 	if err := s.Repo.UpdateDesignation(ctx, id, input); err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to update designation: "+err.Error())
 	}
 
-	// Audit — async, after update.
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		entry := audit.AuditEntry{
-			ActorID:      actorID,
-			ActorName:    actorName,
-			ActorRole:    actorRole,
-			Component:    "designation",
-			Action:       "designation.updated",
-			ResourceType: "Designation",
-			ResourceID:   id.String(),
-			ResourceName: input.DesignationName,
-			NewValue: map[string]interface{}{
-				"designation_name": input.DesignationName,
-				"description":      input.Description,
-			},
-		}
-		if before != nil {
-			entry.OldValue = map[string]interface{}{
-				"designation_name": before.DesignationName,
-				"description":      before.Description,
-			}
-		}
-		s.AuditSvc.Log(entry)
+	entry := audit.AuditEntry{
+		ActorID:      actorID,
+		ActorName:    actorName,
+		ActorRole:    actorRole,
+		Component:    "designation",
+		Action:       "designation.updated",
+		ResourceType: "Designation",
+		ResourceID:   id.String(),
+		ResourceName: input.DesignationName,
+		NewValue: map[string]interface{}{
+			"designation_name": input.DesignationName,
+			"description":      input.Description,
+		},
 	}
+	if before != nil {
+		entry.OldValue = map[string]interface{}{
+			"designation_name": before.DesignationName,
+			"description":      before.Description,
+		}
+	}
+	s.logAudit(actorID, entry)
 
 	return nil
 }
 
-// =====================================================
-// DELETE
-// =====================================================
-
 func (s *designationService) Delete(ctx context.Context, id uuid.UUID, actorID uuid.UUID, actorName, actorRole string) error {
-	// Fetch BEFORE snapshot so the audit record is useful even after deletion.
-	var before *models.Designation
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		before, _ = s.Repo.GetDesignationByID(ctx, id) // best-effort
-	}
+	before, _ := s.Repo.GetDesignationByID(ctx, id)
 
 	if err := s.Repo.DeleteDesignation(ctx, id); err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to delete designation: "+err.Error())
 	}
 
-	// Audit — async, after delete. NewValue is nil (resource gone).
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		resourceName := id.String()
-		var oldValue interface{}
-		if before != nil {
-			resourceName = before.DesignationName
-			oldValue = map[string]interface{}{
-				"designation_name": before.DesignationName,
-				"description":      before.Description,
-			}
+	resourceName := id.String()
+	var oldValue interface{}
+	if before != nil {
+		resourceName = before.DesignationName
+		oldValue = map[string]interface{}{
+			"designation_name": before.DesignationName,
+			"description":      before.Description,
 		}
-		s.AuditSvc.Log(audit.AuditEntry{
-			ActorID:      actorID,
-			ActorName:    actorName,
-			ActorRole:    actorRole,
-			Component:    "designation",
-			Action:       "designation.deleted",
-			ResourceType: "Designation",
-			ResourceID:   id.String(),
-			ResourceName: resourceName,
-			OldValue:     oldValue,
-		})
 	}
+	s.logAudit(actorID, audit.AuditEntry{
+		ActorID:      actorID,
+		ActorName:    actorName,
+		ActorRole:    actorRole,
+		Component:    "designation",
+		Action:       "designation.deleted",
+		ResourceType: "Designation",
+		ResourceID:   id.String(),
+		ResourceName: resourceName,
+		OldValue:     oldValue,
+	})
 
 	return nil
 }
 
-// =====================================================
-// ASSIGN EMPLOYEE
-// =====================================================
 
-// AssignEmployee sets employee.designation_id = designationID.
-// The designation ID comes from the route param (:id on /api/designations/:id/assign-employee).
-// The employee ID comes from the JSON body.
-//
-// To REMOVE a designation from an employee, use the separate
-// DELETE /api/designations/:id/assign-employee/:employee_id endpoint which
-// calls this with a sentinel that is handled by the handler (passes uuid.Nil logic).
-func (s *designationService) AssignEmployee(
-	ctx context.Context,
-	designationID uuid.UUID,
-	employeeID uuid.UUID,
-	actorID uuid.UUID,
-	actorName, actorRole string,
-) (*models.DesignationAssignResult, error) {
 
-	// Confirm the designation exists.
+func (s *designationService) AssignEmployee(ctx context.Context, designationID uuid.UUID, employeeID uuid.UUID, actorID uuid.UUID, actorName, actorRole string) (*models.DesignationAssignResult, error) {
 	designation, err := s.Repo.GetDesignationByID(ctx, designationID)
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusNotFound, "designation not found")
 	}
 
-	// Confirm the employee exists and get their name for the audit entry.
 	employee, err := s.EmployeeRepo.GetByID(employeeID)
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
 	}
 
-	// Capture old designation for diff (best-effort).
-	oldDesignationID := employee.DesignationID
+	if err := s.authorizeEmployeeMutation(actorRole, employee.RoleID); err != nil {
+		return nil, err
+	}
 
-	desigPtr := &designationID
-	if err := s.EmployeeRepo.UpdateDesignation(ctx, employeeID, desigPtr); err != nil {
+	oldDesignationID := employee.DesignationID
+	if oldDesignationID != nil && *oldDesignationID == designationID {
+		return nil, errors.CustomErr(http.StatusBadRequest, "employee already has this designation")
+	}
+
+	if err := s.EmployeeRepo.UpdateDesignation(ctx, employeeID, &designationID); err != nil {
 		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to assign designation: "+err.Error())
 	}
 
-	// Audit — async, after update.
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		newVal := map[string]interface{}{
+	var oldVal interface{}
+	if oldDesignationID != nil {
+		oldVal = map[string]interface{}{"designation_id": oldDesignationID.String()}
+	}
+	s.logAudit(actorID, audit.AuditEntry{
+		ActorID:      actorID,
+		ActorName:    actorName,
+		ActorRole:    actorRole,
+		Component:    "employee",
+		Action:       "employee.designation_updated",
+		ResourceType: "Employee",
+		ResourceID:   employeeID.String(),
+		ResourceName: employee.FullName,
+		OldValue:     oldVal,
+		NewValue: map[string]interface{}{
 			"designation_id":   designationID.String(),
 			"designation_name": designation.DesignationName,
-		}
-		var oldVal interface{}
-		if oldDesignationID != nil {
-			oldVal = map[string]interface{}{
-				"designation_id": oldDesignationID.String(),
-			}
-		}
-		s.AuditSvc.Log(audit.AuditEntry{
-			ActorID:      actorID,
-			ActorName:    actorName,
-			ActorRole:    actorRole,
-			Component:    "employee",
-			Action:       "employee.designation_updated",
-			ResourceType: "Employee",
-			ResourceID:   employeeID.String(),
-			ResourceName: employee.FullName,
-			OldValue:     oldVal,
-			NewValue:     newVal,
-		})
-	}
+		},
+	})
 
 	return &models.DesignationAssignResult{
 		EmployeeID:      employeeID.String(),
@@ -264,55 +221,45 @@ func (s *designationService) AssignEmployee(
 	}, nil
 }
 
-// =====================================================
-// REMOVE EMPLOYEE FROM DESIGNATION
-// =====================================================
-
-// RemoveEmployee sets employee.designation_id = NULL.
-// Route: DELETE /api/designations/:id/assign-employee/:employee_id
-func (s *designationService) RemoveEmployee(
-	ctx context.Context,
-	designationID uuid.UUID,
-	employeeID uuid.UUID,
-	actorID uuid.UUID,
-	actorName, actorRole string,
-) error {
-	// Confirm designation exists (so we can use its name in the audit entry).
+func (s *designationService) RemoveEmployee(ctx context.Context, designationID uuid.UUID, employeeID uuid.UUID, actorID uuid.UUID, actorName, actorRole string) error {
 	designation, err := s.Repo.GetDesignationByID(ctx, designationID)
 	if err != nil {
 		return errors.CustomErr(http.StatusNotFound, "designation not found")
 	}
 
-	// Confirm employee exists and capture current designation for diff.
 	employee, err := s.EmployeeRepo.GetByID(employeeID)
 	if err != nil {
 		return errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if employee.DesignationID == nil || *employee.DesignationID != designationID {
+		return errors.CustomErr(http.StatusBadRequest, "employee is not assigned to this designation")
+	}
+
+	if err := s.authorizeEmployeeMutation(actorRole, employee.RoleID); err != nil {
+		return err
 	}
 
 	if err := s.EmployeeRepo.UpdateDesignation(ctx, employeeID, nil); err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to remove designation: "+err.Error())
 	}
 
-	// Audit — async, after update.
-	if s.AuditSvc != nil && actorID != uuid.Nil {
-		s.AuditSvc.Log(audit.AuditEntry{
-			ActorID:      actorID,
-			ActorName:    actorName,
-			ActorRole:    actorRole,
-			Component:    "employee",
-			Action:       "employee.designation_updated",
-			ResourceType: "Employee",
-			ResourceID:   employeeID.String(),
-			ResourceName: employee.FullName,
-			OldValue: map[string]interface{}{
-				"designation_id":   designationID.String(),
-				"designation_name": designation.DesignationName,
-			},
-			NewValue: map[string]interface{}{
-				"designation_id": nil,
-			},
-		})
-	}
-
+	s.logAudit(actorID, audit.AuditEntry{
+		ActorID:      actorID,
+		ActorName:    actorName,
+		ActorRole:    actorRole,
+		Component:    "employee",
+		Action:       "employee.designation_updated",
+		ResourceType: "Employee",
+		ResourceID:   employeeID.String(),
+		ResourceName: employee.FullName,
+		OldValue: map[string]interface{}{
+			"designation_id":   designationID.String(),
+			"designation_name": designation.DesignationName,
+		},
+		NewValue: map[string]interface{}{
+			"designation_id": nil,
+		},
+	})
 	return nil
 }

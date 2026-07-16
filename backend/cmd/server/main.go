@@ -137,7 +137,7 @@ func main() {
 
 	employeeRepo := repositories.NewEmployeeRepository(db)
 
-	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, auditSvc)
+	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, roleRepo, hrbcService, auditSvc)
 
 	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc)
 	handlerFunc := handler.NewHandler(
