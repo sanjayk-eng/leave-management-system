@@ -35,13 +35,13 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	employees := r.Group("/api/employee")
 	employees.Use(middleware.AuthMiddleware(h)) // Protect employee routes
 	{
-		employees.GET("", h.GetEmployee)                                                                                                                                       // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
-		employees.GET("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployeeById)                                      // Get employee details (Self/Manager/Admin)
-		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)                                           // Create employee (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo)                                 // Update employee info (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword)          // Update employee password (SUPER_ADMIN, ADMIN, HR)
-		employees.PATCH("/:id/role", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionUpdateRole)), h.UpdateEmployeeRole)                      // Change employee role (SUPER_ADMIN, ADMIN/HR)
-		employees.PATCH("/:id/manager", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAssignManager)), h.UpdateEmployeeManager)             // Set/change manager (SUPER_ADMIN, ADMIN/HR)
+		employees.GET("", h.GetEmployee)                                                                                                                              // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
+		employees.GET("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployeeById)                             // Get employee details (Self/Manager/Admin)
+		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)                                  // Create employee (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo)                        // Update employee info (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword) // Update employee password (SUPER_ADMIN, ADMIN, HR)
+		employees.PATCH("/:id/role", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionUpdateRole)), h.UpdateEmployeeRole)             // Change employee role (SUPER_ADMIN, ADMIN/HR)
+		employees.PATCH("/:id/manager", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAssignManager)), h.UpdateEmployeeManager)    // Set/change manager (SUPER_ADMIN, ADMIN/HR)
 		employees.PUT("/deactivate/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionStateManage)), h.DeleteEmployeeStatus)
 		// Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
 		employees.GET("/birthdays/today", h.GetTodayBirthdays)
@@ -86,8 +86,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	leaveBalances.Use(middleware.AuthMiddleware(h))
 	{
 
-		leaveBalances.GET("/employee/:id", h.GetLeaveBalances)  // GET /api/employees/:id/leave-balances
-		leaveBalances.POST("/:id/adjust", h.AdjustLeaveBalance) // POST /api/leave-balances/:id/adjust
+		leaveBalances.GET("/employee/:id", h.GetLeaveBalances)                                                                                             // GET /api/employees/:id/leave-balances
+		leaveBalances.POST("/:id/adjust", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdjust)), h.AdjustLeaveBalance) // POST /api/leave-balances/:id/adjust
 	}
 
 	// ----------------- Admin: Leave Accrual -----------------
@@ -150,31 +150,21 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	designations := r.Group("/api/designations")
 	designations.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)))
 	{
-		designations.POST("", h.CreateDesignation)                                              // Create designation
-		designations.GET("", h.GetAllDesignations)                                              // Get all designations
-		designations.GET("/:id", h.GetDesignationByID)                                          // Get by ID
-		designations.PATCH("/:id", h.UpdateDesignation)                                         // Update designation
-		designations.DELETE("/:id", h.DeleteDesignation)                                        // Delete designation
-		designations.PATCH("/:id/assign-employee", h.AssignEmployee)                            // Assign employee → designation
-		designations.DELETE("/:id/assign-employee/:employee_id", h.RemoveEmployee)              // Remove employee from designation
+		designations.POST("", h.CreateDesignation)                                 // Create designation
+		designations.GET("", h.GetAllDesignations)                                 // Get all designations
+		designations.GET("/:id", h.GetDesignationByID)                             // Get by ID
+		designations.PATCH("/:id", h.UpdateDesignation)                            // Update designation
+		designations.DELETE("/:id", h.DeleteDesignation)                           // Delete designation
+		designations.PATCH("/:id/assign-employee", h.AssignEmployee)               // Assign employee → designation
+		designations.DELETE("/:id/assign-employee/:employee_id", h.RemoveEmployee) // Remove employee from designation
 	}
 	logs := r.Group("/api/logs")
-	logs.Use((middleware.AuthMiddleware(h)))
+	logs.Use((middleware.AuthMiddleware(h)), middleware.RequirePermission(h, string(rbsc.ResourceLog), string(rbsc.ActionRead)))
 	{
-		// GET /api/logs      — paginated activity feed (read-side only, no raw diffs)
-		// Query params: resource_id, actor_id, component, action, page, page_size
-		logs.GET("", middleware.RequirePermission(h, "log", "read"), h.GetActivityFeed)
-
-		// GET /api/logs/meta — live catalogue of every component + action.
-		// Frontend filter dropdowns are built from this — zero hardcoding.
-		logs.GET("/meta", middleware.RequirePermission(h, "log", "read"), h.GetActivityMeta)
+		logs.GET("", h.GetActivityFeed)
+		logs.GET("/meta", h.GetActivityMeta)
 	}
 
-	// ----------------- Permissions (RBAC) -----------------
-	// GET  /api/permissions/roles/:role_id  → view full permission matrix for a role
-	// PATCH /api/permissions/roles/:role_id → toggle is_enabled on individual permissions
-	// Access: SUPERADMIN and ADMIN only.
-	// SUPERADMIN's own permissions (role_id=1) are read-only (service enforces 403).
 	permissions := r.Group("/api/permissions")
 	permissions.Use(middleware.AuthMiddleware(h))
 	{
@@ -185,9 +175,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	catagory := r.Group("/api/catagory")
 	catagory.Use(middleware.AuthMiddleware(h))
 	{
-		// ======================
-		// Category CRUD
-		// ======================
+
 		catagory.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateCategory)
 		catagory.GET("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRead)), h.GetCategory)
 		catagory.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRemove)), h.DeleteCategory)
@@ -201,7 +189,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 			equipment.PUT("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionEdit)), h.UpdateAsset)                    // Update equipment (ADMIN, SUPERADMIN, HR)
 			equipment.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRemove)), h.DeleteEquipment)           // Delete equipment (ADMIN, SUPERADMIN, HR)
 		}
-		// Equipment assignment routes
+
 		assign := equipment.Group("/assign")
 		{
 			assign.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAssign)), h.AssignAsset)               // Assign equipment
