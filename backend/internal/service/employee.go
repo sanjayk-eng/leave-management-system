@@ -32,13 +32,14 @@ type EmployeeService interface {
 const minPasswordLength = 8
 
 type employeeService struct {
-	DB              *sqlx.DB
-	HrbcService     Hrbc
-	Repo            repositories.EmployeeRepository
-	NotificationSvc notification.Service
-	RoleRepo        repositories.RoleRepository
-	CommonRepo      repositories.Repository
-	PermissionSvc   PermissionService
+	DB                  *sqlx.DB
+	HrbcService         Hrbc
+	Repo                repositories.EmployeeRepository
+	NotificationSvc     notification.Service
+	RoleRepo            repositories.RoleRepository
+	CommonRepo          repositories.Repository
+	PermissionSvc       PermissionService
+	LeaveBalanceService LeaveBalance
 }
 
 func NewEmployeeService(
@@ -49,15 +50,17 @@ func NewEmployeeService(
 	roleRepo repositories.RoleRepository,
 	commonRepo repositories.Repository,
 	permissionSvc PermissionService,
+	leaveBalanceService LeaveBalance,
 ) EmployeeService {
 	return &employeeService{
-		DB:              db,
-		HrbcService:     hrbcService,
-		Repo:            employeeRepo,
-		NotificationSvc: notifSvc,
-		RoleRepo:        roleRepo,
-		CommonRepo:      commonRepo,
-		PermissionSvc:   permissionSvc,
+		DB:                  db,
+		HrbcService:         hrbcService,
+		Repo:                employeeRepo,
+		NotificationSvc:     notifSvc,
+		RoleRepo:            roleRepo,
+		CommonRepo:          commonRepo,
+		PermissionSvc:       permissionSvc,
+		LeaveBalanceService: leaveBalanceService,
 	}
 }
 
@@ -107,7 +110,10 @@ func (s *employeeService) Create(ctx context.Context, actorRoleID int, input *mo
 		if err != nil {
 			return err
 		}
-		return s.allocateLeaveBalance(tx, employeeID, input)
+		if err := s.LeaveBalanceService.AllocateForEmployee(tx, employeeID, input.Role, input.JoiningDate); err != nil {
+			return err
+		}
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -137,39 +143,6 @@ func (s *employeeService) generateCredentials() (plain string, hashed string, er
 
 	return plain, hashed, nil
 }
-
-func (s *employeeService) allocateLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID, input *models.EmployeeInput) error {
-	leaveTypes, err := s.CommonRepo.GetAllLeaveType()
-	if err != nil {
-		return errors.CustomErr(http.StatusInternalServerError, "failed to get leave types")
-	}
-
-	isJoiningThisYear := input.JoiningDate != nil && input.JoiningDate.Year() == time.Now().Year()
-
-	for _, leaveType := range leaveTypes {
-		if leaveType.IsEarly != nil && *leaveType.IsEarly {
-			continue
-		}
-
-		entitlement := leaveType.DefaultEntitlement
-		if input.Role == accessrole.ROLE_INTERN && leaveType.InternEntitlement != nil {
-			entitlement = *leaveType.InternEntitlement
-		}
-		if isJoiningThisYear {
-			entitlement = CalculateProratedLeave(entitlement, int(input.JoiningDate.Month()))
-		}
-
-		if err := s.CommonRepo.CreateLeaveBalance(tx, employeeID, leaveType.ID, entitlement); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to allocate leave balance")
-		}
-	}
-
-	return nil
-}
-
-// ============================================================
-// Update
-// ============================================================
 
 func (s *employeeService) Update(ctx context.Context, actorUserID uuid.UUID, actorRoleID int, employeeID string, req *models.UpdateEmployeeInput) error {
 	id, err := uuid.Parse(employeeID)
@@ -202,7 +175,7 @@ func (s *employeeService) Update(ctx context.Context, actorUserID uuid.UUID, act
 		}
 
 		if req.JoiningDate != nil {
-			return s.recalculateLeaveBalance(tx, employee.ID, employee.RoleID, employee.JoiningDate)
+			return s.LeaveBalanceService.RecalculateForJoiningDate(tx, employee.ID, employee.RoleID, employee.JoiningDate)
 		}
 
 		return nil
@@ -278,19 +251,6 @@ func (s *employeeService) mergeEmployee(employee *models.Employee, req *models.U
 	if req.EndingDate != nil {
 		employee.EndingDate = req.EndingDate
 	}
-}
-
-func (s *employeeService) recalculateLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID, roleID int, joiningDate *time.Time) error {
-	if joiningDate == nil {
-		return nil
-	}
-
-	roleType, err := s.RoleRepo.GetRoleType(roleID)
-	if err != nil {
-		return errors.CustomErr(http.StatusInternalServerError, "failed to fetch role")
-	}
-
-	return s.CommonRepo.RecalculateLeaveBalancesForJoiningDateChange(tx, employeeID, joiningDate, roleType, time.Now().Year())
 }
 
 func derefStr(s *string) string {
@@ -417,8 +377,8 @@ func (s *employeeService) UpdateRole(ctx context.Context, actorUserID uuid.UUID,
 		}
 		updatedID = id
 
-		if err := s.CommonRepo.AdjustLeaveBalancesForRoleChange(tx, empID, currentRoleName, newRoleName, time.Now().Year()); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to adjust leave balances for role change: "+err.Error())
+		if err := s.LeaveBalanceService.RecalculateForRoleChange(tx, empID, currentRoleName, newRoleName); err != nil {
+			return err
 		}
 		return nil
 	}); err != nil {
@@ -629,5 +589,3 @@ func (s *employeeService) DeleteStatus(ctx context.Context, actorRoleID int, emp
 		NewStatus:  newStatus,
 	}, nil
 }
-
-

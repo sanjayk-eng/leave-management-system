@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
@@ -27,16 +26,18 @@ type LeavePolicyService interface {
 type LeavePolicy struct {
 	DB                   *sqlx.DB
 	LeaveApporverService LeaveApprovalFlowService
+	LeaveBalanceService  LeaveBalance
 	LeavePolicyRepo      repositories.LeavePolicyRepository
 	CommRepo             *repositories.Repository
 }
 
-func NewLeavePolicy(db *sqlx.DB, leaveApporverService LeaveApprovalFlowService, leavePolicyRepo repositories.LeavePolicyRepository, commRepo *repositories.Repository) LeavePolicyService {
+func NewLeavePolicy(db *sqlx.DB, leaveApporverService LeaveApprovalFlowService, leaveBalanceService LeaveBalance, leavePolicyRepo repositories.LeavePolicyRepository, commRepo *repositories.Repository) LeavePolicyService {
 	return &LeavePolicy{
 		DB:                   db,
 		LeaveApporverService: leaveApporverService,
 		LeavePolicyRepo:      leavePolicyRepo,
 		CommRepo:             commRepo,
+		LeaveBalanceService:  leaveBalanceService,
 	}
 }
 
@@ -76,16 +77,7 @@ func (s *LeavePolicy) Create(ctx context.Context, input *models.LeaveTypeInput) 
 
 		// 4. Bulk allocation (inside transaction)
 		if !*input.IsEarly {
-
-			activeEmployees, err := s.CommRepo.GetAllActiveEmployeesWithRoles(tx)
-			if err != nil {
-				return errors.CustomErr(http.StatusInternalServerError, "failed to fetch active employees")
-			}
-
-			err = s.CommRepo.BulkAllocateLeaveBalanceForNewLeaveType(tx, res.ID, *input.DefaultEntitlement, input.InternEntitlement, activeEmployees)
-			if err != nil {
-				return errors.CustomErr(http.StatusInternalServerError, "failed to allocate leave balances")
-			}
+			s.LeaveBalanceService.AllocateForNewLeaveType(tx, res.ID, res.DefaultEntitlement, res.InternEntitlement)
 		}
 
 		return nil
@@ -166,47 +158,40 @@ func (s *LeavePolicy) Get(ctx context.Context) (*[]models.LeaveTypeResponse, err
 }
 
 func (s *LeavePolicy) Update(ctx context.Context, leaveTypeID int, input *models.LeaveTypeInput) (*models.LeaveType, error) {
-	// 1. Normalize input
+	// Normalize input
 	if err := s.NormalizeLeaveTypeInput(ctx, input); err != nil {
 		return nil, err
 	}
-	var res *models.LeaveType
+
 	oldLeaveType, err := s.LeavePolicyRepo.GetById(ctx, strconv.Itoa(leaveTypeID))
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
+
+	var res *models.LeaveType
+
 	err = database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
+
 		res, err = s.LeavePolicyRepo.Update(ctx, tx, strconv.Itoa(leaveTypeID), input)
 		if err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "failed to update leave policy")
 		}
 
-		currentYear := time.Now().Year()
-		oldDefaultEntitlement := oldLeaveType.DefaultEntitlement
-		newDefaultEntitlement := *input.DefaultEntitlement
-
 		isEarly := oldLeaveType.IsEarly != nil && *oldLeaveType.IsEarly
 		if !isEarly {
-			if err := s.CommRepo.UpdateLeaveBalancesForEntitlementChange(
-				tx, leaveTypeID, oldDefaultEntitlement, newDefaultEntitlement, currentYear,
-			); err != nil {
-				return errors.CustomErr(http.StatusInternalServerError, "failed to update leave Balance")
+			if err := s.LeaveBalanceService.SyncLeaveBalances(tx,leaveTypeID,*input.DefaultEntitlement,input.InternEntitlement); err != nil {
+				return err
 			}
 		}
 
-		newEffectiveIntern := newDefaultEntitlement
-		if input.InternEntitlement != nil {
-			newEffectiveIntern = *input.InternEntitlement
-		}
-		if err := s.CommRepo.UpdateInternLeaveBalancesForEntitlementChange(
-			tx, leaveTypeID, newEffectiveIntern, currentYear,
-		); err != nil {
-			return errors.CustomErr(http.StatusInternalServerError, "failed to update intern leave balances")
-		}
 		return nil
 	})
 
-	return res, err
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (s *LeavePolicy) Delete(ctx context.Context, leaveTypeID int) error {

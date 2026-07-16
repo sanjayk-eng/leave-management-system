@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
@@ -107,4 +109,10 @@ type CompanyField struct {
 	SecondaryColor          string `form:"SecondaryColor" json:"secondary_color"`
 	LogoPath                string `json:"logo_path"`
 	BirthdayMessageTemplate string `form:"BirthdayMessageTemplate" json:"birthday_message_template"`
+}
+
+type ActiveEmployeeRole struct {
+	ID          uuid.UUID  `db:"id"`
+	Role        string     `db:"role"`
+	JoiningDate *time.Time `db:"joining_date"`
 }

@@ -101,8 +101,12 @@ func main() {
 	leaveApproverFlowRepo := repositories.NewLeaveApprovalFlowRepository(db)
 	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo, auditSvc)
 
+	// ── Leave Balance services ──────────────────────────────────────────────────────
+	leaveBalanceRepo := repositories.NewLeaveBalanceRepository(db)
+	leaveBalanceService := service.NewLeaveBalance(db, *repo, roleRepo, leaveBalanceRepo)
+
 	leavePolicyRepo := repositories.NewLeavePolicy(db)
-	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leavePolicyRepo, repo)
+	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leaveBalanceService, leavePolicyRepo, repo)
 
 	leaveFlowLogRepo := repositories.NewLeaveFlowLog(db)
 	leaveFlowLogService := service.NewLeaveFlowLog(db, leavePolicyService, leaveFlowLogRepo)
@@ -139,7 +143,7 @@ func main() {
 
 	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, roleRepo, hrbcService, auditSvc)
 
-	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc)
+	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc, leaveBalanceService)
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,

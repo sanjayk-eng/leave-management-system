@@ -9,7 +9,6 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/timezone"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 )
 
 // employeeSortMap maps API sort_by keys → safe SQL column expressions.
@@ -341,21 +340,3 @@ func (r *Repository) GetBirthdays(month, year int) ([]models.BirthdayEmployee, e
 	return result, nil
 }
 
-// GetAllActiveEmployeesWithRoles returns id, role, and joining_date for all active employees.
-// Used when allocating leave balance for a newly created leave type.
-type ActiveEmployeeRole struct {
-	ID          uuid.UUID  `db:"id"`
-	Role        string     `db:"role"`
-	JoiningDate *time.Time `db:"joining_date"`
-}
-
-func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]ActiveEmployeeRole, error) {
-	var employees []ActiveEmployeeRole
-	err := tx.Select(&employees, `
-		SELECT e.id, r.type AS role, e.joining_date
-		FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE e.status = 'active'
-	`)
-	return employees, err
-}

@@ -486,3 +486,14 @@ func (r *Repository) GetByFilterHolidayBetweenTwoDates(tx *sqlx.Tx, start, end t
 	err := tx.Select(&holidays, query, start, end)
 	return holidays, err
 }
+
+func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]models.ActiveEmployeeRole, error) {
+	var employees []models.ActiveEmployeeRole
+	err := tx.Select(&employees, `
+		SELECT e.id, r.type AS role, e.joining_date
+		FROM Tbl_Employee e
+		JOIN Tbl_Role r ON e.role_id = r.id
+		WHERE e.status = 'active'
+	`)
+	return employees, err
+}
