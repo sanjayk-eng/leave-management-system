@@ -1,14 +1,14 @@
 /**
- * LogsTable — activity feed table with both infinite-scroll AND a visible
- * pagination bar at the bottom.
+ * LogsTable — activity feed table with server-side pagination.
  *
- * - IntersectionObserver sentinel auto-loads the next page when the user
- *   scrolls near the bottom (append mode).
- * - ServerPagination bar at the bottom lets users jump to any page directly
- *   (replace mode — jumps to that page, doesn't append).
+ * Matches the asset-side pattern:
+ *  - loading (initialLoading) → skeleton rows on first fetch.
+ *  - fetching → opacity overlay + pointer-events-none on subsequent fetches,
+ *    exactly like EquipmentCategories / EquipmentList.
+ *  - ServerPagination bar at the bottom (always shown when total_pages >= 1).
  */
-import { useEffect, useRef } from 'react';
-import { ActivityEntry, ActivityPagination } from '@/types';
+import { ActivityEntry } from '@/types';
+import { LogsPagination } from '@/hooks/useLogs';
 import { Badge }     from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,16 +26,17 @@ import {
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
 const COMPONENT_ICON: Record<string, React.ReactNode> = {
-  designation:   <Briefcase  className="h-3.5 w-3.5" />,
-  employee:      <User       className="h-3.5 w-3.5" />,
-  leave:         <Calendar   className="h-3.5 w-3.5" />,
-  leave_balance: <Calendar   className="h-3.5 w-3.5" />,
-  leave_policy:  <FileText   className="h-3.5 w-3.5" />,
-  holiday:       <Sun        className="h-3.5 w-3.5" />,
-  settings:      <Settings   className="h-3.5 w-3.5" />,
-  payroll:       <DollarSign className="h-3.5 w-3.5" />,
-  asset:         <Package    className="h-3.5 w-3.5" />,
-  permission:    <Shield     className="h-3.5 w-3.5" />,
+  designation:          <Briefcase  className="h-3.5 w-3.5" />,
+  employee:             <User       className="h-3.5 w-3.5" />,
+  leave:                <Calendar   className="h-3.5 w-3.5" />,
+  leave_balance:        <Calendar   className="h-3.5 w-3.5" />,
+  leave_policy:         <FileText   className="h-3.5 w-3.5" />,
+  leave_approval_flow:  <FileText   className="h-3.5 w-3.5" />,
+  holiday:              <Sun        className="h-3.5 w-3.5" />,
+  settings:             <Settings   className="h-3.5 w-3.5" />,
+  payroll:              <DollarSign className="h-3.5 w-3.5" />,
+  asset:                <Package    className="h-3.5 w-3.5" />,
+  permission:           <Shield     className="h-3.5 w-3.5" />,
 };
 const componentIcon = (c: string) =>
   COMPONENT_ICON[c.toLowerCase()] ?? <Activity className="h-3.5 w-3.5" />;
@@ -43,8 +44,8 @@ const componentIcon = (c: string) =>
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 const actionVariant = (a: string): BadgeVariant => {
   if (a.endsWith('.created') || a.endsWith('.applied'))  return 'default';
-  if (a.endsWith('.updated') || a.endsWith('.approved')) return 'secondary';
-  if (a.endsWith('.deleted') || a.endsWith('.rejected')) return 'destructive';
+  if (a.endsWith('.updated') || a.endsWith('.approved') || a.endsWith('.adjusted') || a.endsWith('.run')) return 'secondary';
+  if (a.endsWith('.deleted') || a.endsWith('.rejected') || a.endsWith('.deactivated')) return 'destructive';
   return 'outline';
 };
 const actionLabel = (a: string) => {
@@ -66,13 +67,13 @@ const roleBadgeClass = (role: string) => {
   }
 };
 
-// ─── Skeleton rows for loading state ─────────────────────────────────────────
+// ─── Skeleton rows ────────────────────────────────────────────────────────────
 
 const SkeletonRow = () => (
   <TableRow>
     {[200, 120, 100, 280, 130, 140].map((w, i) => (
       <TableCell key={i} className={i === 0 ? 'pl-4' : i === 5 ? 'pr-4' : ''}>
-        <Skeleton className={`h-4`} style={{ width: w }} />
+        <Skeleton className="h-4" style={{ width: w }} />
       </TableCell>
     ))}
   </TableRow>
@@ -82,11 +83,9 @@ const SkeletonRow = () => (
 
 interface LogsTableProps {
   entries:          ActivityEntry[];
-  pagination:       ActivityPagination;
-  loading:          boolean;
-  loadingMore:      boolean;
-  hasMore:          boolean;
-  onLoadMore:       () => void;
+  pagination:       LogsPagination;
+  loading:          boolean;   // initialLoading — show skeleton rows
+  fetching:         boolean;   // subsequent fetch — show opacity overlay
   onPageChange:     (page: number) => void;
   onPageSizeChange: (size: number) => void;
 }
@@ -97,28 +96,12 @@ export const LogsTable = ({
   entries,
   pagination,
   loading,
-  loadingMore,
-  hasMore,
-  onLoadMore,
+  fetching,
   onPageChange,
   onPageSizeChange,
 }: LogsTableProps) => {
-  // Sentinel ref — IntersectionObserver watches this div at the list bottom
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) onLoadMore(); },
-      { rootMargin: '120px' }, // trigger a little before reaching the very bottom
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [onLoadMore]);
-
-  // ── Empty state ──────────────────────────────────────────────────────────
+  // ── Empty state (not initial load, no entries) ───────────────────────────
   if (!loading && entries.length === 0) {
     return (
       <Card>
@@ -141,128 +124,118 @@ export const LogsTable = ({
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
             Activity Log
-            {(loading || loadingMore) && (
+            {/* Subtle spinner during refetch — matches asset fetching indicator */}
+            {fetching && (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             )}
           </span>
-          <span className="text-sm font-normal text-muted-foreground">
-            {entries.length.toLocaleString()} of {pagination.total.toLocaleString()}{' '}
-            {pagination.total === 1 ? 'entry' : 'entries'}
-          </span>
+          {pagination.total > 0 && (
+            <span className="text-sm font-normal text-muted-foreground">
+              {pagination.total.toLocaleString()}{' '}
+              {pagination.total === 1 ? 'entry' : 'entries'}
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="pl-4 w-[200px]">Actor</TableHead>
-                <TableHead className="w-[130px]">Component</TableHead>
-                <TableHead className="w-[110px]">Action</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="w-[140px]">Resource</TableHead>
-                <TableHead className="w-[150px] pr-4">Time</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {/* Skeleton rows on first load */}
-              {loading && entries.length === 0 &&
-                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
-              }
-
-              {entries.map(entry => (
-                <TableRow key={entry.id} className="group hover:bg-muted/30 transition-colors">
-                  {/* Actor */}
-                  <TableCell className="pl-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <User className="h-3.5 w-3.5 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate leading-tight">
-                          {entry.actor_name}
-                        </p>
-                        <span className={`inline-flex items-center rounded-full border px-1.5 text-[10px] font-medium leading-5 ${roleBadgeClass(entry.actor_role)}`}>
-                          {entry.actor_role}
-                        </span>
-                      </div>
-                    </div>
-                  </TableCell>
-
-                  {/* Component */}
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      {componentIcon(entry.component)}
-                      <span>{componentLabel(entry.component)}</span>
-                    </div>
-                  </TableCell>
-
-                  {/* Action */}
-                  <TableCell>
-                    <Badge variant={actionVariant(entry.action)} className="text-xs font-medium whitespace-nowrap">
-                      {actionLabel(entry.action)}
-                    </Badge>
-                  </TableCell>
-
-                  {/* Description — pre-rendered sentence stored in DB */}
-                  <TableCell className="max-w-xs">
-                    <p className="text-sm leading-snug line-clamp-2">{entry.description}</p>
-                  </TableCell>
-
-                  {/* Resource */}
-                  <TableCell>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{entry.resource_name}</p>
-                      <p className="text-xs text-muted-foreground">{entry.resource_type}</p>
-                    </div>
-                  </TableCell>
-
-                  {/* Time */}
-                  <TableCell className="pr-4 text-right">
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
-                    </p>
-                    <p className="text-xs text-muted-foreground/60 mt-0.5">
-                      {new Date(entry.created_at).toLocaleString()}
-                    </p>
-                  </TableCell>
+        {/* Opacity overlay while re-fetching — identical to asset components */}
+        <div className={fetching ? 'opacity-60 pointer-events-none transition-opacity duration-150' : ''}>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="pl-4 w-[200px]">Actor</TableHead>
+                  <TableHead className="w-[150px]">Component</TableHead>
+                  <TableHead className="w-[130px]">Action</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-[140px]">Resource</TableHead>
+                  <TableHead className="w-[160px] pr-4">Time</TableHead>
                 </TableRow>
-              ))}
+              </TableHeader>
 
-              {/* Skeleton rows while appending */}
-              {loadingMore &&
-                Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={`more-${i}`} />)
-              }
-            </TableBody>
-          </Table>
+              <TableBody>
+                {/* Skeleton rows on first load */}
+                {loading &&
+                  Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+                }
+
+                {!loading && entries.map(entry => (
+                  <TableRow key={entry.id} className="hover:bg-muted/30 transition-colors">
+
+                    {/* Actor */}
+                    <TableCell className="pl-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate leading-tight">
+                            {entry.actor_name}
+                          </p>
+                          <span className={`inline-flex items-center rounded-full border px-1.5 text-[10px] font-medium leading-5 ${roleBadgeClass(entry.actor_role)}`}>
+                            {entry.actor_role}
+                          </span>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    {/* Component */}
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        {componentIcon(entry.component)}
+                        <span>{componentLabel(entry.component)}</span>
+                      </div>
+                    </TableCell>
+
+                    {/* Action */}
+                    <TableCell>
+                      <Badge variant={actionVariant(entry.action)} className="text-xs font-medium whitespace-nowrap">
+                        {actionLabel(entry.action)}
+                      </Badge>
+                    </TableCell>
+
+                    {/* Description */}
+                    <TableCell className="max-w-xs">
+                      <p className="text-sm leading-snug line-clamp-2">{entry.description}</p>
+                    </TableCell>
+
+                    {/* Resource */}
+                    <TableCell>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{entry.resource_name}</p>
+                        <p className="text-xs text-muted-foreground">{entry.resource_type}</p>
+                      </div>
+                    </TableCell>
+
+                    {/* Time */}
+                    <TableCell className="pr-4 text-right">
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                      </p>
+                      <p className="text-xs text-muted-foreground/60 mt-0.5">
+                        {new Date(entry.created_at).toLocaleString()}
+                      </p>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
-        {/* Invisible scroll sentinel — triggers loadMore via IntersectionObserver */}
-        <div ref={sentinelRef} className="h-1" aria-hidden />
-
-        {/* Visible pagination bar — lets users jump to any page directly */}
-        {pagination.total_pages > 1 && (
-          <div className="px-4 border-t">
-            <ServerPagination
-              currentPage={pagination.page}
-              pageSize={pagination.page_size}
-              totalItems={pagination.total}
-              totalPages={pagination.total_pages}
-              onPageChange={onPageChange}
-              onPageSizeChange={onPageSizeChange}
-              pageSizeOptions={[20, 50, 100]}
-              itemName="entries"
-            />
-          </div>
-        )}
-
-        {/* End-of-feed label when everything is loaded via scroll */}
-        {!hasMore && !loading && entries.length > 0 && pagination.total_pages <= 1 && (
-          <p className="py-3 text-center text-xs text-muted-foreground">
-            All {pagination.total.toLocaleString()} {pagination.total === 1 ? 'entry' : 'entries'} loaded
-          </p>
+        {/* ServerPagination — always shown when there is at least 1 page */}
+        {!loading && pagination.total_pages >= 1 && (
+          <ServerPagination
+            currentPage={pagination.page}
+            pageSize={pagination.page_size}
+            totalItems={pagination.total}
+            totalPages={pagination.total_pages}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+            pageSizeOptions={[20, 50, 100]}
+            itemName="entries"
+          />
         )}
       </CardContent>
     </Card>
