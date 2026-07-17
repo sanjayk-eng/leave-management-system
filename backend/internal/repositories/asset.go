@@ -756,36 +756,3 @@ func (r *assetRepository) SetAssignmentQuantity(tx *sqlx.Tx, assignmentID uuid.U
 
 	return nil
 }
-
-func (r *Repository) RemoveEquipment(tx *sqlx.Tx, req models.RemoveAssignmentRequest) error {
-	var (
-		assignmentID uuid.UUID
-		quantity     int
-	)
-	err := tx.QueryRow(`
-		SELECT id, quantity
-		FROM tbl_equipment_assignment
-		WHERE equipment_id = $1
-		  AND employee_id = $2
-		ORDER BY assigned_at DESC
-		LIMIT 1
-	`, req.EquipmentID, req.EmployeeID).Scan(&assignmentID, &quantity)
-	if err != nil {
-		// No assignment found — nothing to remove.
-		return nil
-	}
-
-	if _, err := tx.Exec(`DELETE FROM tbl_equipment_assignment WHERE id = $1`, assignmentID); err != nil {
-		return fmt.Errorf("failed to remove assignment: %w", err)
-	}
-
-	if _, err := tx.Exec(`
-		UPDATE tbl_equipment
-		SET remaining_quantity = remaining_quantity + $1
-		WHERE id = $2
-	`, quantity, req.EquipmentID); err != nil {
-		return fmt.Errorf("failed to restore equipment quantity: %w", err)
-	}
-
-	return nil
-}

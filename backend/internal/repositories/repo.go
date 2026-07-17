@@ -497,3 +497,130 @@ func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]models.Activ
 	`)
 	return employees, err
 }
+
+// GetAllLeaveTypesWithEntitlements fetches all non-early leave types with their default entitlements.
+// Early leave types (is_early = true) are excluded because they don't have a balance bucket.
+func (r *Repository) GetAllLeaveTypesWithEntitlements() ([]models.LeaveTypeData, error) {
+	var leaveTypes []models.LeaveTypeData
+	query := `
+		SELECT 
+			lt.id AS leave_type_id,
+			lt.name AS leave_type_name,
+			COALESCE(lt.default_entitlement, 0) AS default_entitlement,
+			lt.intern_entitlement
+		FROM Tbl_Leave_Type lt
+		WHERE lt.is_early IS NULL OR lt.is_early = FALSE
+		ORDER BY lt.id
+	`
+	err := r.DB.Select(&leaveTypes, query)
+	return leaveTypes, err
+}
+
+// GetLeaveBalancesByEmployeeAndYear fetches leave balances for a specific employee and year
+func (r *Repository) GetLeaveBalancesByEmployeeAndYear(employeeID uuid.UUID, year int) ([]models.BalanceData, error) {
+	var balanceRecords []models.BalanceData
+	query := `
+		SELECT 
+			leave_type_id,
+			COALESCE(opening, 0) AS opening,
+			COALESCE(accrued, 0) AS accrued,
+			COALESCE(used, 0) AS used,
+			COALESCE(adjusted, 0) AS adjusted,
+			COALESCE(closing, 0) AS closing
+		FROM Tbl_Leave_balance
+		WHERE employee_id = $1 AND year = $2
+	`
+	err := r.DB.Select(&balanceRecords, query, employeeID, year)
+
+	return balanceRecords, err
+}
+
+func (r *Repository) GetTotalPaidLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID) (float64, error) {
+	var totalBalance float64
+	err := tx.Get(&totalBalance, `
+		SELECT COALESCE(SUM(lb.closing), 0)
+		FROM Tbl_Leave_balance lb
+		JOIN Tbl_Leave_Type lt ON lb.leave_type_id = lt.id
+		WHERE lb.employee_id = $1
+		  AND lb.year = EXTRACT(YEAR FROM CURRENT_DATE)
+		  AND lt.is_paid = TRUE
+		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
+		  AND lt.is_work_from_home = FALSE
+	`, employeeID)
+	return totalBalance, err
+}
+
+func (r *Repository) GetTotalPendingPaidLeaveDays(tx *sqlx.Tx, employeeID uuid.UUID) (float64, error) {
+	var totalPendingDays float64
+	err := tx.Get(&totalPendingDays, `
+		SELECT COALESCE(SUM(l.days), 0)
+		FROM Tbl_Leave l
+		JOIN Tbl_Leave_Type lt ON l.leave_type_id = lt.id
+		WHERE l.employee_id = $1
+		  AND l.status IN ('Pending', 'MANAGER_APPROVED')
+		  AND EXTRACT(YEAR FROM l.start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+		  AND lt.is_paid = TRUE
+		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
+		  AND lt.is_work_from_home = FALSE
+	`, employeeID)
+	return totalPendingDays, err
+}
+
+// CreateLeaveBalanceForAdjustment creates a new leave balance record
+func (r *Repository) CreateLeaveBalanceForAdjustment(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, year int, defaultEntitlement float64) (models.LeaveBalanceForAdjustment, error) {
+	var balance models.LeaveBalanceForAdjustment
+	err := tx.QueryRow(`
+		INSERT INTO Tbl_Leave_balance
+		(employee_id, leave_type_id, year, opening, accrued, used, adjusted, closing, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,0,0,0,$4,NOW(),NOW())
+		RETURNING id, opening, accrued, used, adjusted, closing, employee_id, leave_type_id, year
+	`, employeeID, leaveTypeID, year, defaultEntitlement).
+		Scan(&balance.ID, &balance.Opening, &balance.Accrued, &balance.Used, &balance.Adjusted, &balance.Closing, &balance.EmployeeID, &balance.LeaveTypeID, &balance.Year)
+	return balance, err
+}
+
+// UpdateLeaveBalanceAdjustment updates adjusted and closing values for leave balance
+
+func (r *Repository) UpdateLeaveBalanceByEmployeeId(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeId int, Days float64) error {
+	query := `UPDATE Tbl_Leave_balance SET used = used + $3, closing = closing - $3, updated_at = NOW() WHERE employee_id=$1 AND leave_type_id=$2 AND year = EXTRACT(YEAR FROM CURRENT_DATE)`
+	_, err := tx.Exec(query, employeeID, leaveTypeId, Days)
+	return err
+}
+func (r *Repository) UpdateWidthrowLeaveBalanceByEmployeeId(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeId int, Days float64) error {
+	query := `UPDATE Tbl_Leave_balance SET used = used - $3, closing = closing + $3, updated_at = NOW() WHERE employee_id=$1 AND leave_type_id=$2 AND year = EXTRACT(YEAR FROM CURRENT_DATE)`
+	_, err := tx.Exec(query, employeeID, leaveTypeId, Days)
+	return err
+}
+
+func (r *Repository) RemoveEquipment(tx *sqlx.Tx, req models.RemoveAssignmentRequest) error {
+	var (
+		assignmentID uuid.UUID
+		quantity     int
+	)
+	err := tx.QueryRow(`
+		SELECT id, quantity
+		FROM tbl_equipment_assignment
+		WHERE equipment_id = $1
+		  AND employee_id = $2
+		ORDER BY assigned_at DESC
+		LIMIT 1
+	`, req.EquipmentID, req.EmployeeID).Scan(&assignmentID, &quantity)
+	if err != nil {
+		// No assignment found — nothing to remove.
+		return nil
+	}
+
+	if _, err := tx.Exec(`DELETE FROM tbl_equipment_assignment WHERE id = $1`, assignmentID); err != nil {
+		return fmt.Errorf("failed to remove assignment: %w", err)
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE tbl_equipment
+		SET remaining_quantity = remaining_quantity + $1
+		WHERE id = $2
+	`, quantity, req.EquipmentID); err != nil {
+		return fmt.Errorf("failed to restore equipment quantity: %w", err)
+	}
+
+	return nil
+}

@@ -8,7 +8,6 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
-	accessrole "github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
@@ -119,10 +118,6 @@ func (h *HandlerFunc) UpdateCompanySettings(c *gin.Context) {
 // PreviewBirthdayMessage - GET /api/settings/birthday-preview?name=John&birth_date=1995-04-16
 // Returns the rendered birthday message using the current template and provided placeholders.
 func (h *HandlerFunc) PreviewBirthdayMessage(c *gin.Context) {
-	if err := accessrole.Admin_SuperAdmin(c.GetString("role"), "not authorized"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
 
 	name := c.DefaultQuery("name", "Employee")
 	birthDateStr := c.Query("birth_date") // optional, format: 2006-01-02

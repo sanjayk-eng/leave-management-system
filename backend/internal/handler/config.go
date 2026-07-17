@@ -37,6 +37,7 @@ type HandlerFunc struct {
 	AuditSvc                 audit.Service // async audit log — never nil after NewHandler
 	DesignationService       service.DesignationService
 	leaveBalanceService      service.LeaveBalance
+	LeaveTimingService       service.LeaveTimingService
 }
 
 // NewHandler constructs the handler with all required dependencies.
@@ -56,6 +57,7 @@ func NewHandler(
 	auditSvc audit.Service,
 	designationSvc service.DesignationService,
 	leaveBalanceService service.LeaveBalance,
+	leaveTimingService service.LeaveTimingService,
 ) *HandlerFunc {
 	return &HandlerFunc{
 		Env:                      env,
@@ -76,6 +78,7 @@ func NewHandler(
 		AuditSvc:                 auditSvc,
 		DesignationService:       designationSvc,
 		leaveBalanceService:      leaveBalanceService,
+		LeaveTimingService:       leaveTimingService,
 	}
 }
 

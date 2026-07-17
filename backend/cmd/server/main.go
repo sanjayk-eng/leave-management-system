@@ -71,6 +71,9 @@ func main() {
 	notifCfg := notification.DefaultConfig() // Workers:3, Buffer:256, MaxRetries:3
 	notifSvc := notification.NewService(processor, notifCfg, logger)
 
+	leaveTimingRepo := repositories.NewLeaveTimingRepository(db)
+	leaveTimingService := service.NewLeaveTimingService(leaveTimingRepo)
+
 	// Start worker pool — graceful shutdown via context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -105,7 +108,7 @@ func main() {
 
 	// ── Leave Balance services ──────────────────────────────────────────────────────
 	leaveBalanceRepo := repositories.NewLeaveBalanceRepository(db)
-	leaveBalanceService := service.NewLeaveBalance(db,hrbcService, *repo, roleRepo, leaveBalanceRepo, employeeRepo)
+	leaveBalanceService := service.NewLeaveBalance(db, hrbcService, *repo, roleRepo, leaveBalanceRepo, employeeRepo)
 
 	leavePolicyRepo := repositories.NewLeavePolicy(db)
 	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leaveBalanceService, leavePolicyRepo, repo)
@@ -155,6 +158,7 @@ func main() {
 		auditSvc,
 		designationSvc,
 		leaveBalanceService,
+		leaveTimingService,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

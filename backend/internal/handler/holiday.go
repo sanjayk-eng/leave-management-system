@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
@@ -12,14 +11,6 @@ import (
 
 func (h *HandlerFunc) AddHoliday(c *gin.Context) {
 
-	role := c.GetString("role")
-
-	if role != accessrole.ROLE_SUPER_ADMIN &&
-		role != accessrole.ROLE_ADMIN &&
-		role != accessrole.ROLE_HR {
-		errors.RespondWithError(c, http.StatusForbidden, "not permitted")
-		return
-	}
 	var input models.Holiday
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -78,13 +69,6 @@ func (h *HandlerFunc) GetHolidays(c *gin.Context) {
 }
 
 func (h *HandlerFunc) DeleteHoliday(c *gin.Context) {
-
-	role := c.GetString("role")
-
-	if err := accessrole.Admin_SuperAdmin_Hr(role, "only ADMIN, SUPERADMIN, and HR can delete holidays"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
 
 	id := c.Param("id")
 	if id == "" {
