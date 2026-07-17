@@ -93,14 +93,14 @@ function BirthdayRow({ emp, currentUserId }: { emp: UpcomingBirthdayEmployee; cu
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <p className="text-xs text-muted-foreground truncate">{emp.email}</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[140px]">{emp.email}</p>
           {formattedDate && (
-            <span className="text-xs text-muted-foreground">· {formattedDate}</span>
+            <span className="text-xs text-muted-foreground shrink-0">· {formattedDate}</span>
           )}
           <RemainingLabel emp={emp} />
         </div>
       </div>
-      <Badge className={`text-xs shrink-0 ${cfg.badge}`}>
+      <Badge className={`text-xs shrink-0 self-start ${cfg.badge}`}>
         {cfg.label || `${emp.remaining_days}d ${emp.remaining_hours}h`}
       </Badge>
     </div>

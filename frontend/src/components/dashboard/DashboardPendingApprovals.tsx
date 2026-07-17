@@ -38,11 +38,11 @@ export const DashboardPendingApprovals = ({ leaves }: DashboardPendingApprovalsP
       </div>
 
       {/* Table-like list */}
-      <div className="divide-y">
+      <div className="divide-y overflow-x-auto">
         {leaves.map((leave) => (
-          <div key={leave.id} className="px-5 py-3.5 flex items-center gap-4">
+          <div key={leave.id} className="px-5 py-3.5 flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-x-4 gap-y-1">
             {/* Employee */}
-            <div className="w-36 shrink-0 min-w-0">
+            <div className="w-full sm:w-36 sm:shrink-0 min-w-0">
               <p className="text-sm font-medium truncate">{leave.employee}</p>
             </div>
 

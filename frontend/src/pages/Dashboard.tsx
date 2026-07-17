@@ -142,7 +142,7 @@ const Dashboard = () => {
       />
 
       {/* Main 3-column row */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 
         <DashboardTodaysLeaves
           leaves={todaysLeaves}
@@ -173,7 +173,7 @@ const Dashboard = () => {
       </div>
 
       {/* Birthday strips */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <TodayBirthdays />
         <BirthdayList maxHeight={340} />
       </div>

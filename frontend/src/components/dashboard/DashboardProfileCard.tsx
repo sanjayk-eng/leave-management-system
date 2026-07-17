@@ -58,21 +58,21 @@ export const DashboardProfileCard = ({
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-11 w-11 ring-2 ring-border">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-muted/30">
+        <div className="flex items-center gap-4 min-w-0">
+          <Avatar className="h-11 w-11 ring-2 ring-border shrink-0">
             <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
               {getInitials(profileData.full_name)}
             </AvatarFallback>
           </Avatar>
-          <div>
-            <p className="text-base font-semibold leading-tight">{profileData.full_name}</p>
+          <div className="min-w-0">
+            <p className="text-base font-semibold leading-tight truncate">{profileData.full_name}</p>
             <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium mt-0.5 ${roleClass}`}>
               {profileData.role}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button onClick={onChangePassword} variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
             <Key className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Password</span>
@@ -86,10 +86,10 @@ export const DashboardProfileCard = ({
 
       {/* ── Field grid ─────────────────────────────────────────────────────── */}
       <div className="px-6 py-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-6 divide-y sm:divide-y-0 [&>*]:border-b [&>*]:sm:border-b-0 last:[&>*]:border-0">
 
           {/* Column 1 */}
-          <div className="sm:pr-6 lg:pr-6">
+          <div className="py-2">
             <FieldRow
               icon={<Mail className="h-3.5 w-3.5" />}
               label="Email"
@@ -106,7 +106,7 @@ export const DashboardProfileCard = ({
           </div>
 
           {/* Column 2 */}
-          <div className="sm:px-6 lg:px-6">
+          <div className="py-2 sm:border-l sm:pl-6">
             <FieldRow
               icon={<CalendarDays className="h-3.5 w-3.5" />}
               label="Joining Date"
@@ -123,7 +123,7 @@ export const DashboardProfileCard = ({
           </div>
 
           {/* Column 3 */}
-          <div className="sm:px-6 lg:px-6">
+          <div className="py-2 xl:border-l xl:pl-6">
             <FieldRow
               icon={<CalendarDays className="h-3.5 w-3.5" />}
               label="Birth Date"
@@ -143,14 +143,14 @@ export const DashboardProfileCard = ({
             )}
           </div>
 
-          {/* Column 4 — role badge large */}
-          <div className="sm:pl-6 lg:pl-6 flex items-center justify-start sm:justify-center">
-            <div className="py-3 text-center">
-              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70 mb-2">Role</p>
+          {/* Column 4 — role badge */}
+          <div className="py-2 xl:border-l xl:pl-6 flex items-center justify-start xl:justify-center">
+            <div className="py-1 flex sm:flex-col items-center gap-3 sm:gap-1.5">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">Role</p>
               <Badge variant="outline" className={`text-sm px-3 py-1 font-semibold ${roleClass} border-0`}>
                 {profileData.role}
               </Badge>
-              <div className="mt-2 flex items-center justify-center gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <p className="text-[11px] text-muted-foreground">Active</p>
               </div>
