@@ -1,7 +1,9 @@
 import { Badge }      from '@/components/ui/badge';
+import { Button }     from '@/components/ui/button';
 import { StatusBadge } from '@/components/StatusBadge';
 import { formatDate }  from '@/lib/dateUtils';
-import { Clock }       from 'lucide-react';
+import { Clock, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface LeaveItem {
   id:             string;
@@ -24,17 +26,30 @@ interface DashboardPendingApprovalsProps {
 export const DashboardPendingApprovals = ({ leaves }: DashboardPendingApprovalsProps) => {
   if (leaves.length === 0) return null;
 
+  const navigate = useNavigate();
+
   return (
     <div className="rounded-xl border bg-card shadow-sm">
       {/* Header */}
-      <div className="px-5 py-4 border-b flex items-center justify-between">
-        <div>
+      <div className="px-5 py-4 border-b flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-sm font-semibold">Pending Approvals</p>
           <p className="text-xs text-muted-foreground mt-0.5">Leave requests awaiting your review</p>
         </div>
-        <Badge variant="secondary" className="tabular-nums">
-          {leaves.length}
-        </Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge variant="secondary" className="tabular-nums">
+            {leaves.length}
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8 text-xs"
+            onClick={() => navigate('/approvals')}
+          >
+            Review All
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Table-like list */}

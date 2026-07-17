@@ -12,12 +12,13 @@
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '@/components/ui/sheet';
-import { Button }     from '@/components/ui/button';
-import { Skeleton }   from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator }  from '@/components/ui/separator';
+import { Button }        from '@/components/ui/button';
+import { Skeleton }      from '@/components/ui/skeleton';
+import { ScrollArea }    from '@/components/ui/scroll-area';
+import { Separator }     from '@/components/ui/separator';
+import { ErrorDisplay }  from '@/components/ErrorDisplay';
 import { useLeaveBalances } from '@/hooks/useLeaveBalances';
-import { AlertCircle, RefreshCw, CalendarOff } from 'lucide-react';
+import { CalendarOff } from 'lucide-react';
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -282,20 +283,11 @@ export const LeaveBalanceSheet = ({
 
             {/* Error */}
             {!isLoading && error && (
-              <div className="flex flex-col items-center gap-4 py-16 text-center">
-                <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <AlertCircle className="h-7 w-7 text-destructive/60" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Could not load balances</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-[220px]">
-                    {(error as Error)?.message ?? 'An unexpected error occurred'}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 h-8">
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Retry
-                </Button>
+              <div className="py-6 px-2">
+                <ErrorDisplay
+                  error={error}
+                  onRetry={() => refetch()}
+                />
               </div>
             )}
 
