@@ -29,6 +29,7 @@ import { EditProfileDialog }         from '@/components/dashboard/EditProfileDia
 import { ChangePasswordDialog }      from '@/components/dashboard/ChangePasswordDialog';
 import { LeaveBalanceSheet }         from '@/components/LeaveBalanceSheet';
 import { AssignedAssetsSheet }       from '@/components/AssignedAssetsSheet';
+import { TodaysLeavesSheet }         from '@/components/TodaysLeavesSheet';
 import { TodayBirthdays }            from '@/components/TodayBirthdays';
 import { BirthdayList }              from '@/components/BirthdayList';
 
@@ -99,7 +100,8 @@ const Dashboard = () => {
     isWithdrawing,
   });
 
-  const [assetsSheetOpen, setAssetsSheetOpen] = useState(false);
+  const [assetsSheetOpen, setAssetsSheetOpen]       = useState(false);
+  const [todaysLeavesSheetOpen, setTodaysLeavesSheetOpen] = useState(false);
 
   // ── Layout ─────────────────────────────────────────────────────────────────
   return (
@@ -148,6 +150,7 @@ const Dashboard = () => {
           error={leavesError as Error | null}
           isAdminOrManager={isAdminOrManager}
           onRetry={refetchLeaves}
+          onViewLeaves={() => setTodaysLeavesSheetOpen(true)}
         />
 
         <DashboardLeaveBalanceCard
@@ -286,6 +289,14 @@ const Dashboard = () => {
         onOpenChange={setAssetsSheetOpen}
         employeeId={currentUser?.id ?? ''}
         employeeName={profileData?.full_name ?? currentUser?.email ?? ''}
+      />
+
+      {/* Today's leaves sheet */}
+      <TodaysLeavesSheet
+        open={todaysLeavesSheetOpen}
+        onOpenChange={setTodaysLeavesSheetOpen}
+        leaves={todaysLeaves}
+        isAdminOrManager={isAdminOrManager}
       />
 
     </div>

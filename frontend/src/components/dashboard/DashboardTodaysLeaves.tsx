@@ -1,8 +1,9 @@
+import { Button }      from '@/components/ui/button';
 import { Skeleton }    from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
 import { formatDate }   from '@/lib/dateUtils';
-import { CalendarOff }  from 'lucide-react';
+import { CalendarOff, Eye } from 'lucide-react';
 
 interface LeaveItem {
   id:                string;
@@ -29,18 +30,32 @@ interface DashboardTodaysLeavesProps {
   error:            Error | null;
   isAdminOrManager: boolean;
   onRetry:          () => void;
+  onViewLeaves?:    () => void;
 }
 
 export const DashboardTodaysLeaves = ({
-  leaves, isLoading, error, isAdminOrManager, onRetry,
+  leaves, isLoading, error, isAdminOrManager, onRetry, onViewLeaves,
 }: DashboardTodaysLeavesProps) => (
   <div className="rounded-xl border bg-card shadow-sm flex flex-col">
     {/* Header */}
-    <div className="px-5 py-4 border-b">
-      <p className="text-sm font-semibold">Today's Leaves</p>
-      <p className="text-xs text-muted-foreground mt-0.5">
-        {isAdminOrManager ? 'Team members on leave today' : 'Your leave status today'}
-      </p>
+    <div className="px-5 py-4 border-b flex items-center justify-between">
+      <div>
+        <p className="text-sm font-semibold">Today's Leaves</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {isAdminOrManager ? 'Team members on leave today' : 'Your leave status today'}
+        </p>
+      </div>
+      {!isLoading && leaves.length > 0 && onViewLeaves && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 h-8 text-xs text-muted-foreground hover:text-foreground"
+          onClick={onViewLeaves}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Details
+        </Button>
+      )}
     </div>
 
     {/* Body */}
