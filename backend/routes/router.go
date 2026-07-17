@@ -35,8 +35,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	employees := r.Group("/api/employee")
 	employees.Use(middleware.AuthMiddleware(h)) // Protect employee routes
 	{
-		employees.GET("", h.GetEmployee)                                                                                                                              // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
-		employees.GET("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployeeById)                             // Get employee details (Self/Manager/Admin)
+		employees.GET("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployee)                                     // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
+		employees.GET("/:id", h.GetEmployeeById)                                                                                                                      // Get employee details (Self/Manager/Admin)
 		employees.POST("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdd)), h.CreateEmployee)                                  // Create employee (SUPER_ADMIN, ADMIN/HR)
 		employees.PATCH("/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionEdit)), h.UpdateEmployeeInfo)                        // Update employee info (SUPER_ADMIN, ADMIN/HR)
 		employees.PATCH("/:id/password", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionChangePassword)), h.UpdateEmployeePassword) // Update employee password (SUPER_ADMIN, ADMIN, HR)

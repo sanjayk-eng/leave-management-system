@@ -19,7 +19,7 @@ const ApplyLeave = () => {
   const { currentUser } = useAuth();
   const { applyLeave, isApplying } = useLeaves();
   const { policies: leaveTypes = [], isLoading: isLoadingPolicies } = useLeavePolicies();
-  const { balances = [], detailedBalances = [], isLoading: isLoadingBalances } = useLeaveBalances(currentUser?.id || "");
+  const { balances = [], isLoading: isLoadingBalances } = useLeaveBalances(currentUser?.id || "");
   const { holidays = [], isLoading: isLoadingHolidays } = useHolidays();
   const { leaveTimings, loading: isLoadingTimings, fetchLeaveTimings } = useLeaveTiming(false);
   

@@ -3,17 +3,20 @@ import { ErrorDisplay }  from '@/components/ErrorDisplay';
 import { Calendar, Clock, Users, ListTree, TrendingUp, ArrowRight } from 'lucide-react';
 
 interface DashboardStatsStripProps {
-  totalBalance:      number;
-  myLeavesCount:     number;
-  pendingCount:      number;
-  leaveTypesCount:   number;
-  isAdminOrManager:  boolean;
-  isLoadingLeaves:   boolean;
-  isLoadingBalances: boolean;
-  leavesError:       Error | null;
-  balancesError:     Error | null;
-  refetchLeaves:     () => void;
-  refetchBalances:   () => void;
+  totalBalance:        number;
+  myLeavesCount:       number;
+  myLeavesLoading:     boolean;
+  myLeavesError:       Error | null;
+  refetchMyLeaves:     () => void;
+  pendingCount:        number;
+  leaveTypesCount:     number;
+  isAdminOrManager:    boolean;
+  isLoadingLeaves:     boolean;
+  isLoadingBalances:   boolean;
+  leavesError:         Error | null;
+  balancesError:       Error | null;
+  refetchLeaves:       () => void;
+  refetchBalances:     () => void;
 }
 
 interface StatCardProps {
@@ -53,7 +56,8 @@ const StatCard = ({ icon, label, value, sub, accent, loading, error, onRetry }: 
 );
 
 export const DashboardStatsStrip = ({
-  totalBalance, myLeavesCount, pendingCount, leaveTypesCount,
+  totalBalance, myLeavesCount, myLeavesLoading, myLeavesError, refetchMyLeaves,
+  pendingCount, leaveTypesCount,
   isAdminOrManager,
   isLoadingLeaves, isLoadingBalances,
   leavesError, balancesError,
@@ -72,10 +76,10 @@ export const DashboardStatsStrip = ({
       icon={<Clock className="h-4 w-4" />}
       label="My Applications"
       value={myLeavesCount}
-      sub="total leave applications"
-      loading={isLoadingLeaves}
-      error={leavesError}
-      onRetry={refetchLeaves}
+      sub="leave applications this month"
+      loading={myLeavesLoading}
+      error={myLeavesError}
+      onRetry={refetchMyLeaves}
     />
 
     {isAdminOrManager && (

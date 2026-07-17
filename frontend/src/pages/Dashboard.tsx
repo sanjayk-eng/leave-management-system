@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Undo2 } from 'lucide-react';
 
 import { useAuth }            from '@/hooks/useAuth';
-import { useLeaves }          from '@/hooks/useLeaves';
+import { useLeaves, useMyLeaves } from '@/hooks/useLeaves';
 import { useLeaveBalances }   from '@/hooks/useLeaveBalances';
 import { useEmployeeProfile } from '@/hooks/useEmployees';
 import { isManagerOrAbove }   from '@/lib/permissions';
@@ -58,6 +58,15 @@ const Dashboard = () => {
     withdrawLeave, isWithdrawing,
   } = useLeaves();
 
+  // useMyLeaves — calls /leaves/my-leaves (no permission guard).
+  // Drives the "My Applications" stat — isolated from useLeaves errors.
+  const {
+    total: myLeavesCount,
+    isLoading: isLoadingMyLeaves,
+    error: myLeavesError,
+    refetch: refetchMyLeaves,
+  } = useMyLeaves();
+
   const {
     balances, isLoading: isLoadingBalances, error: balancesError,
     refetch: refetchBalances,
@@ -71,23 +80,20 @@ const Dashboard = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const todaysLeaves = (leaves ?? []).filter(l => {
-    const s = new Date(l.start_date); s.setHours(0, 0, 0, 0);
-    const e = new Date(l.end_date);   e.setHours(0, 0, 0, 0);
-    if (!(s <= today && e >= today)) return false;
-    if (isAdminOrManager) return true;
-    return profileData?.full_name && l.employee === profileData.full_name;
-  });
+  // Today's leaves — only meaningful for managers/admins who can see the team.
+  // EMPLOYEE and INTERN do not see this section at all.
+  const todaysLeaves = isAdminOrManager
+    ? (leaves ?? []).filter(l => {
+        const s = new Date(l.start_date); s.setHours(0, 0, 0, 0);
+        const e = new Date(l.end_date);   e.setHours(0, 0, 0, 0);
+        return s <= today && e >= today;
+      })
+    : [];
 
   const pendingLeaves = (leaves ?? []).filter(l => {
     const s = l.status.toUpperCase();
     return !['APPROVED', 'REJECTED', 'CANCELLED', 'WITHDRAWN'].includes(s) && s !== 'WITHDRAWAL_PENDING';
   });
-
-  const myLeaves = (leaves ?? []).filter(l =>
-    profileData?.full_name && l.employee === profileData.full_name,
-  );
-
   // ── All handlers + dialog state ────────────────────────────────────────────
   const actions = useDashboardActions({
     isAdmin,
@@ -129,7 +135,10 @@ const Dashboard = () => {
       {/* Stats strip */}
       <DashboardStatsStrip
         totalBalance={totalBalance}
-        myLeavesCount={myLeaves.length}
+        myLeavesCount={myLeavesCount}
+        myLeavesLoading={isLoadingMyLeaves}
+        myLeavesError={myLeavesError as Error | null}
+        refetchMyLeaves={refetchMyLeaves}
         pendingCount={pendingLeaves.length}
         leaveTypesCount={balances.length}
         isAdminOrManager={isAdminOrManager}
@@ -144,14 +153,17 @@ const Dashboard = () => {
       {/* Main 3-column row */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 
-        <DashboardTodaysLeaves
-          leaves={todaysLeaves}
-          isLoading={isLoadingLeaves}
-          error={leavesError as Error | null}
-          isAdminOrManager={isAdminOrManager}
-          onRetry={refetchLeaves}
-          onViewLeaves={() => setTodaysLeavesSheetOpen(true)}
-        />
+        {/* Today's Leaves — managers/admins only */}
+        {isAdminOrManager && (
+          <DashboardTodaysLeaves
+            leaves={todaysLeaves}
+            isLoading={isLoadingLeaves}
+            error={leavesError as Error | null}
+            isAdminOrManager={isAdminOrManager}
+            onRetry={refetchLeaves}
+            onViewLeaves={() => setTodaysLeavesSheetOpen(true)}
+          />
+        )}
 
         <DashboardLeaveBalanceCard
           balances={balances}
@@ -291,13 +303,15 @@ const Dashboard = () => {
         employeeName={profileData?.full_name ?? currentUser?.email ?? ''}
       />
 
-      {/* Today's leaves sheet */}
-      <TodaysLeavesSheet
-        open={todaysLeavesSheetOpen}
-        onOpenChange={setTodaysLeavesSheetOpen}
-        leaves={todaysLeaves}
-        isAdminOrManager={isAdminOrManager}
-      />
+      {/* Today's leaves sheet — managers/admins only */}
+      {isAdminOrManager && (
+        <TodaysLeavesSheet
+          open={todaysLeavesSheetOpen}
+          onOpenChange={setTodaysLeavesSheetOpen}
+          leaves={todaysLeaves}
+          isAdminOrManager={isAdminOrManager}
+        />
+      )}
 
     </div>
   );

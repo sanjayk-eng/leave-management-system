@@ -59,7 +59,7 @@ func (s *leaveBalance) GetBalances(ctx context.Context, actorID uuid.UUID, actor
 
 	if actorID != employeeID {
 		if err := s.HrbcService.HasPriorityAllow(actorRoleID, target.RoleID); err != nil {
-			return nil, errors.CustomErr(http.StatusForbidden, "you can only view your own leave balances")
+			return nil, errors.CustomErr(http.StatusForbidden, "you are only allowed to view leave balances of users with lower roles")
 		}
 	}
 	currentYear := time.Now().Year()

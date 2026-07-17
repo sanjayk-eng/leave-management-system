@@ -296,7 +296,7 @@ export const useMyLeaves = (month?: number, year?: number) => {
 
   return {
     leaves: data?.data || [],
-    total: data?.total || 0,
+    total: data?.data?.length ?? 0,
     month: data?.month,
     year: data?.year,
     isLoading,
