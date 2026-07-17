@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"time"
@@ -18,9 +19,13 @@ type leaveBalance struct {
 	CommRepo         repositories.Repository
 	LeaveBalanceRepo repositories.LeaveBalanceRepository
 	RoleRepo         repositories.RoleRepository
+	EmployeeRepo     repositories.EmployeeRepository
+	HrbcService      Hrbc
 }
 
 type LeaveBalance interface {
+	GetBalances(ctx context.Context, actorID uuid.UUID, actorRoleID int, employeeID uuid.UUID) (*models.EmployeeBalancesResult, error)
+
 	AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error
 
 	SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error
@@ -32,13 +37,44 @@ type LeaveBalance interface {
 	RecalculateForRoleChange(tx *sqlx.Tx, employeeID uuid.UUID, oldRole string, newRole string) error
 }
 
-func NewLeaveBalance(db *sqlx.DB, commonRepo repositories.Repository, roleRepo repositories.RoleRepository, leaveBalanceRepo repositories.LeaveBalanceRepository) LeaveBalance {
+func NewLeaveBalance(db *sqlx.DB, hrbcService Hrbc, commonRepo repositories.Repository, roleRepo repositories.RoleRepository, leaveBalanceRepo repositories.LeaveBalanceRepository, employeeRepo repositories.EmployeeRepository) LeaveBalance {
 	return &leaveBalance{
 		DB:               db,
 		CommRepo:         commonRepo,
 		RoleRepo:         roleRepo,
 		LeaveBalanceRepo: leaveBalanceRepo,
+		EmployeeRepo:     employeeRepo,
+		HrbcService:      hrbcService,
 	}
+}
+
+func (s *leaveBalance) GetBalances(ctx context.Context, actorID uuid.UUID, actorRoleID int, employeeID uuid.UUID) (*models.EmployeeBalancesResult, error) {
+	target, err := s.EmployeeRepo.GetByID(employeeID)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
+	}
+
+	if actorID != employeeID {
+		if err := s.HrbcService.HasPriorityAllow(actorRoleID, target.RoleID); err != nil {
+			return nil, errors.CustomErr(http.StatusForbidden, "you can only view your own leave balances")
+		}
+	}
+	currentYear := time.Now().Year()
+	leaveTypes, err := s.CommRepo.GetAllLeaveTypesWithEntitlements()
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to fetch leave types: "+err.Error())
+	}
+
+	balanceRecords, err := s.CommRepo.GetLeaveBalancesByEmployeeAndYear(employeeID, currentYear)
+	if err != nil {
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to fetch leave balances: "+err.Error())
+	}
+
+	return &models.EmployeeBalancesResult{
+		EmployeeID: employeeID,
+		Year:       currentYear,
+		Balances:   s.calculateLeaveBalances(leaveTypes, balanceRecords),
+	}, nil
 }
 
 func (s *leaveBalance) AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error {
@@ -235,4 +271,29 @@ func ProratedLeave(yearlyLeave int, joiningDate *time.Time, asOf time.Time) int 
 
 func (s *leaveBalance) calculateClosingBalance(opening, used, adjusted float64) float64 {
 	return opening - used + adjusted
+}
+
+func (s *leaveBalance) calculateLeaveBalances(leaveTypes []models.LeaveTypeData, records []models.BalanceData) []models.Balance {
+	recordsByType := make(map[int]models.BalanceData, len(records))
+	for _, r := range records {
+		recordsByType[r.LeaveTypeID] = r
+	}
+
+	balances := make([]models.Balance, 0, len(leaveTypes))
+	for _, lt := range leaveTypes {
+		rec := recordsByType[lt.LeaveTypeID] 
+
+		total := rec.Opening + rec.Adjusted
+		balances = append(balances, models.Balance{
+			LeaveTypeID: lt.LeaveTypeID,
+			LeaveType:   lt.LeaveTypeName,
+			Opening:     rec.Opening,
+			Accrued:     rec.Accrued,
+			Used:        rec.Used,
+			Adjusted:    rec.Adjusted,
+			Total:       total,
+			Available:   total - rec.Used,
+		})
+	}
+	return balances
 }

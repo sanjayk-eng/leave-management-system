@@ -5,101 +5,32 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// GetLeaveBalances - GET /api/employees/:id/leave-balances
-// GetLeaveBalances - GET /api/employees/:id/leave-balances
-func (s *HandlerFunc) GetLeaveBalances(c *gin.Context) {
-	// 1. Parse employee ID from path
-	employeeIDParam := c.Param("id")
-	employeeID, err := uuid.Parse(employeeIDParam)
+func (h *HandlerFunc) GetLeaveBalances(c *gin.Context) {
+	employeeID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		errors.RespondWithError(c, http.StatusBadRequest, "Invalid employee ID")
+		errors.RespondWithError(c, http.StatusBadRequest, "invalid employee ID")
 		return
 	}
 
-	// 2. Role check (employees can only view their own balances)
-	roleRaw, _ := c.Get("role")
-	role := roleRaw.(string)
-	userIDRaw, _ := c.Get("user_id")
-	userID, _ := uuid.Parse(userIDRaw.(string))
+	actorRoleID := c.GetInt("role_id")
+	actorID, _ := uuid.Parse(c.GetString("user_id"))
 
-	if (role == "EMPLOYEE" || role == "INTERN") && userID != employeeID {
-		errors.RespondWithError(c, http.StatusForbidden, "Employees can only view their own balances")
-		return
-	}
-
-	// 3. Get current year for filtering
-	currentYear := time.Now().Year()
-
-	// 4. Fetch all leave types with their default entitlements (repository layer)
-	leaveTypes, err := s.Query.GetAllLeaveTypesWithEntitlements()
+	result, err := h.leaveBalanceService.GetBalances(c.Request.Context(), actorID, actorRoleID, employeeID)
 	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError,
-			"Failed to fetch leave types: "+err.Error())
+		errors.Error(c, err)
 		return
 	}
 
-	// 5. Fetch leave balances for current year (repository layer)
-	balanceRecords, err := s.Query.GetLeaveBalancesByEmployeeAndYear(employeeID, currentYear)
-	if err != nil {
-		errors.RespondWithError(c, http.StatusInternalServerError,
-			"Failed to fetch leave balances: "+err.Error())
-		return
-	}
-
-	// 6. Convert to service layer types
-	serviceLeaveTypes := make([]service.LeaveTypeData, len(leaveTypes))
-	for i, lt := range leaveTypes {
-		serviceLeaveTypes[i] = service.LeaveTypeData{
-			LeaveTypeID:        lt.LeaveTypeID,
-			LeaveTypeName:      lt.LeaveTypeName,
-			DefaultEntitlement: lt.DefaultEntitlement,
-			InternEntitlement:  lt.InternEntitlement,
-		}
-	}
-
-	serviceBalanceRecords := make([]service.LeaveBalanceData, len(balanceRecords))
-	for i, br := range balanceRecords {
-		serviceBalanceRecords[i] = service.LeaveBalanceData{
-			LeaveTypeID: br.LeaveTypeID,
-			Opening:     br.Opening,
-			Accrued:     br.Accrued,
-			Used:        br.Used,
-			Adjusted:    br.Adjusted,
-			Closing:     br.Closing,
-		}
-	}
-
-	// 7. Calculate balances using service layer business logic
-	calculatedBalances := service.CalculateLeaveBalances(serviceLeaveTypes, serviceBalanceRecords)
-
-	// 8. Convert back to response format
-
-	balances := make([]models.Balance, len(calculatedBalances))
-	for i, cb := range calculatedBalances {
-		balances[i] = models.Balance{
-			LeaveTypeID: cb.LeaveTypeID,
-			LeaveType:   cb.LeaveType,
-			Opening:     cb.Opening,
-			Accrued:     cb.Accrued,
-			Used:        cb.Used,
-			Adjusted:    cb.Adjusted,
-			Total:       cb.Total,
-			Available:   cb.Available,
-		}
-	}
-	// 8. Send response
 	c.JSON(http.StatusOK, gin.H{
-		"employee_id": employeeID,
-		"year":        currentYear,
-		"balances":    balances,
+		"employee_id": result.EmployeeID,
+		"year":        result.Year,
+		"balances":    result.Balances,
 	})
 }
 

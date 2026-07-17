@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { employeeService } from "@/services";
 import { getCurrentUser, ApiError } from "@/lib/api";
@@ -12,6 +13,8 @@ import { SortableTableHead } from "@/components/equipment/shared";
 import { ServerPagination } from "@/components/ServerPagination";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
+import type { Employee } from "@/services/employeeService";
 import {
   Search,
   Users,
@@ -21,6 +24,7 @@ import {
   Loader2,
   Cake,
   IndianRupee,
+  Eye,
 } from "lucide-react";
 
 // ── Role badge colours ────────────────────────────────────────────────────────
@@ -65,6 +69,10 @@ const MyTeam = () => {
   const [pageSize,    setPageSize]    = useState(10);
   const [sortBy,      setSortBy]      = useState<SortCol | "">("");
   const [sortDir,     setSortDir]     = useState<"asc" | "desc">("asc");
+
+  // leave balance sheet
+  const [balanceSheetOpen,    setBalanceSheetOpen]    = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Employee | null>(null);
 
   // Debounce the search — fires API only after 500 ms of no typing
   const debouncedSearch = useDebounce(searchQuery, 500);
@@ -244,13 +252,14 @@ const MyTeam = () => {
                       <SortableTableHead column="joining_date" label="Joined"      {...sh} className="min-w-[130px] hidden lg:table-cell" />
                       <SortableTableHead column="birth_date"   label="Birthday"    {...sh} className="min-w-[130px] hidden xl:table-cell" />
                       <SortableTableHead column="status"       label="Status"      {...sh} className="min-w-[90px]" />
+                      <TableHead className="w-[60px] text-center">Balance</TableHead>
                     </TableRow>
                   </TableHeader>
 
                   <TableBody>
                     {members.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-12 text-center">
+                        <TableCell colSpan={9} className="py-12 text-center">
                           <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
                           <p className="font-medium text-muted-foreground">
                             {searchQuery
@@ -343,6 +352,22 @@ const MyTeam = () => {
                               {member.status}
                             </Badge>
                           </TableCell>
+
+                          {/* View leave balance */}
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              title="View leave balance"
+                              onClick={() => {
+                                setSelectedMember(member);
+                                setBalanceSheetOpen(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -364,6 +389,14 @@ const MyTeam = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Leave Balance Sheet ─────────────────────────────────────────── */}
+      <LeaveBalanceSheet
+        open={balanceSheetOpen}
+        onOpenChange={(o) => { setBalanceSheetOpen(o); if (!o) setSelectedMember(null); }}
+        employeeId={selectedMember?.id ?? ''}
+        employeeName={selectedMember?.full_name ?? ''}
+      />
     </div>
   );
 };

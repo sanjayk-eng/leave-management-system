@@ -16,7 +16,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { getCurrentUser, ApiError } from "@/lib/api";
 import { leaveBalanceService, employeeService } from "@/services";
 import type { Employee } from "@/services/employeeService";
-import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase } from "lucide-react";
+import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase, Eye } from "lucide-react";
+import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiErrorHandler } from "@/hooks/useApiErrorHandler";
@@ -95,6 +96,9 @@ const Employees = () => {
   const [editInfoDialogOpen,    setEditInfoDialogOpen]    = useState(false);
   const [passwordDialogOpen,    setPasswordDialogOpen]    = useState(false);
   const [deactivateDialogOpen,  setDeactivateDialogOpen]  = useState(false);
+
+  // ── leave balance sheet (view-only, visible to all roles) ────────────────────
+  const [balanceSheetOpen,      setBalanceSheetOpen]      = useState(false);
 
   const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
   const [newRole,              setNewRole]              = useState("");
@@ -314,6 +318,12 @@ const Employees = () => {
     setAdjustmentData({ leave_type_id: "", quantity: "", reason: "" });
     setLeaveAdjustDialogOpen(true);
   };
+
+  const handleViewBalance = (emp: Employee) => {
+    setSelectedEmployee(emp);
+    setBalanceSheetOpen(true);
+  };
+
   const submitLeaveAdjustment = async () => {
     if (!adjustmentData.leave_type_id || !adjustmentData.quantity || !adjustmentData.reason) { toast.error("Please fill all fields"); return; }
     if (!selectedEmployee?.id) { toast.error("No employee selected"); return; }
@@ -652,6 +662,9 @@ const Employees = () => {
                                         <Calendar className="mr-2 h-4 w-4" />Adjust Leave Balance
                                       </DropdownMenuItem>
                                     )}
+                                    <DropdownMenuItem onClick={() => handleViewBalance(emp)}>
+                                      <Eye className="mr-2 h-4 w-4" />View Leave Balance
+                                    </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       onClick={() => handleDeactivate(emp)}
@@ -911,9 +924,16 @@ const Employees = () => {
         </DialogContent>
       </Dialog>
 
+      {/* ── Leave Balance Sheet (view-only slide-over) ──────────────────── */}
+      <LeaveBalanceSheet
+        open={balanceSheetOpen}
+        onOpenChange={(o) => { setBalanceSheetOpen(o); if (!o) setSelectedEmployee(null); }}
+        employeeId={selectedEmployee?.id ?? ''}
+        employeeName={selectedEmployee?.full_name ?? ''}
+      />
+
       {/* Deactivate/Activate Confirmation Dialog — replaces window.confirm */}
-      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <AlertDialogContent>
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {selectedEmployee?.status === 'active' ? 'Deactivate' : 'Activate'} Employee

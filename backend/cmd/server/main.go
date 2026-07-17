@@ -101,9 +101,11 @@ func main() {
 	leaveApproverFlowRepo := repositories.NewLeaveApprovalFlowRepository(db)
 	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo, auditSvc)
 
+	employeeRepo := repositories.NewEmployeeRepository(db)
+
 	// ── Leave Balance services ──────────────────────────────────────────────────────
 	leaveBalanceRepo := repositories.NewLeaveBalanceRepository(db)
-	leaveBalanceService := service.NewLeaveBalance(db, *repo, roleRepo, leaveBalanceRepo)
+	leaveBalanceService := service.NewLeaveBalance(db,hrbcService, *repo, roleRepo, leaveBalanceRepo, employeeRepo)
 
 	leavePolicyRepo := repositories.NewLeavePolicy(db)
 	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leaveBalanceService, leavePolicyRepo, repo)
@@ -139,8 +141,6 @@ func main() {
 
 	// ── HTTP handler ─────────────────────────────────────────────────────────
 
-	employeeRepo := repositories.NewEmployeeRepository(db)
-
 	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, roleRepo, hrbcService, auditSvc)
 
 	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc, leaveBalanceService)
@@ -154,6 +154,7 @@ func main() {
 		employeeSvc,
 		auditSvc,
 		designationSvc,
+		leaveBalanceService,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────
