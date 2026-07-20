@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { usePayslips } from "@/hooks/usePayslips";
 import { payrollService } from "@/services/payrollService";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import {
   Select,
   SelectContent,
@@ -119,9 +120,8 @@ const Payslips = () => {
           <p className="text-muted-foreground">View and download your salary slips</p>
         </div>
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-lg font-medium mb-2 text-destructive">Failed to load payslips</p>
-            <p className="text-sm text-muted-foreground">Please try again later</p>
+          <CardContent className="py-12">
+            <ErrorDisplay error={error} />
           </CardContent>
         </Card>
       </div>

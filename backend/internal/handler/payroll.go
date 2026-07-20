@@ -34,12 +34,8 @@ type PayrollPreview struct {
 
 // RunPayroll handles payroll preview
 func (h *HandlerFunc) RunPayroll(c *gin.Context) {
-	roleRaw, _ := c.Get("role")
-	role := roleRaw.(string)
-	if role != "SUPERADMIN" && role != "ADMIN" {
-		errors.RespondWithError(c, 403, "Not authorized to run payroll")
-		return
-	}
+
+	
 
 	var input struct {
 		Month int `json:"month" validate:"required"`
@@ -157,14 +153,8 @@ func (h *HandlerFunc) RunPayroll(c *gin.Context) {
 // FinalizePayroll - generates payslips
 // Only SUPERADMIN can finalize payroll
 func (h *HandlerFunc) FinalizePayroll(c *gin.Context) {
-	// --- Role Check - Only SUPERADMIN ---
-	roleRaw, _ := c.Get("role")
-	role := roleRaw.(string)
-	if role != "SUPERADMIN" {
-		errors.RespondWithError(c, 403, "Only SUPERADMIN can finalize payroll")
-		return
-	}
-
+	
+	
 	// --- Parse Payroll Run ID ---
 	runID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
