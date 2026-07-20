@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Clock, Loader2, UserCheck } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { CalendarIcon, Clock, Loader2, UserRound } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useLeaves, useLeavePolicies } from "@/hooks/useLeaves";
@@ -82,59 +83,70 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
     }
   };
 
+  const dayCount = startDate && endDate
+    ? Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
         {/* ── Header ── */}
-        <div className="bg-gradient-to-r from-primary to-primary/80 p-5 text-primary-foreground">
+        <div className="px-6 pt-6 pb-5">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <UserCheck className="h-5 w-5" />
-              Apply Leave on Behalf
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              Apply leave on behalf
             </DialogTitle>
-            <DialogDescription className="text-primary-foreground/85 mt-1 text-sm">
-              You are submitting a leave request on behalf of this employee.
+            <DialogDescription className="text-sm text-muted-foreground">
+              Submit a leave request for this employee's approval.
             </DialogDescription>
           </DialogHeader>
 
-          {/* Employee pill */}
+          {/* Employee identity */}
           {employee && (
-            <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/15 px-3 py-2.5">
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback className="bg-white/30 text-white text-xs font-bold">
+            <div className="mt-4 flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+              <Avatar className="h-9 w-9 shrink-0 border">
+                <AvatarFallback className="bg-background text-xs font-medium text-foreground">
                   {getInitials(employee.full_name)}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold leading-tight truncate">{employee.full_name}</p>
-                <p className="text-xs text-primary-foreground/75 truncate">{employee.email}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium leading-tight">{employee.full_name}</p>
+                <p className="truncate text-xs text-muted-foreground">{employee.email}</p>
               </div>
-              <Badge className="ml-auto shrink-0 bg-white/20 text-white border-white/30 text-xs">
+              <Badge variant="secondary" className="shrink-0 font-normal">
                 {employee.role}
               </Badge>
             </div>
           )}
         </div>
 
+        <Separator />
+
         {/* ── Form body ── */}
-        <div className="space-y-4 p-5">
+        <div className="space-y-5 px-6 py-5">
           {/* Leave Type */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-semibold">Leave Type *</Label>
+            <Label className="text-sm font-medium">Leave type</Label>
             <Select value={leaveTypeId} onValueChange={setLeaveTypeId} disabled={policiesLoading}>
-              <SelectTrigger className="h-10 border-2">
-                <SelectValue placeholder="Select leave type…" />
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Select leave type" />
               </SelectTrigger>
               <SelectContent>
                 {policies?.map(p => (
                   <SelectItem key={p.id} value={p.id.toString()}>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{p.name}</span>
-                      <Badge variant={p.is_paid ? "default" : "secondary"} className="text-xs">
-                        {p.is_paid ? "Paid" : "Unpaid"}
-                      </Badge>
-                      {p.is_early         && <Badge variant="outline" className="text-xs bg-blue-500 text-white border-blue-600">Early</Badge>}
-                      {p.is_work_from_home && <Badge variant="outline" className="text-xs bg-purple-500 text-white border-purple-600">WFH</Badge>}
+                      <span>{p.name}</span>
+                      <span className="flex items-center gap-1">
+                        <Badge variant={p.is_paid ? "default" : "secondary"} className="text-[10px] font-normal">
+                          {p.is_paid ? "Paid" : "Unpaid"}
+                        </Badge>
+                        {p.is_early && (
+                          <Badge variant="outline" className="text-[10px] font-normal">Early</Badge>
+                        )}
+                        {p.is_work_from_home && (
+                          <Badge variant="outline" className="text-[10px] font-normal">WFH</Badge>
+                        )}
+                      </span>
                     </div>
                   </SelectItem>
                 ))}
@@ -147,10 +159,13 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
             <div className="grid grid-cols-2 gap-3">
               {/* Early date */}
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">Date *</Label>
+                <Label className="text-sm font-medium">Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-full justify-start h-10 border-2 font-normal", !earlyDate && "text-muted-foreground")}>
+                    <Button
+                      variant="outline"
+                      className={cn("h-9 w-full justify-start font-normal", !earlyDate && "text-muted-foreground")}
+                    >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {earlyDate ? format(earlyDate, "dd MMM") : "Pick date"}
                     </Button>
@@ -164,11 +179,15 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
               </div>
               {/* Early time */}
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">Time *</Label>
+                <Label className="text-sm font-medium">Time</Label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  <input type="time" value={earlyTime} onChange={e => setEarlyTime(e.target.value)}
-                    className="flex h-10 w-full rounded-md border-2 border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                  <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="time"
+                    value={earlyTime}
+                    onChange={e => setEarlyTime(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  />
                 </div>
               </div>
             </div>
@@ -177,10 +196,13 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
               <div className="grid grid-cols-2 gap-3">
                 {/* Start */}
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold">Start Date *</Label>
+                  <Label className="text-sm font-medium">Start date</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-full justify-start h-10 border-2 font-normal", !startDate && "text-muted-foreground")}>
+                      <Button
+                        variant="outline"
+                        className={cn("h-9 w-full justify-start font-normal", !startDate && "text-muted-foreground")}
+                      >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {startDate ? format(startDate, "dd MMM") : "Pick date"}
                       </Button>
@@ -194,10 +216,13 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
                 </div>
                 {/* End */}
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold">End Date *</Label>
+                  <Label className="text-sm font-medium">End date</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-full justify-start h-10 border-2 font-normal", !endDate && "text-muted-foreground")}>
+                      <Button
+                        variant="outline"
+                        className={cn("h-9 w-full justify-start font-normal", !endDate && "text-muted-foreground")}
+                      >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {endDate ? format(endDate, "dd MMM") : "Pick date"}
                       </Button>
@@ -212,30 +237,29 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
               </div>
 
               {/* Duration preview */}
-              {startDate && endDate && (
-                <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
-                  <span className="text-xs text-muted-foreground font-medium">Duration</span>
-                  <Badge variant="default" className="text-xs">
-                    {Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1} day(s)
-                  </Badge>
+              {dayCount !== null && (
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-xs font-medium text-muted-foreground">Duration</span>
+                  <span className="text-sm font-medium">
+                    {dayCount} {dayCount === 1 ? "day" : "days"}
+                  </span>
                 </div>
               )}
 
               {/* Timing */}
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">Leave Timing</Label>
+                <Label className="text-sm font-medium">Leave timing</Label>
                 <Select value={timingId} onValueChange={setTimingId} disabled={timingsLoading}
                   onOpenChange={o => { if (o && leaveTimings.length === 0) fetchLeaveTimings(); }}>
-                  <SelectTrigger className="h-10 border-2">
-                    <SelectValue placeholder="Select timing…" />
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select timing" />
                   </SelectTrigger>
                   <SelectContent>
                     {leaveTimings.map(t => (
                       <SelectItem key={t.id} value={t.id.toString()}>
                         <div className="flex items-center gap-2">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>{t.type === "FIRST_HALF" ? "First Half" : t.type === "SECOND_HALF" ? "Second Half" : "Full Day"}</span>
-                          <span className="text-muted-foreground text-xs">({t.timing})</span>
+                          <span>{t.type === "FIRST_HALF" ? "First half" : t.type === "SECOND_HALF" ? "Second half" : "Full day"}</span>
+                          <span className="text-xs text-muted-foreground">({t.timing})</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -247,22 +271,30 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
 
           {/* Reason */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-semibold">Reason</Label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
-              placeholder="Brief reason for the leave…"
-              className="flex min-h-[72px] w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none" />
+            <Label className="text-sm font-medium">
+              Reason <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={3}
+              placeholder="Add a brief note for this request"
+              className="flex min-h-[72px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
           </div>
         </div>
 
+        <Separator />
+
         {/* ── Footer ── */}
-        <DialogFooter className="px-5 pb-5 gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={isApplying} className="flex-1 border-2">
+        <DialogFooter className="gap-2 px-6 py-4">
+          <Button variant="outline" onClick={handleClose} disabled={isApplying} className="flex-1">
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isApplying} className="flex-1">
             {isApplying
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting…</>
-              : <><UserCheck className="mr-2 h-4 w-4" />Apply Leave</>}
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting</>
+              : <><UserRound className="mr-2 h-4 w-4" />Apply leave</>}
           </Button>
         </DialogFooter>
       </DialogContent>
