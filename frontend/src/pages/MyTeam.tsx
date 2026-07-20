@@ -25,7 +25,14 @@ import {
   Cake,
   IndianRupee,
   Eye,
+  MoreVertical,
+  UserCheck,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ApplyOnBehalfDialog } from "@/components/leave/ApplyOnBehalfDialog";
 
 // ── Role badge colours ────────────────────────────────────────────────────────
 const roleBadgeClass: Record<string, string> = {
@@ -73,6 +80,9 @@ const MyTeam = () => {
   // leave balance sheet
   const [balanceSheetOpen,    setBalanceSheetOpen]    = useState(false);
   const [selectedMember, setSelectedMember] = useState<Employee | null>(null);
+
+  // apply on behalf
+  const [applyOnBehalfOpen, setApplyOnBehalfOpen] = useState(false);
 
   // Debounce the search — fires API only after 500 ms of no typing
   const debouncedSearch = useDebounce(searchQuery, 500);
@@ -252,7 +262,7 @@ const MyTeam = () => {
                       <SortableTableHead column="joining_date" label="Joined"      {...sh} className="min-w-[130px] hidden lg:table-cell" />
                       <SortableTableHead column="birth_date"   label="Birthday"    {...sh} className="min-w-[130px] hidden xl:table-cell" />
                       <SortableTableHead column="status"       label="Status"      {...sh} className="min-w-[90px]" />
-                      <TableHead className="w-[60px] text-center">Balance</TableHead>
+                      <TableHead className="w-[60px] text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -353,20 +363,31 @@ const MyTeam = () => {
                             </Badge>
                           </TableCell>
 
-                          {/* View leave balance */}
+                          {/* Three-dot actions (View Balance + Apply Leave on Behalf) */}
                           <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              title="View leave balance"
-                              onClick={() => {
-                                setSelectedMember(member);
-                                setBalanceSheetOpen(true);
-                              }}
-                            >
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => { setSelectedMember(member); setBalanceSheetOpen(true); }}
+                                >
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View Leave Balance
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => { setSelectedMember(member); setApplyOnBehalfOpen(true); }}
+                                >
+                                  <UserCheck className="mr-2 h-4 w-4 text-primary" />
+                                  <span className="text-primary font-medium">Apply Leave on Behalf</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       ))
@@ -396,6 +417,13 @@ const MyTeam = () => {
         onOpenChange={(o) => { setBalanceSheetOpen(o); if (!o) setSelectedMember(null); }}
         employeeId={selectedMember?.id ?? ''}
         employeeName={selectedMember?.full_name ?? ''}
+      />
+
+      {/* ── Apply Leave on Behalf dialog ────────────────────────────────── */}
+      <ApplyOnBehalfDialog
+        employee={selectedMember}
+        open={applyOnBehalfOpen}
+        onOpenChange={(o) => { setApplyOnBehalfOpen(o); if (!o) setSelectedMember(null); }}
       />
     </div>
   );

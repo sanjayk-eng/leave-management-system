@@ -10,10 +10,14 @@ import { useLeaveBalances } from "@/hooks/useLeaveBalances";
 import { useHolidays } from "@/hooks/useHolidays";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaveTiming } from "@/hooks/useLeaveTiming";
+import { useEmployees } from "@/hooks/useEmployees";
 import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
 import { dateInputToISO, formatDate as formatDateUtil } from "@/lib/dateUtils";
-import { Calendar, Loader2, Sparkles, CalendarDays, Clock, FileText, TrendingUp, Eye } from "lucide-react";
+import { Calendar, Loader2, Sparkles, CalendarDays, Clock, FileText, TrendingUp, Eye, UserCheck, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Roles permitted to apply leave on behalf of others (mirrors backend RBAC)
+const ON_BEHALF_ROLES = ["SUPERADMIN", "ADMIN", "HR", "MANAGER"];
 
 const ApplyLeave = () => {
   const { currentUser } = useAuth();

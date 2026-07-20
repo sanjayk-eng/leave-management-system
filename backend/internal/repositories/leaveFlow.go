@@ -122,7 +122,12 @@ func (r *leaveFlow) GetAllEmployeeLeaveByMonthYear(userID uuid.UUID, month, year
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -137,6 +142,9 @@ func (r *leaveFlow) GetAllEmployeeLeaveByMonthYear(userID uuid.UUID, month, year
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE 
 		l.employee_id = $1
@@ -189,7 +197,12 @@ func (r *leaveFlow) GetAllleavebaseonassignManagerByMonthYear(userID uuid.UUID, 
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -204,6 +217,9 @@ func (r *leaveFlow) GetAllleavebaseonassignManagerByMonthYear(userID uuid.UUID, 
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE
 		(e.manager_id = $1 OR l.employee_id = $1)
@@ -257,7 +273,12 @@ func (r *leaveFlow) GetAllLeaveByMonthYear(month, year int) ([]models.LeaveRespo
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -272,6 +293,9 @@ func (r *leaveFlow) GetAllLeaveByMonthYear(month, year int) ([]models.LeaveRespo
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE
 		l.start_date::date <= (
@@ -323,7 +347,12 @@ func (r *leaveFlow) GetMyLeavesByMonthYear(userID uuid.UUID, month, year int) ([
 		COALESCE(l.reason, '') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -338,6 +367,9 @@ func (r *leaveFlow) GetMyLeavesByMonthYear(userID uuid.UUID, month, year int) ([
 
 	LEFT JOIN Tbl_Employee approver 
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE 
 		l.employee_id = $1

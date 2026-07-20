@@ -10,7 +10,7 @@ import { LeaveFilter } from "@/components/LeaveFilter";
 import { DataGrid } from "@/components/DataGrid";
 import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
-import { ReasonCellRenderer, TimingCellRenderer, StatusCellRenderer, ApprovalLogCellRenderer } from "@/components/leave/LeaveCellRenderers";
+import { ReasonCellRenderer, TimingCellRenderer, StatusCellRenderer, ApprovalLogCellRenderer, EmployeeCellRenderer, AppliedByCellRenderer } from "@/components/leave/LeaveCellRenderers";
 import { ApprovalLogDrawer } from "@/components/leave/ApprovalLogDrawer";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
 import { LeaveResponse } from "@/services/leaveService";
@@ -214,11 +214,12 @@ const Approvals = () => {
     { 
       field: 'employee', 
       headerName: 'Employee', 
-      width: 150,
-      minWidth: 130,
+      width: 170,
+      minWidth: 140,
       pinned: 'left',
       lockPosition: true,
-      suppressMovable: true
+      suppressMovable: true,
+      cellRenderer: EmployeeCellRenderer,
     },
     { field: 'leave_type', headerName: 'Leave Type', width: 140, minWidth: 120 },
     { 
@@ -264,6 +265,13 @@ const Approvals = () => {
       cellRenderer: StatusCellRenderer 
     },
     {
+      field: 'applied_by_name',
+      headerName: 'Applied By',
+      width: 150,
+      minWidth: 120,
+      cellRenderer: AppliedByCellRenderer,
+    },
+    {
       field: 'approval_log',
       headerName: 'Flow',
       width: 80,
@@ -292,11 +300,12 @@ const Approvals = () => {
     { 
       field: 'employee', 
       headerName: 'Employee', 
-      width: 150,
-      minWidth: 130,
+      width: 170,
+      minWidth: 140,
       pinned: 'left',
       lockPosition: true,
-      suppressMovable: true
+      suppressMovable: true,
+      cellRenderer: EmployeeCellRenderer,
     },
     { field: 'leave_type', headerName: 'Leave Type', width: 140, minWidth: 120 },
     { 
@@ -361,11 +370,12 @@ const Approvals = () => {
     { 
       field: 'employee', 
       headerName: 'Employee', 
-      width: 150,
-      minWidth: 130,
+      width: 170,
+      minWidth: 140,
       pinned: 'left',
       lockPosition: true,
-      suppressMovable: true
+      suppressMovable: true,
+      cellRenderer: EmployeeCellRenderer,
     },
     { field: 'leave_type', headerName: 'Leave Type', width: 140, minWidth: 120 },
     { 
@@ -416,6 +426,13 @@ const Approvals = () => {
       width: 130,
       minWidth: 110,
       valueFormatter: (params) => formatDate(params.value || params.data.applying_date)
+    },
+    {
+      field: 'applied_by_name',
+      headerName: 'Applied By',
+      width: 150,
+      minWidth: 120,
+      cellRenderer: AppliedByCellRenderer,
     },
     {
       field: 'approval_log',

@@ -18,6 +18,7 @@ import { leaveBalanceService, employeeService } from "@/services";
 import type { Employee } from "@/services/employeeService";
 import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase, Eye } from "lucide-react";
 import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
+import { ApplyOnBehalfDialog } from "@/components/leave/ApplyOnBehalfDialog";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiErrorHandler } from "@/hooks/useApiErrorHandler";
@@ -99,6 +100,9 @@ const Employees = () => {
 
   // ── leave balance sheet (view-only, visible to all roles) ────────────────────
   const [balanceSheetOpen,      setBalanceSheetOpen]      = useState(false);
+
+  // ── apply leave on behalf ─────────────────────────────────────────────────────
+  const [applyOnBehalfOpen,     setApplyOnBehalfOpen]     = useState(false);
 
   const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
   const [newRole,              setNewRole]              = useState("");
@@ -322,6 +326,11 @@ const Employees = () => {
   const handleViewBalance = (emp: Employee) => {
     setSelectedEmployee(emp);
     setBalanceSheetOpen(true);
+  };
+
+  const handleApplyOnBehalf = (emp: Employee) => {
+    setSelectedEmployee(emp);
+    setApplyOnBehalfOpen(true);
   };
 
   const submitLeaveAdjustment = async () => {
@@ -665,6 +674,10 @@ const Employees = () => {
                                     <DropdownMenuItem onClick={() => handleViewBalance(emp)}>
                                       <Eye className="mr-2 h-4 w-4" />View Leave Balance
                                     </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleApplyOnBehalf(emp)}>
+                                      <UserCheck className="mr-2 h-4 w-4 text-primary" />
+                                      <span className="text-primary font-medium">Apply Leave on Behalf</span>
+                                    </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       onClick={() => handleDeactivate(emp)}
@@ -930,6 +943,13 @@ const Employees = () => {
         onOpenChange={(o) => { setBalanceSheetOpen(o); if (!o) setSelectedEmployee(null); }}
         employeeId={selectedEmployee?.id ?? ''}
         employeeName={selectedEmployee?.full_name ?? ''}
+      />
+
+      {/* ── Apply Leave on Behalf dialog ────────────────────────────────── */}
+      <ApplyOnBehalfDialog
+        employee={selectedEmployee}
+        open={applyOnBehalfOpen}
+        onOpenChange={(o) => { setApplyOnBehalfOpen(o); if (!o) setSelectedEmployee(null); }}
       />
 
       {/* Deactivate/Activate Confirmation Dialog — replaces window.confirm */}

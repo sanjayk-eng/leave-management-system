@@ -15,6 +15,7 @@ import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
 import { ReasonCellRenderer, TimingCellRenderer, StatusCellRenderer } from "@/components/leave/LeaveCellRenderers";
 import { ApprovalLogDrawer } from "@/components/leave/ApprovalLogDrawer";
+import { AppliedByCellRenderer } from "@/components/leave/LeaveCellRenderers";
 import { LeaveResponse } from "@/services/leaveService";
 import { Loader2, X, RefreshCw, Edit, Save, Calendar, Clock, Eye } from "lucide-react";
 import { ColDef, ICellRendererParams } from "ag-grid-community";
@@ -282,6 +283,13 @@ const MyLeaveHistory = () => {
       width: 150,
       minWidth: 130,
       cellRenderer: AppliedDateCellRenderer 
+    },
+    {
+      field: 'applied_by_name',
+      headerName: 'Applied By',
+      width: 150,
+      minWidth: 120,
+      cellRenderer: AppliedByCellRenderer,
     },
     {
       field: 'id',
