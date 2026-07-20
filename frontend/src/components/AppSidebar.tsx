@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -29,31 +30,28 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-
-const menuItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Employees", url: "/employees", icon: Users, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-  { title: "My Team", url: "/my-team", icon: Users, roles: ['MANAGER'] },
-  { title: "Designations", url: "/designations", icon: Briefcase, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-  { title: "Assets", url: "/equipment", icon: Package, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-  { title: "Apply Leave", url: "/apply-leave", icon: Calendar, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "My Leave History", url: "/my-leave-history", icon: History, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Leave Approvals", url: "/approvals", icon: ClipboardList, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER'] },
-  { title: "Leave Calendar", url: "/calendar", icon: Calendar, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Payroll", url: "/payroll", icon: DollarSign, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-  { title: "Payslips", url: "/payslips", icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Activity Log", url: "/logs", icon: Activity, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-  { title: "Leave Report", url: "/leave-monthly-report", icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'HR', 'MANAGER', 'EMPLOYEE', 'INTERN'] },
-  { title: "Settings", url: "/settings", icon: Settings, roles: ['SUPERADMIN', 'ADMIN', 'HR'] },
-];
+import { useMyPermissions } from "@/hooks/usePermissions";
+import {
+  PAGE_MENU_ITEMS,
+  canAccessMenuItem,
+} from "@/lib/pagePermissions";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const { currentUser, logout, isLoggingOut } = useAuth();
-  
-  // Only show menu items that the user has access to
-  const filteredItems = menuItems.filter(item => 
-    currentUser && item.roles.includes(currentUser.role)
+  const { data: permissionData } = useMyPermissions();
+
+  const visibleItems = useMemo(
+    () =>
+      currentUser
+        ? PAGE_MENU_ITEMS.filter((item) =>
+            canAccessMenuItem(item, {
+              currentUserRole: currentUser.role,
+              resources: permissionData?.resources,
+            }),
+          )
+        : [],
+    [currentUser, permissionData?.resources],
   );
 
   const handleLogout = () => {
@@ -93,7 +91,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredItems.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink

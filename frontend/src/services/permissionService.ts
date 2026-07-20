@@ -48,6 +48,10 @@ export const permissionService = {
     return api.get<RolePermissionResponse>(`/permissions/roles/${roleId}`);
   },
 
+  getMyPermissions: async (): Promise<RolePermissionResponse> => {
+    return api.get<RolePermissionResponse>(`/permissions/me`);
+  },
+
   /**
    * PATCH /api/permissions/roles/:role_id
    * Toggles is_enabled for one or more permissions.

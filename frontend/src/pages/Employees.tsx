@@ -16,6 +16,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { getCurrentUser, ApiError } from "@/lib/api";
 import { leaveBalanceService, employeeService } from "@/services";
 import type { Employee } from "@/services/employeeService";
+import { useMyPermissions } from "@/hooks/usePermissions";
+import { isPermissionEnabled } from "@/lib/pagePermissions";
 import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase, Eye } from "lucide-react";
 import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
 import { ApplyOnBehalfDialog } from "@/components/leave/ApplyOnBehalfDialog";
@@ -169,6 +171,17 @@ const Employees = () => {
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
   const isHR         = currentUser?.role === 'HR';
   const queryClient  = useQueryClient();
+  const { data: permissionData } = useMyPermissions();
+  const resources = permissionData?.resources;
+
+  const canChangePassword = isPermissionEnabled(resources, { resource: 'employee', action: 'change_password' });
+  const canEditEmployee = isPermissionEnabled(resources, { resource: 'employee', action: 'edit' });
+  const canUpdateRole = isPermissionEnabled(resources, { resource: 'employee', action: 'update_role' });
+  const canAssignManager = isPermissionEnabled(resources, { resource: 'employee', action: 'assign_manager' });
+  const canManageDesignation = isPermissionEnabled(resources, { resource: 'employee', action: 'designation_management' });
+  const canAdjustLeave = isPermissionEnabled(resources, { resource: 'employee', action: 'adjust' });
+  const canApplyOnBehalf = isPermissionEnabled(resources, { resource: 'leave', action: 'apply' });
+  const canChangeStatus = isPermissionEnabled(resources, { resource: 'employee', action: 'status_management' });
 
   // 403/401 → hide write controls and filters (same pattern as Designations page)
   const isAccessDenied = error instanceof ApiError && (error.status === 403 || error.status === 401);
@@ -649,24 +662,32 @@ const Employees = () => {
                                   </DropdownMenuItem>
                                 ) : (
                                   <>
-                                    {(isAdmin || isHR )  && (
+                                    {canChangePassword && (
                                       <DropdownMenuItem onClick={() => handleChangePassword(emp)}>
                                         <Key className="mr-2 h-4 w-4" />Change Password
                                       </DropdownMenuItem>
                                     )}
-                                    <DropdownMenuItem onClick={() => handleEditInfo(emp)}>
-                                      <Edit className="mr-2 h-4 w-4" />Edit Info
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateRole(emp)}>
-                                      <UserCog className="mr-2 h-4 w-4" />Update Role
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateManager(emp)}>
-                                      <Users className="mr-2 h-4 w-4" />Assign Manager
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateDesignation(emp)}>
-                                      <Briefcase className="mr-2 h-4 w-4" />Assign Designation
-                                    </DropdownMenuItem>
-                                    {(isSuperAdmin || isAdmin) && (
+                                    {canEditEmployee && (
+                                      <DropdownMenuItem onClick={() => handleEditInfo(emp)}>
+                                        <Edit className="mr-2 h-4 w-4" />Edit Info
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canUpdateRole && (
+                                      <DropdownMenuItem onClick={() => handleUpdateRole(emp)}>
+                                        <UserCog className="mr-2 h-4 w-4" />Update Role
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canAssignManager && (
+                                      <DropdownMenuItem onClick={() => handleUpdateManager(emp)}>
+                                        <Users className="mr-2 h-4 w-4" />Assign Manager
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canManageDesignation && (
+                                      <DropdownMenuItem onClick={() => handleUpdateDesignation(emp)}>
+                                        <Briefcase className="mr-2 h-4 w-4" />Assign Designation
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canAdjustLeave && (
                                       <DropdownMenuItem onClick={() => handleAdjustLeave(emp)}>
                                         <Calendar className="mr-2 h-4 w-4" />Adjust Leave Balance
                                       </DropdownMenuItem>
@@ -674,19 +695,25 @@ const Employees = () => {
                                     <DropdownMenuItem onClick={() => handleViewBalance(emp)}>
                                       <Eye className="mr-2 h-4 w-4" />View Leave Balance
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleApplyOnBehalf(emp)}>
-                                      <UserCheck className="mr-2 h-4 w-4 text-primary" />
-                                      <span className="text-primary font-medium">Apply Leave on Behalf</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeactivate(emp)}
-                                      className={emp.status === 'active' ? 'text-destructive' : 'text-success'}
-                                    >
-                                      {emp.status === 'active'
-                                        ? <><UserX className="mr-2 h-4 w-4" />Deactivate</>
-                                        : <><UserCheck className="mr-2 h-4 w-4" />Activate</>}
-                                    </DropdownMenuItem>
+                                    {canApplyOnBehalf && (
+                                      <DropdownMenuItem onClick={() => handleApplyOnBehalf(emp)}>
+                                        <UserCheck className="mr-2 h-4 w-4 text-primary" />
+                                        <span className="text-primary font-medium">Apply Leave on Behalf</span>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canChangeStatus && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleDeactivate(emp)}
+                                          className={emp.status === 'active' ? 'text-destructive' : 'text-success'}
+                                        >
+                                          {emp.status === 'active'
+                                            ? <><UserX className="mr-2 h-4 w-4" />Deactivate</>
+                                            : <><UserCheck className="mr-2 h-4 w-4" />Activate</>}
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </DropdownMenuContent>

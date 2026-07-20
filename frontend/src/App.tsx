@@ -16,7 +16,6 @@ import { LeaveReportRoute } from "@/components/LeaveReportRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
-import MyTeam from "./pages/MyTeam";
 import ApplyLeave from "./pages/ApplyLeave";
 import MyLeaveHistory from "./pages/MyLeaveHistory";
 import Approvals from "./pages/Approvals";
@@ -66,7 +65,6 @@ const App = () => (
               <Route path="/" element={<AuthGuard><Layout><Dashboard /></Layout></AuthGuard>} />
               <Route path="/dashboard" element={<AuthGuard><Layout><Dashboard /></Layout></AuthGuard>} />
               <Route path="/employees" element={<AuthGuard><Layout><Employees /></Layout></AuthGuard>} />
-              <Route path="/my-team" element={<AuthGuard><Layout><MyTeam /></Layout></AuthGuard>} />
               <Route path="/apply-leave" element={<AuthGuard><Layout><ApplyLeave /></Layout></AuthGuard>} />
               <Route path="/my-leave-history" element={<AuthGuard><Layout><MyLeaveHistory /></Layout></AuthGuard>} />
               <Route path="/approvals" element={<AuthGuard><Layout><Approvals /></Layout></AuthGuard>} />

@@ -38,7 +38,27 @@ func (h *HandlerFunc) GetRolePermissions(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
+func (h *HandlerFunc) GetMyPermissions(c *gin.Context) {
 
+	roleIDVal, ok := c.Get("role_id")
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "role_id missing from context")
+		return
+	}
+	roleID, ok := roleIDVal.(int)
+	if !ok {
+		errors.RespondWithError(c, http.StatusInternalServerError, "role_id has unexpected type")
+		return
+	}
+
+	resp, err := h.PermissionSvc.GetRolePermissions(c.Request.Context(), roleID, roleID)
+	if err != nil {
+		errors.Error(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
 func (h *HandlerFunc) UpdateRolePermissions(c *gin.Context) {
 
 	targetRoleID, err := strconv.Atoi(c.Param("role_id"))

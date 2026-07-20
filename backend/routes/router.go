@@ -167,6 +167,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	permissions := r.Group("/api/permissions")
 	permissions.Use(middleware.AuthMiddleware(h))
 	{
+		permissions.GET("/me", h.GetMyPermissions)
 		permissions.GET("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionRead)), h.GetRolePermissions)
 		permissions.PATCH("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionEdit)), h.UpdateRolePermissions)
 	}

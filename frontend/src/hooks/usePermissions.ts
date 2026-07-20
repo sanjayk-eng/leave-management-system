@@ -9,6 +9,29 @@ import { useApiErrorHandler } from './useApiErrorHandler';
 // ─── Query key factory ────────────────────────────────────────────────────────
 const permissionKeys = {
   role: (roleId: number) => ['permissions', 'role', roleId] as const,
+  me: ['permissions', 'me'] as const,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useMyPermissions
+//
+// Fetches and caches the current user's permissions for page rendering.
+// ─────────────────────────────────────────────────────────────────────────────
+export const useMyPermissions = () => {
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: permissionKeys.me,
+    queryFn: () => permissionService.getMyPermissions(),
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+  });
+
+  return {
+    data,
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

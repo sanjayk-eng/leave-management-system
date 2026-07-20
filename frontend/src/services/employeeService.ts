@@ -130,16 +130,6 @@ export const employeeService = {
     return api.get<{ message: string }>(`/employee/${id}/reports`);
   },
 
-  getMyTeam: async () => {
-    const response = await api.get<{ 
-      message: string; 
-      manager_id: string;
-      team_count: number;
-      team_members: Employee[] 
-    }>('/employee/my-team');
-    return response.team_members;
-  },
-
   updateDesignation: async (employeeId: string, designationId: string | null) => {
     if (designationId) {
       // Assign: PATCH /designations/:designationId/assign-employee  { employee_id }

@@ -72,8 +72,10 @@ func (s *permissionService) loadPermissionIndex(ctx context.Context, roleID int)
 
 func (s *permissionService) GetRolePermissions(ctx context.Context, callerRoleID, targetRoleID int) (*models.RolePermissionResponse, error) {
 
-	if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
-		return nil, err
+	if callerRoleID != targetRoleID {
+		if err := s.enforceHierarchy(ctx, callerRoleID, targetRoleID); err != nil {
+			return nil, err
+		}
 	}
 
 	roleName, err := s.repo.GetRoleName(ctx, targetRoleID)

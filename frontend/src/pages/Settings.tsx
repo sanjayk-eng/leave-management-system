@@ -1,76 +1,30 @@
 import { NavLink, Outlet, Navigate, useLocation } from "react-router-dom";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  Building2, FileText, Clock, GitMerge, Cake, Shield, Sun,
-} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useMyPermissions } from "@/hooks/usePermissions";
+import { canAccessMenuItem, SETTINGS_NAV_ITEMS } from "@/lib/pagePermissions";
 
-
-// ─── Nav item definitions ─────────────────────────────────────────────────────
-// Each item drives: left-nav link, right-side header (title + description)
-const NAV_ITEMS = [
-  {
-    to:          "/settings/company",
-    label:       "Company",
-    icon:        Building2,
-    title:       "Company Settings",
-    description: "Manage branding, working days, and general configuration",
-  },
-  {
-    to:          "/settings/leave-policies",
-    label:       "Leave Policies",
-    icon:        FileText,
-    title:       "Leave Policies",
-    description: "Configure leave types, entitlements, and approval flows",
-  },
-  {
-    to:          "/settings/leave-timing",
-    label:       "Leave Timing",
-    icon:        Clock,
-    title:       "Leave Timing",
-    description: "Set the time windows for first half, second half, and full day leave",
-  },
-  {
-    to:          "/settings/approval-flow",
-    label:       "Approval Flow",
-    icon:        GitMerge,
-    title:       "Approval Flow",
-    description: "Define multi-stage approval chains for leave requests",
-  },
-  {
-    to:          "/settings/birthday",
-    label:       "Birthday",
-    icon:        Cake,
-    title:       "Birthday Settings",
-    description: "Customize the birthday message template sent to employees",
-  },
-  {
-    to:          "/settings/permissions",
-    label:       "Permissions",
-    icon:        Shield,
-    title:       "Role Permissions",
-    description: "Control what each role can do — toggle permissions on or off",
-  },
-  {
-    to:          "/settings/holidays",
-    label:       "Holidays",
-    icon:        Sun,
-    title:       "Holiday Management",
-    description: "Manage company holidays and observances",
-  },
-] as const;
-
-// ─── Settings layout ──────────────────────────────────────────────────────────
 export default function Settings() {
   const { pathname } = useLocation();
+  const { currentUser } = useAuth();
+  const { data: permissionData } = useMyPermissions();
 
-  // Redirect /settings → /settings/company
+  const visibleNavItems = SETTINGS_NAV_ITEMS.filter((item) =>
+    canAccessMenuItem(item, {
+      currentUserRole: currentUser?.role,
+      resources: permissionData?.resources,
+    }),
+  );
+
+  // Redirect /settings → first visible settings page or fallback to company settings.
   if (pathname === "/settings" || pathname === "/settings/") {
-    return <Navigate to="/settings/company" replace />;
+    const redirectTo = visibleNavItems[0]?.url ?? "/settings/company";
+    return <Navigate to={redirectTo} replace />;
   }
 
   // Resolve the active nav item to drive the right-side header
-  const activeItem = NAV_ITEMS.find((item) => pathname.startsWith(item.to));
+  const activeItem = visibleNavItems.find((item) => pathname.startsWith(item.url));
 
   return (
     <div className="min-h-[calc(100vh-4rem)]">
@@ -86,13 +40,13 @@ export default function Settings() {
       {/* ── Horizontal tab navigation ── */}
       <div className="border-b border-border mb-6">
         <nav className="flex gap-1 overflow-x-auto -mb-px">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname.startsWith(item.to);
+            const active = pathname.startsWith(item.url);
             return (
               <NavLink
-                key={item.to}
-                to={item.to}
+                key={item.url}
+                to={item.url}
                 className={cn(
                   "inline-flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2",
                   active
@@ -101,7 +55,7 @@ export default function Settings() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                {item.label ?? item.title}
               </NavLink>
             );
           })}
