@@ -112,22 +112,21 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	payroll.Use(middleware.AuthMiddleware(h))
 	{
 		// Run payroll for a given month & year
-		payroll.POST("/run", h.RunPayroll)
+		payroll.POST("/run", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.RunPayroll)
 		// POST /api/payroll/run
 
 		// Preview payslip PDF with dummy data (ADMIN/SUPERADMIN only, no DB record)
-		payroll.GET("/payslips/preview", h.PreviewPayslipPDF)
+		payroll.GET("/payslips/preview", middleware.RequirePermission(h, string(rbsc.ResourcePayslip), string(rbsc.ActionRead)), h.PreviewPayslipPDF)
 
 		// Finalize payroll for a specific payroll run ID
-		payroll.POST("/:id/finalize", h.FinalizePayroll)
+		payroll.POST("/:id/finalize", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.FinalizePayroll)
 		// POST /api/payroll/{id}/finalize
 
-		payroll.GET("/payslip", h.GetFinalizedPayslips)
+		payroll.GET("/payslip", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.GetFinalizedPayslips)
 
 		// Download payslip PDF for a specific employee payslip ID
-		payroll.GET("/payslips/:id/pdf", h.GetPayslipPDF)
+		payroll.GET("/payslips/:id/pdf", middleware.RequirePermission(h, string(rbsc.ResourcePayslip), string(rbsc.ActionRead)), h.GetPayslipPDF)
 		// GET /api/payroll/payslips/{id}/pdf
-
 	}
 
 	// ----------------- Settings -----------------

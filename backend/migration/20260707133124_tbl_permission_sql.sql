@@ -223,7 +223,6 @@ FROM (VALUES
     ('asset', 'assign', 'all', FALSE),
     ('permission','read','all', FALSE),
     ('permission','edit','all', FALSE),
-    ('log','read','all', FALSE),
     ('leave_report','read','all', FALSE)
     
 ) AS v(resource, action, scope, req_sen)
@@ -264,6 +263,7 @@ FROM (VALUES
     ('asset', 'edit',   'all', FALSE),
     ('asset', 'remove', 'all', FALSE),
     ('asset', 'assign', 'all', FALSE),
+    ('log','read','all', FALSE),
     ('permission', 'read',  'all', FALSE),
     ('permission', 'edit',  'all', FALSE)
 ) AS v(resource, action, scope, req_sen)

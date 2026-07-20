@@ -38,7 +38,8 @@ const (
 	ActionMangmentCompanyInfo Action = "manage_company_info"
 
 	// ── Equipment ────────────────────────────────────────────────────────────
-	ActionAssign Action = "assign"
+	ActionAssign           Action = "assign"
+	ActionPayrollManagment Action = "payroll_managment"
 )
 
 func (a Action) String() string { return string(a) }

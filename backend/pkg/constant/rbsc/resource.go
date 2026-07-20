@@ -16,6 +16,7 @@ const (
 	ResourceAsset        Resource = "asset" // was "asset" in old migration — fixed
 	ResourcePermission   Resource = "permission"
 	ResourceLog          Resource = "log"
+	ResourcePayslip      Resource = "payslip"
 )
 
 func (r Resource) String() string { return string(r) }
