@@ -174,12 +174,13 @@ const Employees = () => {
   const { data: permissionData } = useMyPermissions();
   const resources = permissionData?.resources;
 
+  const canAddEmployee = isPermissionEnabled(resources, { resource: 'employee', action: 'add' });
   const canChangePassword = isPermissionEnabled(resources, { resource: 'employee', action: 'change_password' });
   const canEditEmployee = isPermissionEnabled(resources, { resource: 'employee', action: 'edit' });
   const canUpdateRole = isPermissionEnabled(resources, { resource: 'employee', action: 'update_role' });
   const canAssignManager = isPermissionEnabled(resources, { resource: 'employee', action: 'assign_manager' });
   const canManageDesignation = isPermissionEnabled(resources, { resource: 'employee', action: 'designation_management' });
-  const canAdjustLeave = isPermissionEnabled(resources, { resource: 'employee', action: 'adjust' });
+  const canAdjustLeave = isPermissionEnabled(resources, { resource: 'leave_balance', action: 'adjust' });
   const canApplyOnBehalf = isPermissionEnabled(resources, { resource: 'leave', action: 'apply' });
   const canChangeStatus = isPermissionEnabled(resources, { resource: 'employee', action: 'status_management' });
 
@@ -214,6 +215,7 @@ const Employees = () => {
   // ── action handlers ───────────────────────────────────────────────────────────
   const handleAddEmployee = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAddEmployee) { toast.error('You do not have permission to add employees'); return; }
     if (formData.role === 'SUPERADMIN' && !isSuperAdmin) { toast.error('Only SUPERADMIN can create SUPERADMIN users'); return; }
     createEmployee({
       full_name: formData.full_name, email: formData.email, role: formData.role,
@@ -423,13 +425,13 @@ const Employees = () => {
           <p className="text-sm text-muted-foreground">Manage employee records and roles</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          {!isAccessDenied && (
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto">
-              <UserPlus className="mr-2 h-4 w-4" />
-              <span>Add Employee</span>
-            </Button>
-          </DialogTrigger>
+          {!isAccessDenied && canAddEmployee && (
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span>Add Employee</span>
+              </Button>
+            </DialogTrigger>
           )}
           <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>

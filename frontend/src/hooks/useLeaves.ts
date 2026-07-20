@@ -1,8 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { leaveService, ApplyLeaveRequest, AdminAddLeaveRequest, LeaveActionRequest, UpdateLeavePolicyRequest, LeaveSummary } from '@/services';
-import { UpdateLeaveRequest } from '@/services/leaveService';
+import { ApiError } from '@/lib/api';
+import { UpdateLeaveRequest, LeaveResponse } from '@/services/leaveService';
 import { toast } from 'sonner';
 import { useApiErrorHandler } from './useApiErrorHandler';
+
+const buildSummaryFromLeaves = (leaves: LeaveResponse[]): LeaveSummary => ({
+  total: leaves.length,
+  pending: leaves.filter((leave) => leave.status === 'PENDING').length,
+  manager_approved: leaves.filter((leave) => leave.status === 'MANAGER_APPROVED').length,
+  manager_rejected: leaves.filter((leave) => leave.status === 'MANAGER_REJECTED').length,
+  admin_approved: leaves.filter((leave) => leave.status === 'ADMIN_APPROVED').length,
+  admin_rejected: leaves.filter((leave) => leave.status === 'ADMIN_REJECTED').length,
+  approved: leaves.filter((leave) => leave.status === 'APPROVED').length,
+  rejected: leaves.filter((leave) => leave.status === 'REJECTED').length,
+  cancelled: leaves.filter((leave) => leave.status === 'CANCELLED').length,
+  withdrawn: leaves.filter((leave) => leave.status === 'WITHDRAWN').length,
+  withdrawal_pending: leaves.filter((leave) => leave.status === 'WITHDRAWAL_PENDING').length,
+});
 
 export const useLeavePolicies = () => {
   const queryClient = useQueryClient();
@@ -231,6 +246,42 @@ export const useLeaves = (month?: number, year?: number) => {
   };
 };
 
+export const useLeaveCalendar = (month?: number, year?: number) => {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['leaveCalendar', month, year],
+    queryFn: async () => {
+      try {
+        return await leaveService.getAll(month, year);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 403) {
+          const response = await leaveService.getMyLeaves(month, year);
+          return {
+            total: response.total ?? response.data.length,
+            data: response.data || [],
+            summary: buildSummaryFromLeaves(response.data || []),
+            message: response.message,
+            month: response.month,
+            year: response.year,
+          };
+        }
+        throw err;
+      }
+    },
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  return {
+    leaves: data?.data || [],
+    total: data?.total || 0,
+    summary: data?.summary ?? null as LeaveSummary | null,
+    isLoading,
+    error,
+    refetch,
+  };
+};
+
 export const useMyLeaves = (month?: number, year?: number) => {
   const queryClient = useQueryClient();
   const handleError = useApiErrorHandler();
@@ -247,7 +298,6 @@ export const useMyLeaves = (month?: number, year?: number) => {
     mutationFn: ({ id, data }: { id: string; data: UpdateLeaveRequest }) =>
       leaveService.update(id, data),
     onMutate: async () => {
-      // Cancel and snapshot both the scoped key AND the broad key
       await queryClient.cancelQueries({ queryKey: ['myLeaves', month, year] });
       await queryClient.cancelQueries({ queryKey: ['myLeaves'] });
       const previousLeaves = queryClient.getQueryData(['myLeaves', month, year]);
@@ -260,7 +310,6 @@ export const useMyLeaves = (month?: number, year?: number) => {
       queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
     },
     onError: (error, variables, context) => {
-      // Roll back both keys to match the onSuccess invalidation scope
       if (context?.previousLeaves) {
         queryClient.setQueryData(['myLeaves', month, year], context.previousLeaves);
       }

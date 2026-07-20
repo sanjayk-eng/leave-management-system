@@ -17,13 +17,7 @@ import (
 
 // GetCompanySettings - GET /api/settings/company
 func (h *HandlerFunc) GetCompanySettings(c *gin.Context) {
-	// Only SUPERADMIN and ADMIN allowed
-	roleRaw, _ := c.Get("role")
-	role := roleRaw.(string)
-	if role != "SUPERADMIN" && role != "ADMIN" {
-		errors.RespondWithError(c, 403, "Not authorized to view settings")
-		return
-	}
+
 	var settings models.CompanySettings
 	err := h.Query.GetCompanySettings(&settings)
 	if err != nil {
@@ -39,10 +33,6 @@ func (h *HandlerFunc) UpdateCompanySettings(c *gin.Context) {
 	// 1. Authorization check
 	roleRaw, _ := c.Get("role")
 	role, ok := roleRaw.(string)
-	if !ok || (role != "SUPERADMIN" && role != "ADMIN") {
-		errors.RespondWithError(c, 403, "Not authorized to update settings")
-		return
-	}
 
 	// 2. Extract values from multipart form
 	workingDays, _ := strconv.Atoi(c.PostForm("WorkingDaysPerMonth"))

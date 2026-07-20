@@ -86,8 +86,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	leaveBalances.Use(middleware.AuthMiddleware(h))
 	{
 
-		leaveBalances.GET("/employee/:id", h.GetLeaveBalances)                                                                                             // GET /api/employees/:id/leave-balances
-		leaveBalances.POST("/:id/adjust", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionAdjust)), h.AdjustLeaveBalance) // POST /api/leave-balances/:id/adjust
+		leaveBalances.GET("/employee/:id", h.GetLeaveBalances)                                                                                                 // GET /api/employees/:id/leave-balances
+		leaveBalances.POST("/:id/adjust", middleware.RequirePermission(h, string(rbsc.ResourceLeaveBalance), string(rbsc.ActionAdjust)), h.AdjustLeaveBalance) // POST /api/leave-balances/:id/adjust
 	}
 
 	// ----------------- Admin: Leave Accrual -----------------
@@ -122,7 +122,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		payroll.POST("/:id/finalize", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.FinalizePayroll)
 		// POST /api/payroll/{id}/finalize
 
-		payroll.GET("/payslip", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.GetFinalizedPayslips)
+		payroll.GET("/payslip", middleware.RequirePermission(h, string(rbsc.ResourcePayslip), string(rbsc.ActionRead)), h.GetFinalizedPayslips)
 
 		// Download payslip PDF for a specific employee payslip ID
 		payroll.GET("/payslips/:id/pdf", middleware.RequirePermission(h, string(rbsc.ResourcePayslip), string(rbsc.ActionRead)), h.GetPayslipPDF)

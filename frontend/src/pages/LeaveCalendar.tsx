@@ -11,7 +11,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useHolidays } from "@/hooks/useHolidays";
-import { useLeaves } from "@/hooks/useLeaves";
+import { useLeaveCalendar } from "@/hooks/useLeaves";
 import { useCalendarBirthdays } from "@/hooks/useBirthday";
 import { MonthlyCalendar, WeeklyCalendar, HolidaysList } from "@/components/calendar";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
@@ -39,7 +39,7 @@ const LeaveCalendar = () => {
   const month = currentDate.getMonth() + 1; // 1-12
   const year = currentDate.getFullYear();
   
-  const { leaves, summary, isLoading: leavesLoading } = useLeaves(month, year);
+  const { leaves, summary, isLoading: leavesLoading } = useLeaveCalendar(month, year);
   const { birthdays } = useCalendarBirthdays(month, year);
 
   const goToPrevious = () => {

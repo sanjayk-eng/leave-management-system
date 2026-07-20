@@ -2,8 +2,8 @@
 -- COMPLETE DATABASE SCHEMA - HR & LEAVE MANAGEMENT SYSTEM
 -- =====================================================
 -- Database: PostgreSQL
--- Last Updated: July 8, 2026
--- Total Tables: 23  (added tbl_permission + tbl_role_permission)
+-- Last Updated: July 15, 2026
+-- Total Tables: 26  (includes partitioned audit log tables, added tbl_permission + tbl_role_permission)
 -- =====================================================
 
 -- Enable UUID generation
@@ -15,6 +15,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS Tbl_Role (
     id SERIAL PRIMARY KEY,
     type TEXT NOT NULL UNIQUE,
+    priority INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -28,6 +29,8 @@ INSERT INTO Tbl_Role (type) VALUES
     ('EMPLOYEE'),
     ('INTERN')
 ON CONFLICT (type) DO NOTHING;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_role_priority ON Tbl_Role(priority) WHERE priority > 0;
 
 -- =====================================================
 -- 2. TBL_DESIGNATION - Job Designations
@@ -334,7 +337,62 @@ CREATE TABLE IF NOT EXISTS Tbl_Audit (
 );
 
 -- =====================================================
--- 19. TBL_LEAVE_APPROVAL_FLOW - Approval Workflow Engine
+-- 19. TBL_AUDIT_LOG - Append-only Audit Trail
+-- =====================================================
+CREATE TABLE IF NOT EXISTS tbl_audit_log (
+    id            UUID        NOT NULL DEFAULT gen_random_uuid(),
+    actor_id      UUID        NOT NULL,
+    actor_name    TEXT        NOT NULL,
+    actor_role    TEXT        NOT NULL DEFAULT 'System',
+    component     TEXT        NOT NULL,
+    action        TEXT        NOT NULL,
+    resource_type TEXT        NOT NULL,
+    resource_id   TEXT        NOT NULL,
+    resource_name TEXT        NOT NULL,
+    old_value     JSONB,
+    new_value     JSONB,
+    description   TEXT        NOT NULL,
+    metadata      JSONB,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_07
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_08
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_09
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource
+    ON tbl_audit_log (resource_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor
+    ON tbl_audit_log (actor_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_component_action
+    ON tbl_audit_log (component, action, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_metadata_gin
+    ON tbl_audit_log USING GIN (metadata);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'lms_app'
+    ) THEN
+        EXECUTE 'REVOKE UPDATE, DELETE ON tbl_audit_log FROM lms_app';
+    END IF;
+END;
+$$;
+
+-- =====================================================
+-- 20. TBL_LEAVE_APPROVAL_FLOW - Approval Workflow Engine
 -- =====================================================
 CREATE TABLE leave_approval_flow (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -375,7 +433,12 @@ CREATE TABLE IF NOT EXISTS Tbl_Leave_Flow (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_leave_flow_leave
+        FOREIGN KEY (leave_id)
+        REFERENCES Tbl_Leave(id)
+        ON DELETE CASCADE
 );
 
 -- =====================================================
@@ -392,8 +455,10 @@ CREATE TYPE permission_resource AS ENUM (
     'payroll',
     'settings',
     'designation',
-    'equipment',
-    'permission'
+    'asset',
+    'payslip',
+    'permission',
+    'log'
 );
 
 -- Enum: every allowed operation verb
@@ -403,18 +468,17 @@ CREATE TYPE permission_action AS ENUM (
     'add', 'read', 'edit', 'remove',
     -- employee lifecycle
     'change_password', 'update_role',
-    'assign_manager', 'unassign_manager',
-    'activate', 'deactivate',
-    'designation_management',
+    'assign_manager', 'status_management',
+    'designation_management', 'read_salary',
     -- leave workflow
-    'apply', 'approve', 'reject', 'cancel', 'withdraw',
+    'apply', 'approve', 'reject', 'cancel', 'withdraw', 'apply_on_behalf',
     -- balance
     'adjust',
     -- payroll
-    'run', 'finalize',
+    'run', 'payroll_managment',
     -- settings sub-actions
-    'manage_holidays', 'manage_leave_policy',
-    'manage_leave_flow', 'manage_birthdays',
+    'manage_holidays', 'manage_leave_policy', 'manage_leave_flow', 'manage_birthdays',
+    'manage_company_info', 'manage_leave_timing',
     -- equipment
     'assign'
 );
@@ -496,6 +560,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_employee ON Tbl_Leave(employee_id);
 CREATE INDEX IF NOT EXISTS idx_leave_status ON Tbl_Leave(status);
 CREATE INDEX IF NOT EXISTS idx_leave_dates ON Tbl_Leave(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_leave_type ON Tbl_Leave(leave_type_id);
+CREATE INDEX IF NOT EXISTS idx_leave_type_approval_flow_id ON Tbl_Leave_type(approval_flow_id);
 
 -- Leave balance indexes
 CREATE INDEX IF NOT EXISTS idx_leave_balance_employee ON Tbl_Leave_balance(employee_id);
@@ -504,6 +569,14 @@ CREATE INDEX IF NOT EXISTS idx_leave_balance_year ON Tbl_Leave_balance(year);
 -- Leave accrual log indexes
 CREATE INDEX IF NOT EXISTS idx_accrual_log_employee   ON Tbl_Leave_accrual_log(employee_id);
 CREATE INDEX IF NOT EXISTS idx_accrual_log_month_year ON Tbl_Leave_accrual_log(year, month);
+
+-- Leave flow indexes
+CREATE INDEX IF NOT EXISTS idx_leave_flow_leave_id
+    ON tbl_leave_flow(leave_id);
+CREATE INDEX IF NOT EXISTS idx_leave_flow_deleted_at
+    ON tbl_leave_flow(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_leave_flow_approval_log
+    ON tbl_leave_flow USING GIN (approval_log);
 
 -- Payslip indexes
 CREATE INDEX IF NOT EXISTS idx_payslip_employee ON Tbl_Payslip(employee_id);

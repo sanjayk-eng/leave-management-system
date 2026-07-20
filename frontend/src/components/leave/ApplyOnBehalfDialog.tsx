@@ -83,10 +83,6 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
     }
   };
 
-  const dayCount = startDate && endDate
-    ? Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1
-    : null;
-
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
@@ -172,7 +168,6 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar mode="single" selected={earlyDate} onSelect={setEarlyDate}
-                      disabled={(d) => { const t = new Date(); t.setHours(0,0,0,0); return d < t; }}
                       initialFocus />
                   </PopoverContent>
                 </Popover>
@@ -209,7 +204,6 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar mode="single" selected={startDate} onSelect={setStartDate}
-                        disabled={(d) => { const t = new Date(); t.setHours(0,0,0,0); return d < t; }}
                         initialFocus />
                     </PopoverContent>
                   </Popover>
@@ -229,22 +223,11 @@ export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBeh
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar mode="single" selected={endDate} onSelect={setEndDate}
-                        disabled={(d) => { const t = new Date(); t.setHours(0,0,0,0); return d < (startDate ?? t); }}
                         initialFocus />
                     </PopoverContent>
                   </Popover>
                 </div>
               </div>
-
-              {/* Duration preview */}
-              {dayCount !== null && (
-                <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <span className="text-xs font-medium text-muted-foreground">Duration</span>
-                  <span className="text-sm font-medium">
-                    {dayCount} {dayCount === 1 ? "day" : "days"}
-                  </span>
-                </div>
-              )}
 
               {/* Timing */}
               <div className="space-y-1.5">
