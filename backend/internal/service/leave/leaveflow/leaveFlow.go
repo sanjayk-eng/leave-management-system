@@ -48,8 +48,9 @@ type leaveFlow struct {
 	NotificationSvc     notification.Service      // nil-safe: notifications skipped if not wired
 	AuditSvc            audit.Service             // nil-safe: audit skipped if not wired
 	PermissionSvc       service.PermissionService // governs the leave/apply_on_behalf permission
-	OrgSvc              service.OrgService        // resolves "is this my team" for scope=team
 	registry            *leaveprocess.ProcessorRegistry
+	HrbcService         service.Hrbc
+	EmployeeSvc         service.EmployeeService
 }
 
 func NewLeaveFlow(
@@ -63,7 +64,8 @@ func NewLeaveFlow(
 	notifSvc notification.Service,
 	auditSvc audit.Service,
 	permissionSvc service.PermissionService,
-	orgSvc service.OrgService,
+	hrbcService service.Hrbc,
+	employeeSvc service.EmployeeService,
 ) LeaveFlowService {
 	return &leaveFlow{
 		DB:                  db,
@@ -77,8 +79,9 @@ func NewLeaveFlow(
 		NotificationSvc:     notifSvc,
 		AuditSvc:            auditSvc,
 		PermissionSvc:       permissionSvc,
-		OrgSvc:              orgSvc,
 		registry:            leaveprocess.NewProcessorRegistry(),
+		HrbcService:         hrbcService,
+		EmployeeSvc:         employeeSvc,
 	}
 }
 
@@ -87,6 +90,7 @@ func NewLeaveFlow(
 // ============================================================
 
 func (s *leaveFlow) Create(ctx context.Context, actorID uuid.UUID, actorRoleID int, leave *models.LeaveInput, actorRole string) error {
+
 	if err := s.authorizeApplyOnBehalf(ctx, actorID, actorRoleID, leave.EmployeeID); err != nil {
 		return err
 	}
@@ -194,6 +198,10 @@ func (s *leaveFlow) authorizeApplyOnBehalf(ctx context.Context, actorID uuid.UUI
 	if actorID == targetEmployeeID {
 		return nil // always allowed to apply for yourself
 	}
+	res, err := s.EmployeeSvc.GetEmployeeByID(targetEmployeeID)
+	if err != nil {
+		return err
+	}
 
 	perm, err := s.PermissionSvc.Check(ctx, actorRoleID, "leave", "apply_on_behalf")
 	if err != nil {
@@ -203,21 +211,10 @@ func (s *leaveFlow) authorizeApplyOnBehalf(ctx context.Context, actorID uuid.UUI
 		return errors.CustomErr(http.StatusForbidden, "you do not have permission to apply leave on behalf of others")
 	}
 
-	switch perm.Scope {
-	case "all":
-		return nil
-	case "team":
-		inTeam, err := s.OrgSvc.IsInReportingChain(ctx, actorID, targetEmployeeID)
-		if err != nil {
-			return err
-		}
-		if !inTeam {
-			return errors.CustomErr(http.StatusForbidden, "you can only apply leave on behalf of your own team")
-		}
-		return nil
-	default:
-		return errors.CustomErr(http.StatusForbidden, "you can only apply leave for yourself")
+	if err := s.HrbcService.HasPriorityAllowByType(actorRoleID, res.Role); err != nil {
+		return err
 	}
+	return nil
 }
 
 // ============================================================

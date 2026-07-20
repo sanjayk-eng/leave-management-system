@@ -62,7 +62,7 @@ func (h *hrbc) validatePriority(actorRoleID, targetPriority int) error {
 	}
 
 	if actorPriority <= targetPriority {
-		return errors.CustomErr(http.StatusForbidden, "insufficient authority")
+		return errors.CustomErr(http.StatusForbidden, "operation not permitted due to role hierarchy restrictions")
 	}
 	return nil
 }

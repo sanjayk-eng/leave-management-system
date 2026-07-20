@@ -123,20 +123,6 @@ func main() {
 	permissionRepo := repositories.NewPermissionRepository(db)
 	permissionSvc := service.NewPermissionService(db, permissionRepo)
 
-	OrgService := service.NewOrgService(employeeRepo)
-	leaveFlowService := leaveflow.NewLeaveFlow(
-		db,
-		leaveFlowLogService,
-		leavePolicyService,
-		leaveFlowRepo,
-		leavePolicyRepo,
-		leaveFlowLogRepo,
-		repo,
-		notifSvc, // injected — leaveflow publishes events, never touches email directly
-		auditSvc, // injected — leaveflow logs audit entries asynchronously
-		permissionSvc,
-		OrgService,
-	)
 	holidayRepo := repositories.NewHolidayRepository(db)
 	holidayservice := service.NewHolidayService(holidayRepo)
 
@@ -152,6 +138,21 @@ func main() {
 	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, roleRepo, hrbcService, auditSvc)
 
 	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc, leaveBalanceService)
+
+	leaveFlowService := leaveflow.NewLeaveFlow(
+		db,
+		leaveFlowLogService,
+		leavePolicyService,
+		leaveFlowRepo,
+		leavePolicyRepo,
+		leaveFlowLogRepo,
+		repo,
+		notifSvc, // injected — leaveflow publishes events, never touches email directly
+		auditSvc, // injected — leaveflow logs audit entries asynchronously
+		permissionSvc,
+		hrbcService,
+		employeeSvc,
+	)
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,
