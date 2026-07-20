@@ -116,7 +116,14 @@ func main() {
 	leaveFlowLogRepo := repositories.NewLeaveFlowLog(db)
 	leaveFlowLogService := service.NewLeaveFlowLog(db, leavePolicyService, leaveFlowLogRepo)
 
+	//----------------orgservice
+
 	leaveFlowRepo := repositories.NewLeaveFlow(db)
+	// ── Permission (RBAC) ────────────────────────────────────────────────────
+	permissionRepo := repositories.NewPermissionRepository(db)
+	permissionSvc := service.NewPermissionService(db, permissionRepo)
+
+	OrgService := service.NewOrgService(employeeRepo)
 	leaveFlowService := leaveflow.NewLeaveFlow(
 		db,
 		leaveFlowLogService,
@@ -127,13 +134,11 @@ func main() {
 		repo,
 		notifSvc, // injected — leaveflow publishes events, never touches email directly
 		auditSvc, // injected — leaveflow logs audit entries asynchronously
+		permissionSvc,
+		OrgService,
 	)
 	holidayRepo := repositories.NewHolidayRepository(db)
 	holidayservice := service.NewHolidayService(holidayRepo)
-
-	// ── Permission (RBAC) ────────────────────────────────────────────────────
-	permissionRepo := repositories.NewPermissionRepository(db)
-	permissionSvc := service.NewPermissionService(db, permissionRepo)
 
 	// ── Asset  ───────────────────────────────────────────────────────
 	repository := repositories.NewAssetRepository(db)

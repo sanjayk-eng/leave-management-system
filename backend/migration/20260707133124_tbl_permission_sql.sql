@@ -60,6 +60,7 @@ CREATE TYPE permission_action AS ENUM (
     'reject',
     'cancel',
     'withdraw',
+    'apply_on_behalf',
 
     'adjust',
 
@@ -114,6 +115,7 @@ INSERT INTO tbl_permission (resource, action, label, description, is_visible) VA
     ('leave', 'reject',   'Reject Leave',   'Reject a leave request in the approval workflow',                TRUE),
     ('leave', 'cancel',   'Cancel Leave',   'Cancel a pending leave request',                                 TRUE),
     ('leave', 'withdraw', 'Withdraw Leave', 'Initiate or confirm a leave withdrawal after approval',          TRUE),
+    ('leave', 'apply_on_behalf', 'Apply Leave on Behalf', 'Allows applying for leave on another employee''s behalf', TRUE),
 
     -- LEAVE BALANCE
     ('leave_balance', 'adjust', 'Adjust Leave Balance', 'Manually increase or decrease an employee leave balance',      TRUE),
@@ -208,6 +210,7 @@ FROM (VALUES
     ('leave',    'reject',                'all',  FALSE),
     ('leave',    'cancel',                'own',  FALSE),
     ('leave',    'withdraw',              'all',  FALSE),
+    ('leave',    'apply_on_behalf',              'all',  FALSE),
     ('leave_balance', 'adjust',           'all',  FALSE),
     ('payroll',  'payroll_managment',     'all',  FALSE),
     ('payslip',  'read',     'all',  FALSE),
@@ -248,6 +251,7 @@ FROM (VALUES
     ('leave','reject',   'all',  FALSE),
     ('leave','cancel',   'all',  FALSE),
     ('leave','withdraw', 'all',  FALSE),
+     ('leave',    'apply_on_behalf',              'all',  FALSE),
     ('leave_balance', 'read',             'all',  FALSE),
     ('leave_balance', 'adjust',           'all',  FALSE),
     ('leave_report',  'read',             'all',  FALSE),
@@ -282,6 +286,7 @@ FROM (VALUES
     ('leave',         'reject',   'team'),
     ('leave',         'cancel',   'own'),
     ('leave',         'withdraw', 'own'),
+     ('leave',    'apply_on_behalf',              'team'),
     ('leave_report',   'read',    'team'),
     ('payslip',   'read',    'own')
 ) AS v(resource, action, scope)

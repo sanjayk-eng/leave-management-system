@@ -3,32 +3,51 @@ package handler
 import (
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 )
 
+// ApplyLeave - POST /api/leaves
+//
+// Applies leave for the authenticated actor by default. If the request body
+// names a different employee_id, this becomes an "apply on behalf of"
+// request — LeaveFlowService.Create authorizes that via the
+// leave/apply_on_behalf permission and its scope (own/team/all).
+//
+// actorID and actorRoleID always come from the authenticated JWT context,
+// never from the request body — the client cannot claim to be someone else.
 func (h *HandlerFunc) ApplyLeave(c *gin.Context) {
-	empID, err := common.GetEmployeeId(c)
+	actorID, err := common.GetEmployeeId(c)
 	if err != nil {
 		errors.RespondWithError(c, http.StatusUnauthorized, "missing EpID")
 		return
 	}
+	actorRoleID := c.GetInt("role_id")
 	role := c.GetString("role")
+
 	var input models.LeaveInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		errors.RespondWithError(c, http.StatusBadRequest, "Invalid input: "+err.Error())
 		return
 	}
-	input.EmployeeID = empID
-	if err := h.LeaveFlowService.Create(c, &input, role); err != nil {
+
+	// Default to self-application when employee_id isn't explicitly set.
+	if input.EmployeeID == uuid.Nil {
+		input.EmployeeID = actorID
+	}
+
+	if err := h.LeaveFlowService.Create(c, actorID, actorRoleID, &input, role); err != nil {
 		errors.Error(c, err)
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "leave Applying Successfully",
+		"message": "leave applied successfully",
 	})
 }
 

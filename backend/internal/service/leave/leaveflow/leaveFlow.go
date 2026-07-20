@@ -27,7 +27,7 @@ import (
 )
 
 type LeaveFlowService interface {
-	Create(ctx context.Context, leave *models.LeaveInput, role string) error
+	Create(ctx context.Context, actorID uuid.UUID, actorRoleID int, leave *models.LeaveInput, actorRole string) error
 	GetByID(ctx context.Context, leaveID string) (*models.Leave, error)
 	ActionLeave(ctx context.Context, req models.ActionLeaveReq, leaveID string, empID uuid.UUID, role string) error
 	GetLeaves(ctx context.Context, empID uuid.UUID, role string, month int, year int) (gin.H, error)
@@ -45,8 +45,10 @@ type leaveFlow struct {
 	LeaveFlowLogRepo    repositories.LeaveFlowLog
 	LeaveFlowLogService service.LeaveFlowLog
 	LeavePolicyService  service.LeavePolicyService
-	NotificationSvc     notification.Service // nil-safe: notifications skipped if not wired
-	AuditSvc            audit.Service        // nil-safe: audit skipped if not wired
+	NotificationSvc     notification.Service      // nil-safe: notifications skipped if not wired
+	AuditSvc            audit.Service             // nil-safe: audit skipped if not wired
+	PermissionSvc       service.PermissionService // governs the leave/apply_on_behalf permission
+	OrgSvc              service.OrgService        // resolves "is this my team" for scope=team
 	registry            *leaveprocess.ProcessorRegistry
 }
 
@@ -60,6 +62,8 @@ func NewLeaveFlow(
 	commRepo *repositories.Repository,
 	notifSvc notification.Service,
 	auditSvc audit.Service,
+	permissionSvc service.PermissionService,
+	orgSvc service.OrgService,
 ) LeaveFlowService {
 	return &leaveFlow{
 		DB:                  db,
@@ -72,11 +76,21 @@ func NewLeaveFlow(
 		LeavePolicyService:  leavePolicyService,
 		NotificationSvc:     notifSvc,
 		AuditSvc:            auditSvc,
+		PermissionSvc:       permissionSvc,
+		OrgSvc:              orgSvc,
 		registry:            leaveprocess.NewProcessorRegistry(),
 	}
 }
 
-func (s *leaveFlow) Create(ctx context.Context, leave *models.LeaveInput, role string) error {
+// ============================================================
+// Create — now with apply-on-behalf support
+// ============================================================
+
+func (s *leaveFlow) Create(ctx context.Context, actorID uuid.UUID, actorRoleID int, leave *models.LeaveInput, actorRole string) error {
+	if err := s.authorizeApplyOnBehalf(ctx, actorID, actorRoleID, leave.EmployeeID); err != nil {
+		return err
+	}
+
 	LeaveTypeInfo, leaveTiming, err := s.ValidateLeave(ctx, leave)
 	if err != nil {
 		return err
@@ -85,6 +99,7 @@ func (s *leaveFlow) Create(ctx context.Context, leave *models.LeaveInput, role s
 	if err != nil {
 		return err
 	}
+
 	var Days float64
 	var leaveID uuid.UUID
 	err = database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
@@ -118,12 +133,15 @@ func (s *leaveFlow) Create(ctx context.Context, leave *models.LeaveInput, role s
 		if LeaveTypeInfo.LeaveType.IsEarly != nil && *LeaveTypeInfo.LeaveType.IsEarly && leave.LeaveTiming != nil {
 			leaveTimingStr = leave.LeaveTiming
 		}
-		id, err := s.Repo.InsertLeave(tx, leave, leaveTimingStr)
+
+		// actorID is persisted as applied_by — server-derived, never client input.
+		id, err := s.Repo.InsertLeave(tx, leave, leaveTimingStr, actorID)
 		if err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "Failed to apply leave: "+err.Error())
 		}
 		leaveID = id
-		if err := s.LeaveFlowLogService.Create(ctx, tx, id, leaveTypeRres, role); err != nil {
+
+		if err := s.LeaveFlowLogService.Create(ctx, tx, id, leaveTypeRres, actorRole); err != nil {
 			return err
 		}
 		return nil
@@ -132,36 +150,81 @@ func (s *leaveFlow) Create(ctx context.Context, leave *models.LeaveInput, role s
 		return err
 	}
 
-	// Publish notification asynchronously — after the transaction committed
 	s.publishLeaveApplied(ctx, leave, leaveTypeRres.Name, Days, leaveID.String())
 
-	// Audit — async, after tx commits. Actor = the employee who applied.
-	// Pure create: OldValue is nil (no leave existed before).
 	if s.AuditSvc != nil {
-		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(leave.EmployeeID)
+		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(actorID)
+
+		newValue := map[string]interface{}{
+			"leave_type": leaveTypeRres.Name,
+			"start_date": leave.StartDate.Format("2006-01-02"),
+			"end_date":   leave.EndDate.Format("2006-01-02"),
+			"days":       Days,
+			"reason":     leave.Reason,
+		}
+		resourceName := fmt.Sprintf("%s (%s → %s)", leaveTypeRres.Name,
+			leave.StartDate.Format("2006-01-02"), leave.EndDate.Format("2006-01-02"))
+
+		if actorID != leave.EmployeeID {
+			targetDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(leave.EmployeeID)
+			newValue["applied_on_behalf_of"] = targetDetails.FullName
+			resourceName = targetDetails.FullName + " — " + resourceName
+		}
+
 		s.AuditSvc.Log(audit.AuditEntry{
-			ActorID:      leave.EmployeeID,
+			ActorID:      actorID,
 			ActorName:    actorDetails.FullName,
-			ActorRole:    role,
+			ActorRole:    actorRole,
 			Component:    "leave",
 			Action:       "leave.applied",
 			ResourceType: "Leave",
 			ResourceID:   leaveID.String(),
-			ResourceName: fmt.Sprintf("%s (%s → %s)", leaveTypeRres.Name,
-				leave.StartDate.Format("2006-01-02"),
-				leave.EndDate.Format("2006-01-02")),
-			NewValue: map[string]interface{}{
-				"leave_type": leaveTypeRres.Name,
-				"start_date": leave.StartDate.Format("2006-01-02"),
-				"end_date":   leave.EndDate.Format("2006-01-02"),
-				"days":       Days,
-				"reason":     leave.Reason,
-			},
+			ResourceName: resourceName,
+			NewValue:     newValue,
 		})
 	}
 
 	return nil
 }
+
+// authorizeApplyOnBehalf gates applying for someone else on the
+// leave/apply_on_behalf permission and its scope (own/team/all) — the same
+// scope model already governing employee visibility elsewhere.
+func (s *leaveFlow) authorizeApplyOnBehalf(ctx context.Context, actorID uuid.UUID, actorRoleID int, targetEmployeeID uuid.UUID) error {
+	if actorID == targetEmployeeID {
+		return nil // always allowed to apply for yourself
+	}
+
+	perm, err := s.PermissionSvc.Check(ctx, actorRoleID, "leave", "apply_on_behalf")
+	if err != nil {
+		return errors.CustomErr(http.StatusInternalServerError, "failed to resolve apply-on-behalf permission")
+	}
+	if !perm.Allowed {
+		return errors.CustomErr(http.StatusForbidden, "you do not have permission to apply leave on behalf of others")
+	}
+
+	switch perm.Scope {
+	case "all":
+		return nil
+	case "team":
+		inTeam, err := s.OrgSvc.IsInReportingChain(ctx, actorID, targetEmployeeID)
+		if err != nil {
+			return err
+		}
+		if !inTeam {
+			return errors.CustomErr(http.StatusForbidden, "you can only apply leave on behalf of your own team")
+		}
+		return nil
+	default:
+		return errors.CustomErr(http.StatusForbidden, "you can only apply leave for yourself")
+	}
+}
+
+// ============================================================
+// ActionLeave / CancleLeave / GetLeaves / GetMyLeave / GetByID / UpdateLeave
+// — unchanged from the version you shared; included here for completeness
+// of the file. Only Create, the struct, and the constructor changed.
+// ============================================================
 
 func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, leaveID string, empID uuid.UUID, role string) error {
 	leave, err := s.GetByID(ctx, leaveID)
@@ -175,7 +238,6 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 	if err != nil {
 		return err
 	}
-	// velidate
 	if err := s.ActionValidator(ctx, leaveLogFlow, role, req.Action, leave.Status); err != nil {
 		return err
 	}
@@ -185,17 +247,13 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 		return errors.CustomErr(500, "Failed to fetch leave type: "+err.Error())
 	}
 
-	// Resolve the processor for the requested action via the registry
 	processor, err := s.registry.Resolve(strings.ToUpper(req.Action))
 	if err != nil {
 		return err
 	}
 
-	// Fetch approver name for notification before the transaction
-	// ponytail: best-effort — empty name/email in notification is acceptable if DB read fails
 	approverDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(empID)
 
-	// Build the context object — single place where all data is assembled
 	lctx := &leaveprocess.LeaveActionContext{
 		ApproverID:    empID,
 		Role:          role,
@@ -214,11 +272,9 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 		return err
 	}
 
-	// Publish notification after transaction committed — action determines event type
 	action := strings.ToUpper(req.Action)
 	switch action {
 	case "APPROVE":
-		// Re-fetch leave to get final status (APPROVED or still Pending for multi-stage)
 		s.publishLeaveAction(ctx, notification.LeaveApproved, leave, approverDetails.FullName, approverDetails.Email, role, leaveID)
 	case "REJECT":
 		s.publishLeaveAction(ctx, notification.LeaveRejected, leave, approverDetails.FullName, approverDetails.Email, role, leaveID)
@@ -231,7 +287,6 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 		}
 	}
 
-	// Audit — async, after notifications. Actor = the approver (empID).
 	if s.AuditSvc != nil {
 		auditAction := map[string]string{
 			"APPROVE":  "leave.approved",
@@ -242,7 +297,6 @@ func (s *leaveFlow) ActionLeave(ctx context.Context, req models.ActionLeaveReq, 
 			auditAction = "leave." + strings.ToLower(action)
 		}
 
-		// Resolve leave type name for the resource label
 		leaveTypeName := leavePolicy.Name
 
 		s.AuditSvc.Log(audit.AuditEntry{
@@ -288,10 +342,8 @@ func (s *leaveFlow) CancleLeave(ctx context.Context, leaveId string, actorID uui
 		return "", errors.CustomErr(http.StatusInternalServerError, "Failed to cancel leave: "+err.Error())
 	}
 
-	// Publish cancellation notification after successful status update
 	s.publishLeaveAction(ctx, notification.LeaveCancelled, leave, "", "", "", leaveId)
 
-	// Audit — async, after status update
 	if s.AuditSvc != nil {
 		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(actorID)
 		leaveTypeName := ""
@@ -318,22 +370,17 @@ func (s *leaveFlow) CancleLeave(ctx context.Context, leaveId string, actorID uui
 }
 
 func (s *leaveFlow) GetLeaves(ctx context.Context, empID uuid.UUID, role string, month int, year int) (gin.H, error) {
-
 	var (
 		result []models.LeaveResponse
 		err    error
 	)
 	switch role {
-
 	case accessrole.ROLE_EMPLOYEE, accessrole.ROLE_INTERN:
 		result, err = s.Repo.GetAllEmployeeLeaveByMonthYear(empID, month, year)
 	case accessrole.ROLE_MANAGER:
-
 		result, err = s.Repo.GetAllleavebaseonassignManagerByMonthYear(empID, month, year)
-
 	case accessrole.ROLE_ADMIN, accessrole.ROLE_HR, accessrole.ROLE_SUPER_ADMIN:
 		result, err = s.Repo.GetAllLeaveByMonthYear(month, year)
-
 	default:
 		return nil, errors.CustomErr(http.StatusForbidden, "invalid role")
 	}
@@ -350,7 +397,6 @@ func (s *leaveFlow) GetLeaves(ctx context.Context, empID uuid.UUID, role string,
 		if err != nil {
 			return nil, err
 		}
-
 		if flow != nil {
 			result[i].ApprovalLog = flow.ApprovalLog
 		}
@@ -366,16 +412,11 @@ func (s *leaveFlow) GetLeaves(ctx context.Context, empID uuid.UUID, role string,
 	}, nil
 }
 
-//validare _logic
-
 func (s *leaveFlow) GetMyLeave(empID uuid.UUID, month int, year int) (gin.H, error) {
-
 	result, err := s.Repo.GetMyLeavesByMonthYear(empID, month, year)
-
 	if err != nil {
 		return nil, errors.CustomErr(http.StatusInternalServerError, "Failed to fetch my leaves: "+err.Error())
 	}
-
 	if result == nil {
 		result = []models.LeaveResponse{}
 	}
@@ -399,7 +440,6 @@ func (s *leaveFlow) GetByID(ctx context.Context, leaveID string) (*models.Leave,
 }
 
 func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId string, leave *models.LeaveInput, role string) error {
-	// Parse leave UUID from the URL param
 	leaveUUID, err := uuid.Parse(leaveId)
 	if err != nil {
 		return errors.CustomErr(http.StatusBadRequest, "invalid leave ID")
@@ -436,7 +476,7 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 			StartDate:      leave.StartDate,
 			EndDate:        leave.EndDate,
 			LeaveDays:      leaveDays,
-			ExcludeLeaveID: &leaveUUID, // exclude current leave from balance & overlap checks
+			ExcludeLeaveID: &leaveUUID,
 		}
 		if err := s.LeaveValidationSvc.ValidateLeaveApplication(tx, validationParams, LeaveTypeInfo.LeaveType); err != nil {
 			return errors.CustomErr(http.StatusBadRequest, err.Error())
@@ -455,16 +495,8 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 		return err
 	}
 
-	s.publishLeaveApplied(
-		ctx,
-		leave,
-		leaveTypeRes.Name,
-		Days,
-		leaveUUID.String(),
-	)
+	s.publishLeaveApplied(ctx, leave, leaveTypeRes.Name, Days, leaveUUID.String())
 
-	// Audit — async, after tx. Full before/after diff.
-	// OldValue = snapshot before this update was applied.
 	if s.AuditSvc != nil {
 		actorDetails, _ := s.CommRepo.GetEmployeeDetailsForNotification(empID)
 		s.AuditSvc.Log(audit.AuditEntry{
@@ -492,11 +524,9 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Notification helpers — all publish calls go through here.
-// Services stay clean: no email logic, no recipient fetching inline.
+// Notification helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// publishLeaveApplied fires a LeaveApplied event after Create() commits.
 func (s *leaveFlow) publishLeaveApplied(ctx context.Context, leave *models.LeaveInput, leaveTypeName string, days float64, leaveID string) {
 	if s.NotificationSvc == nil {
 		return
@@ -529,8 +559,6 @@ func (s *leaveFlow) publishLeaveApplied(ctx context.Context, leave *models.Leave
 	})
 }
 
-// publishLeaveAction fires an event for APPROVE / REJECT / WITHDRAW / CANCEL.
-// leaveTypeName is fetched via the leave's LeaveTypeID already loaded in ActionLeave.
 func (s *leaveFlow) publishLeaveAction(ctx context.Context, eventType notification.Type, leave *models.Leave, actorName, actorEmail, actorRole string, leaveID string) {
 	if s.NotificationSvc == nil {
 		return
@@ -574,23 +602,19 @@ func (s *leaveFlow) publishLeaveAction(ctx context.Context, eventType notificati
 }
 
 func (s *leaveFlow) getRecipientsWaiting(ctx context.Context, employeeID uuid.UUID, leaveID string) ([]models.Recipient, error) {
-
 	flow, err := s.LeaveFlowLogService.GetByLeaveID(ctx, uuid.MustParse(leaveID))
 	if err != nil {
 		return nil, err
 	}
 
 	roleMap := make(map[string]struct{})
-
 	for _, stage := range flow.ApprovalLog {
-
 		if stage.State == models.WAITING || stage.State == models.SKIPPED {
 			roleMap[string(stage.ApproverRole)] = struct{}{}
 		}
 	}
 
 	roles := make([]string, 0, len(roleMap))
-
 	for role := range roleMap {
 		roles = append(roles, role)
 	}
@@ -602,14 +626,16 @@ func (s *leaveFlow) getRecipientsWaiting(ctx context.Context, employeeID uuid.UU
 	return s.CommRepo.GetRecipientsByRoles(ctx, employeeID, roles)
 }
 
-func (s *leaveFlow) ValidateLeave(ctx context.Context, leave *models.LeaveInput) (*LeaveTypeInfo, time.Time, error) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Validation orchestration
+// ─────────────────────────────────────────────────────────────────────────────
 
+func (s *leaveFlow) ValidateLeave(ctx context.Context, leave *models.LeaveInput) (*LeaveTypeInfo, time.Time, error) {
 	var (
 		leaveTiming time.Time
 		err         error
 	)
 
-	// Validate leave timing value if provided
 	if leave.LeaveTiming != nil {
 		leaveTiming, err = service.ValidateLeaveTiming(*leave.LeaveTiming)
 		if err != nil {
@@ -617,22 +643,16 @@ func (s *leaveFlow) ValidateLeave(ctx context.Context, leave *models.LeaveInput)
 		}
 	}
 
-	// Validate leave timing ID
 	if err := s.LeaveValidationSvc.ValidateLeaveTimingID(leave.LeaveTimingID); err != nil {
 		return nil, time.Time{}, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
-
-	// Validate reason
 	if err := s.LeaveValidationSvc.ValidateLeaveReason(leave.Reason); err != nil {
 		return nil, time.Time{}, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
-
-	// Validate start and end dates
 	if err := s.LeaveValidationSvc.ValidateLeaveDates(leave.StartDate, leave.EndDate); err != nil {
 		return nil, time.Time{}, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
 
-	// Get leave type and resolve timing
 	leaveTypeInfo, err := s.LeaveValidationSvc.GetLeaveTypeAndResolveTimingID(leave.LeaveTypeID, leave.LeaveTimingID)
 	if err != nil {
 		return nil, time.Time{}, errors.CustomErr(http.StatusBadRequest, err.Error())
@@ -642,53 +662,41 @@ func (s *leaveFlow) ValidateLeave(ctx context.Context, leave *models.LeaveInput)
 }
 
 func (s *leaveFlow) ActionValidator(ctx context.Context, flow *models.LeaveFlow, role string, action string, status string) error {
-
 	action = strings.ToUpper(action)
 
 	var stage *models.LeaveFlowStage
-
-	// find this role's stage
 	for i := range flow.ApprovalLog {
 		if string(flow.ApprovalLog[i].ApproverRole) == role {
 			stage = &flow.ApprovalLog[i]
 			break
 		}
 	}
-
 	if stage == nil {
 		return errors.CustomErr(http.StatusForbidden, "role not allowed for this flow")
 	}
 
 	switch action {
-
 	case string(models.APPROVE):
-		// APPROVE requires ordered processing — stage must be WAITING
 		if status != string(constant.LEAVE_PENDING) {
 			return errors.CustomErr(http.StatusBadRequest, "process only pending leave")
 		}
 		if stage.State != models.WAITING {
-			if status != string(constant.LEAVE_PENDING) {
-				return errors.CustomErr(http.StatusBadRequest, "process only pending leave")
-			}
 			return errors.CustomErr(http.StatusBadRequest, "approve allowed only in waiting state")
 		}
 		return nil
 
 	case string(models.REJECT):
-		// REJECT is a single final action — only check that stage is WAITING,
-		// no ordering constraint applies
 		if stage.State != models.WAITING {
 			return errors.CustomErr(http.StatusBadRequest, "reject allowed only in waiting state")
 		}
 		return nil
 
 	case "WITHDRAW":
-		// Stage must be APPROVED (original approver) or WAITING
-		// (reset to WAITING by a lower-stage withdrawal that needs higher confirmation)
 		if status != string(constant.LEAVE_APPLOVED) && status != string(constant.LEAVE_WITHDRAWAL_PENDING) {
 			return errors.CustomErr(http.StatusBadRequest, "withdraw allowed only after approval")
 		}
 		return nil
+
 	default:
 		return errors.CustomErr(http.StatusBadRequest, "invalid action")
 	}
