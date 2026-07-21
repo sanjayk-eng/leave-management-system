@@ -46,3 +46,17 @@ func GetMonthYear(c *gin.Context) (int, int, error) {
 
 	return month, year, nil
 }
+
+func GetRoleID(c *gin.Context) (int, error) {
+	roleID, ok := c.Get("role_id")
+	if !ok {
+		return 0, errors.New("role_id missing from context")
+	}
+
+	id, ok := roleID.(int)
+	if !ok {
+		return 0, errors.New("invalid role_id type")
+	}
+
+	return id, nil
+}

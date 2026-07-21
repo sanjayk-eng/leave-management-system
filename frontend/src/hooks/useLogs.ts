@@ -1,77 +1,126 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { logsService } from '@/services/logsService';
-import { SystemLog } from '@/types';
-import { handleApiError, ApiError } from '@/lib/api';
+import { ActivityEntry, ActivityFeedFilter } from '@/types';
+import { ApiError, handleApiError } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useNavigate } from 'react-router-dom';
 
-export const useLogs = () => {
-  const [logs, setLogs] = useState<SystemLog[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
-  const [daysFilter, setDaysFilter] = useState(7);
-  const [dateFrom, setDateFrom] = useState<string>('');
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface LogsParams {
+  page:      number;
+  page_size: number;
+  search?:   string;
+  component?: string;
+  action?:   string;
+}
+
+export interface LogsPagination {
+  page:        number;
+  page_size:   number;
+  total:       number;
+  total_pages: number;
+}
+
+const DEFAULT_PAGE      = 1;
+const DEFAULT_PAGE_SIZE = 20;
+
+const EMPTY_PAGINATION: LogsPagination = {
+  page:        DEFAULT_PAGE,
+  page_size:   DEFAULT_PAGE_SIZE,
+  total:       0,
+  total_pages: 0,
+};
+
+// Normalise any caught value to an Error preserving ApiError status
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+/**
+ * useLogs — server-side paginated activity feed.
+ *
+ * Follows the same pattern as useEquipmentCategories / useEquipment:
+ *  - Consumer owns page, pageSize, search, component, action state.
+ *  - Pass params down; useEffect watches them and re-fetches.
+ *  - initialLoading → skeleton on first load.
+ *  - fetching       → opacity overlay on subsequent fetches (same as asset side).
+ *  - No infinite scroll — pure server pagination via ServerPagination bar.
+ */
+export const useLogs = (params: LogsParams) => {
   const navigate = useNavigate();
 
-  const fetchLogs = useCallback(async (days: number = 7) => {
-    setLoading(true);
+  const [entries, setEntries]         = useState<ActivityEntry[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [fetching, setFetching]       = useState(false);
+  const [error, setError]             = useState<Error | null>(null);
+  const [pagination, setPagination]   = useState<LogsPagination>(EMPTY_PAGINATION);
+
+  // Track first-fetch so we know which loading flag to set
+  const hasFetchedOnce = useRef(false);
+  // Keep latest params available to fetchLogs without it being a dep
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
+  // Prevent stale responses overwriting newer ones
+  const reqIdRef = useRef(0);
+
+  const fetchLogs = useCallback(async (fetchParams?: LogsParams) => {
+    const p = fetchParams ?? paramsRef.current;
+    const reqId = ++reqIdRef.current;
+
+    const isFirst = !hasFetchedOnce.current;
+    if (isFirst) setInitialLoading(true);
+    else         setFetching(true);
+
     setError(null);
 
+    const filter: ActivityFeedFilter = {
+      page:      p.page,
+      page_size: p.page_size,
+      search:    p.search    || undefined,
+      component: p.component || undefined,
+      action:    p.action    || undefined,
+    };
+
     try {
-      const response = await logsService.getLogs(days);
-      setLogs(response.data.logs || []);
-      setTotalCount(response.data.total_count || 0);
-      setDateFrom(response.data.date_from || '');
-      // Note: daysFilter is NOT set from the response — it's driven by the
-      // caller's `days` argument, so changing it doesn't re-trigger this
-      // effect via a feedback loop. If the backend normalizes/clamps the
-      // value, that's reflected in the data shown, not in the filter state.
+      const res = await logsService.getActivity(filter);
+      if (reqId !== reqIdRef.current) return; // stale — discard
+
+      setEntries(res.data ?? []);
+      setPagination(res.pagination ?? EMPTY_PAGINATION);
     } catch (err: unknown) {
-      console.error('Failed to fetch logs:', err);
-
-      let errorMessage = 'Failed to fetch system logs';
-
-      if (err instanceof ApiError) {
-        if (err.status === 403) {
-          errorMessage = 'Access denied. You do not have permission to view system logs.';
-        } else if (err.status === 401) {
-          errorMessage = 'Authentication required. Please log in again.';
-        } else if (err.status === 500) {
-          errorMessage = 'Server error occurred while fetching logs. Please try again later.';
-        } else if (err.status === 0) {
-          errorMessage = 'Unable to connect to server. Please check your internet connection.';
-        } else if (err.message) {
-          errorMessage = err.message;
-        }
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
+      if (reqId !== reqIdRef.current) return;
+      const errObj = toError(err);
+      setError(errObj);
+      setEntries([]);
+      // 403 = render inline Access Denied box — skip toast
+      if (!(err instanceof ApiError && err.status === 403)) {
+        handleApiError(err, navigate);
       }
-
-      setError(errorMessage);
-     handleApiError(err, navigate);
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) {
+        hasFetchedOnce.current = true;
+        setInitialLoading(false);
+        setFetching(false);
+      }
     }
   }, [navigate]);
 
-  const refreshLogs = useCallback(() => {
-    fetchLogs(daysFilter);
-  }, [fetchLogs, daysFilter]);
-
-  // Refetch whenever the user changes daysFilter (or on first mount)
+  // Re-fetch whenever any param changes — mirrors asset pattern exactly
   useEffect(() => {
-    fetchLogs(daysFilter);
-  }, [fetchLogs, daysFilter]);
+    fetchLogs(paramsRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.page, params.page_size, params.search, params.component, params.action]);
 
   return {
-    logs,
-    loading,
+    entries,
+    pagination,
+    initialLoading,   // true only on very first load → show skeletons
+    fetching,         // true on subsequent fetches → show opacity overlay
     error,
-    totalCount,
-    daysFilter,
-    setDaysFilter,
-    dateFrom,
-    fetchLogs,
-    refreshLogs,
+    fetchLogs,        // exposed for manual refresh
   };
 };

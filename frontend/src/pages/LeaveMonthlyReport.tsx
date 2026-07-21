@@ -14,6 +14,8 @@ import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { SortableTableHead, useTableSort } from '@/components/equipment/shared';
 import { useLeaveReport } from '@/hooks/useLeaveMonthlyReport';
 import { useDebounce } from '@/hooks/useDebounce';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { useAuth } from '@/hooks/useAuth';
 import type { LeaveReportRecord, LeaveReportType } from '@/types';
 import { DownloadReportButton } from '@/pdf/reportPdf/pdfButton';
 
@@ -174,6 +176,13 @@ const ReportRow = ({ r }: { r: LeaveReportRecord }) => (
 // ── page ───────────────────────────────────────────────────────────────────────
 
 const LeaveMonthlyReport = () => {
+  const { currentUser } = useAuth();
+
+  // Roles that see all employees — everyone else gets a scope-filtered view
+  // from the backend (own or team), so we hide filters that don't apply.
+  const isAdminScope = ['SUPERADMIN', 'ADMIN', 'HR'].includes(currentUser?.role ?? '');
+  const isTeamScope  = currentUser?.role === 'MANAGER';
+
   const [reportType, setReportType] = useState<LeaveReportType>('monthly');
 
   // monthly
@@ -255,7 +264,13 @@ const LeaveMonthlyReport = () => {
           </div>
           <div>
             <h1 className="text-2xl font-bold">Leave Report</h1>
-            <p className="text-muted-foreground text-sm">Leave summary per employee — {periodLabel}</p>
+            <p className="text-muted-foreground text-sm">
+              {isAdminScope
+                ? `Leave summary per employee — ${periodLabel}`
+                : isTeamScope
+                  ? `Leave summary for your team — ${periodLabel}`
+                  : `Your leave summary — ${periodLabel}`}
+            </p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
@@ -320,28 +335,33 @@ const LeaveMonthlyReport = () => {
             )}
           </div>
 
-          {/* Search + role */}
-          <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or email..."
-                className="pl-9 pr-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {search !== debouncedSearch && (
-                <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+          {/* Search + role — only meaningful for admin/team scope */}
+          {(isAdminScope || isTeamScope) && (
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or email..."
+                  className="pl-9 pr-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search !== debouncedSearch && (
+                  <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {/* Role filter only makes sense for admins who see all roles */}
+              {isAdminScope && (
+                <Select value={roleFilter || 'all'} onValueChange={(v) => setRoleFilter(v === 'all' ? '' : v)}>
+                  <SelectTrigger className="w-40"><SelectValue placeholder="All Roles" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    {ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               )}
             </div>
-            <Select value={roleFilter || 'all'} onValueChange={(v) => setRoleFilter(v === 'all' ? '' : v)}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="All Roles" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                {ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -351,7 +371,7 @@ const LeaveMonthlyReport = () => {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard
-            title="Total Employees"
+            title={isAdminScope ? "Total Employees" : isTeamScope ? "Team Members" : ""}
             value={total}
             sub={periodLabel}
             icon={<Users className="h-4 w-4" />}
@@ -400,7 +420,11 @@ const LeaveMonthlyReport = () => {
             <CardDescription className="mt-1">
               {isLoading
                 ? "Loading records..."
-                : `${total} employee(s) with leave data`}
+                : isAdminScope
+                  ? `${total} employee(s) with leave data`
+                  : isTeamScope
+                    ? `${total} team member(s) with leave data`
+                    : `Your leave data for ${periodLabel}`}
             </CardDescription>
           </div>
 
@@ -416,15 +440,7 @@ const LeaveMonthlyReport = () => {
             <TableSkeleton rows={5} columns={9} showActions={false} />
 
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <div className="text-center">
-                <p className="text-lg font-semibold text-destructive">Failed to load report</p>
-                <p className="text-sm text-muted-foreground mt-2">{(error as Error).message}</p>
-              </div>
-              <Button onClick={() => refetch()} variant="outline">
-                <Loader2 className="mr-2 h-4 w-4" />Retry
-              </Button>
-            </div>
+            <ErrorDisplay error={error} onRetry={refetch} className="m-4" />
           ) : records.length === 0 ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-muted-foreground">No leave records found for {periodLabel}.</p>

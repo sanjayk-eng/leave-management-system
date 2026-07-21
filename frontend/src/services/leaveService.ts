@@ -4,6 +4,7 @@ import { LeaveReportParams, LeaveReportResponse, UpdateLeaveTimingRequest } from
 // --- REQUEST INTERFACES ---
 
 export interface ApplyLeaveRequest {
+  employee_id?: string;        // Omit for self-apply; set for apply-on-behalf
   leave_type_id: number;
   start_date: string;
   end_date: string;
@@ -110,6 +111,7 @@ export interface LeaveResponse {
   created_at?: string;
   reason?: string;
   approval_name?: string;
+  applied_by_name?: string;   // Populated when someone applied on behalf of the employee
   approval_log?: ApprovalLogEntry[];
 }
 

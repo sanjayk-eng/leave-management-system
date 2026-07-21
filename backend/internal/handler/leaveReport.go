@@ -21,7 +21,23 @@ func (h *HandlerFunc) GetLeaveReport(c *gin.Context) {
 
 	req := models.LeaveReportRequest{ReportType: reportType}
 
-	// 3️ Parse date params based on report type
+	// ── Resolve scope + caller from RBAC context ──────────────────────────
+	// RequirePermission middleware sets "perm_scope"; fall back to "all" for
+	// routes that still use the legacy role middleware.
+	scope := "all"
+	if s, ok := c.Get("perm_scope"); ok {
+		if sv, ok := s.(string); ok && sv != "" {
+			scope = sv
+		}
+	}
+	req.Scope = scope
+
+	if userID, ok := c.Get("user_id"); ok {
+		if uid, ok := userID.(string); ok {
+			req.CallerID = uid
+		}
+	}
+
 	switch reportType {
 	case "monthly":
 		monthStr := c.Query("month")

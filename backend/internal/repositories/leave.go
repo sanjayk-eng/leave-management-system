@@ -89,16 +89,6 @@ func (r *Repository) GetPendingLeaveDays(tx *sqlx.Tx, employeeID uuid.UUID, leav
 	return pendingDays, err
 }
 
-// create leave balance
-func (r *Repository) CreateLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, entitlement int) error {
-	_, err := tx.Exec(`
-		INSERT INTO Tbl_Leave_balance 
-			(employee_id, leave_type_id, year, opening, accrued, used, adjusted, closing)
-		VALUES ($1, $2, EXTRACT(YEAR FROM CURRENT_DATE), $3, 0, 0, 0, $3)
-	`, employeeID, leaveTypeID, entitlement)
-	return err
-}
-
 // 5. Check overlapping leaves
 func (r *Repository) GetOverlappingLeaves(
 	tx *sqlx.Tx,

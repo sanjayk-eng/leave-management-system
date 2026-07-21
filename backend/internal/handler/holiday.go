@@ -4,21 +4,13 @@ import (
 	"net/http"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 )
 
 func (h *HandlerFunc) AddHoliday(c *gin.Context) {
 
-	role := c.GetString("role")
-
-	if role != accessrole.ROLE_SUPER_ADMIN &&
-		role != accessrole.ROLE_ADMIN &&
-		role != accessrole.ROLE_HR {
-		errors.RespondWithError(c, http.StatusForbidden, "not permitted")
-		return
-	}
 	var input models.Holiday
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -36,6 +28,24 @@ func (h *HandlerFunc) AddHoliday(c *gin.Context) {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — pure create, no OldValue.
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "holiday",
+		Action:       "holiday.created",
+		ResourceType: "Holiday",
+		ResourceID:   id,
+		ResourceName: input.Name,
+		NewValue: map[string]interface{}{
+			"name": input.Name,
+			"date": input.Date,
+			"type": input.Type,
+		},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -60,23 +70,36 @@ func (h *HandlerFunc) GetHolidays(c *gin.Context) {
 
 func (h *HandlerFunc) DeleteHoliday(c *gin.Context) {
 
-	role := c.GetString("role")
-
-	if err := accessrole.Admin_SuperAdmin_Hr(role, "only ADMIN, SUPERADMIN, and HR can delete holidays"); err != nil {
-		errors.RespondWithError(c, http.StatusForbidden, err.Error())
-		return
-	}
-
 	id := c.Param("id")
 	if id == "" {
 		errors.RespondWithError(c, http.StatusBadRequest, "holiday id is required")
 		return
 	}
 
+	// Fetch the holiday name before deletion so the audit log is useful.
+	holidayName := id // fallback to ID if lookup fails
+	if holiday, err := h.Holidayservice.GetHolidayByID(c, id); err == nil && holiday != nil {
+		holidayName = holiday.Name
+	}
+
 	if err := h.Holidayservice.DeleteHoliday(c, id); err != nil {
 		errors.Error(c, err)
 		return
 	}
+
+	// Audit — pure delete, no NewValue.
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "holiday",
+		Action:       "holiday.deleted",
+		ResourceType: "Holiday",
+		ResourceID:   id,
+		ResourceName: holidayName,
+		OldValue:     map[string]interface{}{"name": holidayName},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -30,6 +30,13 @@ type LeaveReportFilter struct {
 
 	SortBy    string
 	SortOrder string
+
+	// Scope filtering — populated by handler from RBAC middleware context.
+	// "own"  → only the caller's own row
+	// "team" → caller + direct reports (employees where manager_id = CallerID)
+	// "all"  → no restriction (default)
+	Scope    string
+	CallerID string // UUID string of the requesting employee
 }
 
 func BuildLeaveReportOrder(sortBy, sortOrder string) string {
@@ -114,4 +121,11 @@ type LeaveReportRequest struct {
 	Role      string // filter by role: EMPLOYEE, INTERN, HR, ADMIN, SUPERADMIN, MANAGER
 	SortBy    string // name | email | role | total_leaves | paid_leaves | unpaid_leaves | early_leaves
 	SortOrder string // asc | desc
+
+	// Scope — sourced from RBAC middleware context by the handler.
+	// "own"  → only the caller's own row
+	// "team" → caller + their direct reports
+	// "all"  → all employees (default for admin roles)
+	Scope    string
+	CallerID string // UUID of the requesting employee
 }

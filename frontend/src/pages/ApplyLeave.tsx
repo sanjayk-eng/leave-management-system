@@ -10,15 +10,20 @@ import { useLeaveBalances } from "@/hooks/useLeaveBalances";
 import { useHolidays } from "@/hooks/useHolidays";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaveTiming } from "@/hooks/useLeaveTiming";
+import { useEmployees } from "@/hooks/useEmployees";
+import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
 import { dateInputToISO, formatDate as formatDateUtil } from "@/lib/dateUtils";
-import { Calendar, Loader2, Sparkles, CalendarDays, Clock, FileText, TrendingUp } from "lucide-react";
+import { Calendar, Loader2, Sparkles, CalendarDays, Clock, FileText, TrendingUp, Eye, UserCheck, Info } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Roles permitted to apply leave on behalf of others (mirrors backend RBAC)
+const ON_BEHALF_ROLES = ["SUPERADMIN", "ADMIN", "HR", "MANAGER"];
 
 const ApplyLeave = () => {
   const { currentUser } = useAuth();
   const { applyLeave, isApplying } = useLeaves();
   const { policies: leaveTypes = [], isLoading: isLoadingPolicies } = useLeavePolicies();
-  const { balances = [], detailedBalances = [], isLoading: isLoadingBalances } = useLeaveBalances(currentUser?.id || "");
+  const { balances = [], isLoading: isLoadingBalances } = useLeaveBalances(currentUser?.id || "");
   const { holidays = [], isLoading: isLoadingHolidays } = useHolidays();
   const { leaveTimings, loading: isLoadingTimings, fetchLeaveTimings } = useLeaveTiming(false);
   
@@ -29,6 +34,7 @@ const ApplyLeave = () => {
   const [earlyLeaveTime, setEarlyLeaveTime] = useState(""); // For early leave time
   const [reason, setReason] = useState("");
   const [selectedLeaveTiming, setSelectedLeaveTiming] = useState("3"); // Default to Full Day timing ID
+  const [balanceSheetOpen, setBalanceSheetOpen] = useState(false);
 
   // Get the selected leave type object
   const selectedLeaveTypeObj = leaveTypes.find(t => t.id.toString() === selectedLeaveType);
@@ -355,74 +361,62 @@ const ApplyLeave = () => {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Leave Balances Card */}
+          {/* Leave Balances Card — opens professional sheet */}
           <Card>
             <CardHeader className="border-b pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Leave Balances
-              </CardTitle>
-              <CardDescription>Your available leave days</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Leave Balances
+                  </CardTitle>
+                  <CardDescription>Your available leave days</CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 shrink-0"
+                  onClick={() => setBalanceSheetOpen(true)}
+                  disabled={isLoadingBalances}
+                >
+                  <Eye className="h-4 w-4" />
+                  View
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="pt-4 max-h-[400px] overflow-y-auto">
+            <CardContent className="pt-4">
               {isLoadingBalances ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="flex justify-between items-center">
                       <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-6 w-20" />
+                      <Skeleton className="h-6 w-12" />
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {(detailedBalances && detailedBalances.length > 0 ? detailedBalances : balances).map((balance, index) => {
-                    const isSelected = leaveTypes && balance.leave_type === leaveTypes.find(t => t.id.toString() === selectedLeaveType)?.name;
-                    const percentage = (balance.available / balance.total) * 100;
-                    
-                    return (
-                      <div 
-                        key={`apply-leave-${balance.leave_type}-${index}`} 
-                        className={`p-3 rounded-lg border ${
-                          isSelected
-                            ? 'border-primary bg-primary/5' 
-                            : 'border-border'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm mb-1">{balance.leave_type}</p>
-                            <div className="text-xs text-muted-foreground">
-                              <p>{balance.used} used • {balance.total} total</p>
-                              {balance.adjusted !== undefined && balance.adjusted !== 0 && (
-                                <p className="text-primary font-medium">
-                                  Adjusted: {balance.adjusted > 0 ? '+' : ''}{balance.adjusted}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold">{balance.available}</div>
-                            <p className="text-xs text-muted-foreground">days left</p>
-                          </div>
-                        </div>
-                        {/* Progress Bar */}
-                        <div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div 
-                            className={`absolute top-0 left-0 h-full rounded-full ${
-                              percentage > 50 ? 'bg-green-500' : percentage > 25 ? 'bg-yellow-500' : 'bg-red-500'
-                            }`}
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
+                <div className="space-y-2">
+                  {/* Show only the selected leave type balance inline; rest in sheet */}
+                  {selectedBalance && (
+                    <div className="rounded-lg border border-primary bg-primary/5 px-3 py-2 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium text-primary">{selectedBalance.leave_type}</p>
+                        <p className="text-[11px] text-muted-foreground">{selectedBalance.used} used · {selectedBalance.total} total</p>
                       </div>
-                    );
-                  })}
-                  {(!detailedBalances || detailedBalances.length === 0) && (!balances || balances.length === 0) && (
-                    <div className="text-center py-6">
-                      <Clock className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                      <p className="text-sm text-muted-foreground">No leave balances available</p>
+                      <span className="text-xl font-bold">{selectedBalance.available}</span>
                     </div>
+                  )}
+                  {/* Summary row */}
+                  <div className="flex items-center justify-between px-1 pt-1">
+                    <p className="text-xs text-muted-foreground">
+                      {balances.length} leave {balances.length === 1 ? 'type' : 'types'} available
+                    </p>
+                    <p className="text-xs font-semibold">
+                      {balances.reduce((s, b) => s + (b.available ?? 0), 0)} days total
+                    </p>
+                  </div>
+                  {balances.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-2">No balances found</p>
                   )}
                 </div>
               )}
@@ -488,6 +482,14 @@ const ApplyLeave = () => {
           </Card>
         </div>
       </div>
+
+      {/* Leave Balance Sheet — own balance slide-over */}
+      <LeaveBalanceSheet
+        open={balanceSheetOpen}
+        onOpenChange={setBalanceSheetOpen}
+        employeeId={currentUser?.id ?? ''}
+        employeeName={currentUser?.email ?? ''}
+      />
     </div>
   );
 };

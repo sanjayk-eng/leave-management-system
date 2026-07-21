@@ -41,10 +41,11 @@ export interface BirthdayPreviewResponse {
     id: string;
     working_days_per_month: number;
     allow_manager_add_leave: boolean;
-
-    primary_color: string; 
-  logo_path?: string;
-
+    primary_color: string;
+    secondary_color: string;
+    company_name: string;
+    logo_path?: string;
+    birthday_message_template?: string;
     created_at: string;
     updated_at: string;
   }

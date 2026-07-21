@@ -8,11 +8,11 @@ import (
 
 // EQUIPMENT
 
-type EquipmentCategoryRequest struct {
+type AssetCategoryRequest struct {
 	Name        string  `json:"name" validate:"required,min=2,max=50"`
 	Description *string `json:"description,omitempty" validate:"omitempty,max=255"`
 }
-type EquipmentCategoryRes struct {
+type AssetCategory struct {
 	ID          string    `db:"id" json:"id"`
 	Name        string    `db:"name" json:"name" validate:"required,min=2,max=50"`
 	Description string    `db:"description" json:"description,omitempty" validate:"omitempty,max=255"`
@@ -20,7 +20,7 @@ type EquipmentCategoryRes struct {
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
 
-type EquipmentRequest struct {
+type AssetRequest struct {
 	ID                *uuid.UUID `json:"id,omitempty" validate:"omitempty,uuid4"`
 	Name              string     `json:"name" validate:"required,min=2,max=100"`
 	CategoryID        uuid.UUID  `json:"category_id" validate:"required,uuid4"`
@@ -31,7 +31,7 @@ type EquipmentRequest struct {
 	PurchaseDate      *time.Time `json:"purchase_date,omitempty"` // Optional
 }
 
-type EquipmentRes struct {
+type Asset struct {
 	ID                uuid.UUID  `db:"id" json:"id"`
 	Name              string     `db:"name" json:"name"`
 	CategoryID        uuid.UUID  `db:"category_id" json:"category_id"`
@@ -44,8 +44,8 @@ type EquipmentRes struct {
 	UpdatedAt         time.Time  `db:"updated_at" json:"updated_at"`
 }
 
-// AssignEquipmentRequest - used when assigning equipment to an employee
-type AssignEquipmentRequest struct {
+// AssignAssetRequest - used when assigning equipment to an employee
+type AssignAssetRequest struct {
 	EmployeeID  uuid.UUID `json:"employee_id" validate:"required"`
 	EquipmentID uuid.UUID `json:"equipment_id" validate:"required"`
 	Quantity    int       `json:"quantity" validate:"required,min=1"`
@@ -65,7 +65,7 @@ type AssignEquipmentResponse struct {
 }
 
 // RemoveEquipmentRequest - used when removing/returning equipment from an employee
-type RemoveEquipmentRequest struct {
+type RemoveAssignmentRequest struct {
 	EmployeeID  uuid.UUID `json:"employee_id" validate:"required"`  // Employee to remove equipment from
 	EquipmentID uuid.UUID `json:"equipment_id" validate:"required"` // Equipment being removed
 }
@@ -77,4 +77,12 @@ type UpdateAssignmentRequest struct {
 	EquipmentID    uuid.UUID  `json:"equipment_id" validate:"required"`
 	Quantity       int        `json:"quantity" validate:"required,min=1"`
 	AssignedBy     uuid.UUID  `json:"assigned_by" validate:"required"` // Add this
+}
+
+type QueryFilter struct {
+	Page     int
+	PageSize int
+	Search   string
+	SortBy   string
+	SortDir  string
 }

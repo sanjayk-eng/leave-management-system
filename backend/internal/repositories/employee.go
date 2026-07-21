@@ -1,116 +1,273 @@
 package repositories
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
-	"github.com/Zenithive/LeaveManagementSystem/pkg/timezone"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
-// employeeSortMap maps API sort_by keys → safe SQL column expressions.
-// Used by both GetAllEmployees and GetEmployeesByManagerID via resolveSortField.
-var employeeSortMap = map[string]string{
-	"name":         "e.full_name",
-	"email":        "e.email",
-	"joining_date": "e.joining_date",
-	"ending_date":  "COALESCE(e.ending_date, '9999-12-31')",
-	"salary":       "e.salary",
-	"manager_name": "COALESCE(m.full_name, '')",
-	"role":         "r.type",
-	"status":       "e.status",
+type EmployeeRepository interface {
+	CheckEmailExists(email string) (bool, error)
+	Create(tx *sqlx.Tx, employee *models.Employee) (uuid.UUID, error)
+	Update(tx *sqlx.Tx, employee *models.Employee) error
+	GetByID(id uuid.UUID) (*models.Employee, error)
+	UpdatePassword(ctx context.Context, id uuid.UUID, hashedPassword string) error
+	GetCurrentRoleAndManagerStatus(ctx context.Context, empID uuid.UUID) (int, bool, error)
+	UpdateRole(tx *sqlx.Tx, empID uuid.UUID, newRoleID int) (string, error)
+	GetAllEmployees(ctx context.Context, params models.EmployeeFilterParams, access models.EmployeeAccessFilter) (*models.PaginatedEmployeeResponse, error)
+	GetOrgHierarchyMap(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error)
+	GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error)
+	UpdateManager(ctx context.Context, empID, managerID uuid.UUID) error
+	// UpdateDesignation sets or clears an employee's designation_id.
+	// Used by DesignationService.AssignEmployee — not called from EmployeeService.
+	UpdateDesignation(ctx context.Context, empID uuid.UUID, designationID *uuid.UUID) error
 }
 
-// birthdaySortExpr returns a SQL ORDER BY expression that sorts employees by upcoming
-// birthday relative to today's (month/day). Ascending = soonest, Descending = furthest.
-// NULLs are always placed last regardless of direction.
-func birthdaySortExpr(order string) string {
-	today := time.Now()
-	dateStr := fmt.Sprintf("%04d-%02d-%02d", today.Year(), int(today.Month()), today.Day())
+type employeeRepository struct {
+	db *sqlx.DB
+}
 
-	if order == "desc" {
-		return fmt.Sprintf(`
-			CASE WHEN e.birth_date IS NULL THEN -1
-			ELSE MOD(
-				CAST(EXTRACT(DOY FROM e.birth_date) AS INT)
-				- CAST(EXTRACT(DOY FROM DATE '%s') AS INT)
-				+ 366, 366
-			) END DESC`, dateStr)
+func NewEmployeeRepository(db *sqlx.DB) EmployeeRepository {
+	return &employeeRepository{
+		db: db,
 	}
-	return fmt.Sprintf(`
-		CASE WHEN e.birth_date IS NULL THEN 999999
-		ELSE MOD(
-			CAST(EXTRACT(DOY FROM e.birth_date) AS INT)
-			- CAST(EXTRACT(DOY FROM DATE '%s') AS INT)
-			+ 366, 366
-		) END ASC`, dateStr)
 }
 
-// resolveEmployeeSort returns the final ORDER BY clause for a given sort_by + sort_order.
-// Falls back to "e.full_name ASC" for unknown keys.
-func resolveEmployeeSort(sortBy, sortOrder string) string {
-	dir := "ASC"
-	if sortOrder == "desc" {
-		dir = "DESC"
+func (r *employeeRepository) CheckEmailExists(email string) (bool, error) {
+	var exists bool
+
+	err := r.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM Tbl_Employee
+			WHERE email = $1
+		)
+	`, email).Scan(&exists)
+
+	if err != nil {
+		return false, err
 	}
 
-	if sortBy == "birth_date" {
-		return birthdaySortExpr(sortOrder)
-	}
+	return exists, nil
+}
+func (r *employeeRepository) Create(tx *sqlx.Tx, employee *models.Employee) (uuid.UUID, error) {
 
-	col := resolveSortField(employeeSortMap, sortBy, "e.full_name")
-	return fmt.Sprintf("%s %s", col, dir)
+	var id uuid.UUID
+
+	err := tx.QueryRow(`
+INSERT INTO Tbl_Employee (
+	full_name,
+	email,
+	role_id,
+	password,
+	salary,
+	birth_date,
+	joining_date
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id
+`,
+		employee.FullName,
+		employee.Email,
+		employee.RoleID,
+		employee.Password,
+		employee.Salary,
+		employee.BirthDate,
+		employee.JoiningDate,
+	).Scan(&id)
+
+	return id, err
 }
 
-// 1. Get employee status
-func (r *Repository) GetEmployeeStatus(employeeID uuid.UUID) (string, error) {
-	var status string
-	err := r.DB.Get(&status, `SELECT status FROM Tbl_Employee WHERE id=$1`, employeeID)
-	return status, err
-}
+func (r *employeeRepository) Update(tx *sqlx.Tx, employee *models.Employee) error {
 
-// GetEmployeeRole returns the role type for a given employee ID
-func (r *Repository) GetEmployeeRole(employeeID uuid.UUID) (string, error) {
-	var role string
-	err := r.DB.Get(&role, `
-		SELECT r.type FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE e.id = $1
-	`, employeeID)
-	return role, err
-}
+	_, err := tx.Exec(`
+		UPDATE Tbl_Employee
+		SET
+			full_name = $2,
+			email = $3,
+			salary = $4,
+			joining_date = $5,
+			birth_date = $6,
+			ending_date = $7,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`,
+		employee.ID,
+		employee.FullName,
+		employee.Email,
+		employee.Salary,
+		employee.JoiningDate,
+		employee.BirthDate,
+		employee.EndingDate,
+	)
 
-// ------------------ UPDATE EMPLOYEE DESIGNATION ------------------
-func (r *Repository) UpdateEmployeeDesignation(empID uuid.UUID, designationID *uuid.UUID) error {
-	_, err := r.DB.Exec(`
-		UPDATE Tbl_Employee SET designation_id = $1, updated_at = NOW() WHERE id = $2
-	`, designationID, empID)
 	return err
 }
 
+func (r *employeeRepository) GetByID(id uuid.UUID) (*models.Employee, error) {
+	var employee models.Employee
+
+	err := r.db.Get(&employee, `
+		SELECT
+			id,
+			full_name,
+			email,
+			role_id,
+			password,
+			manager_id,
+			designation_id,
+			salary,
+			birth_date,
+			joining_date,
+			ending_date,
+			status,
+			deleted_at,
+			created_at,
+			updated_at
+		FROM Tbl_Employee
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`, id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.CustomErr(http.StatusNotFound, "employee not found")
+		}
+		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to get employee")
+	}
+
+	return &employee, nil
+}
+
+func (r *employeeRepository) UpdatePassword(ctx context.Context, id uuid.UUID, hashedPassword string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE Tbl_Employee SET password = $1, updated_at = NOW() WHERE id = $2`,
+		hashedPassword, id,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdatePassword id=%s: %w", id, err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("UpdatePassword id=%s: employee not found", id)
+	}
+
+	return nil
+}
+
+func (r *employeeRepository) GetCurrentRoleAndManagerStatus(ctx context.Context, empID uuid.UUID) (int, bool, error) {
+	var row struct {
+		RoleID    int  `db:"role_id"`
+		IsManager bool `db:"is_manager"`
+	}
+
+	query := `
+SELECT
+    e.role_id AS role_id,
+    EXISTS (
+        SELECT 1 FROM Tbl_Employee sub WHERE sub.manager_id = e.id
+    ) AS is_manager
+FROM Tbl_Employee e
+WHERE e.id = $1
+`
+	if err := r.db.GetContext(ctx, &row, query, empID); err != nil {
+		return 0, false, fmt.Errorf("GetCurrentRoleAndManagerStatus id=%s: %w", empID, err)
+	}
+
+	return row.RoleID, row.IsManager, nil
+}
+
+func (r *employeeRepository) UpdateRole(tx *sqlx.Tx, empID uuid.UUID, newRoleID int) (string, error) {
+	res, err := tx.Exec(
+		`UPDATE Tbl_Employee SET role_id = $1, updated_at = NOW() WHERE id = $2`,
+		newRoleID, empID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("UpdateRole id=%s: %w", empID, err)
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return "", fmt.Errorf("UpdateRole id=%s: employee not found", empID)
+	}
+
+	return empID.String(), nil
+}
+
+// GetOrgHierarchyMap fetches every (id, manager_id) pair once and returns
+// manager_id -> []direct_report_id, so the service can walk N-level team
+// trees in Go instead of a recursive SQL CTE.
+func (r *employeeRepository) GetOrgHierarchyMap(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error) {
+	var rows []struct {
+		ID        uuid.UUID     `db:"id"`
+		ManagerID uuid.NullUUID `db:"manager_id"`
+	}
+
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT id, manager_id
+		FROM Tbl_Employee
+		WHERE deleted_at IS NULL
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("GetOrgHierarchyMap: %w", err)
+	}
+
+	hierarchy := make(map[uuid.UUID][]uuid.UUID, len(rows))
+	for _, row := range rows {
+		if !row.ManagerID.Valid {
+			continue
+		}
+		hierarchy[row.ManagerID.UUID] = append(hierarchy[row.ManagerID.UUID], row.ID)
+	}
+
+	return hierarchy, nil
+}
+
 // GetAllEmployees returns a paginated, filtered, sorted list of employees.
-// HR: salary is NULL. ADMIN/SUPERADMIN: salary included.
-// Filters: search (name/email/manager), role, designation, status, manager (exact).
-// Sort: name, email, joining_date, ending_date, salary, birth_date, manager_name, role, status.
-func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role string) (*models.PaginatedEmployeeResponse, error) {
+// Visibility (own/team/all) and salary inclusion are both decided upstream
+// by the service via permissions — this function only applies whatever
+// access.Scope/IncludeSalary it's handed. No role names, no role logic here.
+func (r *employeeRepository) GetAllEmployees(ctx context.Context, params models.EmployeeFilterParams, access models.EmployeeAccessFilter) (*models.PaginatedEmployeeResponse, error) {
 	salaryCol := "NULL::double precision AS salary"
-	if role == accessrole.ROLE_ADMIN || role == accessrole.ROLE_SUPER_ADMIN {
+	if access.IncludeSalary {
 		salaryCol = "e.salary"
 	}
-	// Build WHERE conditions dynamically
+
 	conditions := []string{}
 	args := []interface{}{}
-	n := 1 // arg counter
+	n := 1
+
+	switch access.Scope {
+	case "own":
+		conditions = append(conditions, fmt.Sprintf("e.id = $%d", n))
+		args = append(args, access.ActorID)
+		n++
+	case "team":
+		if len(access.VisibleEmployeeIDs) == 0 {
+			conditions = append(conditions, "1 = 0") // no visible reports -> sees nobody
+			break
+		}
+		conditions = append(conditions, fmt.Sprintf("e.id = ANY($%d)", n))
+		args = append(args, pq.Array(access.VisibleEmployeeIDs))
+		n++
+	case "all":
+		// no restriction
+	default:
+		conditions = append(conditions, "1 = 0") // unknown/missing scope -> fail closed
+	}
 
 	if params.Search != "" {
 		conditions = append(conditions, fmt.Sprintf(
-			"(e.full_name ILIKE $%d OR e.email ILIKE $%d OR m.full_name ILIKE $%d)",
-			n, n, n,
-		))
+			"(e.full_name ILIKE $%d OR e.email ILIKE $%d OR m.full_name ILIKE $%d)", n, n, n))
 		args = append(args, "%"+params.Search+"%")
 		n++
 	}
@@ -121,9 +278,9 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 	}
 	if len(params.Roles) > 0 {
 		placeholders := make([]string, len(params.Roles))
-		for i, r := range params.Roles {
+		for i, role := range params.Roles {
 			placeholders[i] = fmt.Sprintf("$%d", n)
-			args = append(args, r)
+			args = append(args, role)
 			n++
 		}
 		conditions = append(conditions, fmt.Sprintf("r.type IN (%s)", strings.Join(placeholders, ",")))
@@ -148,14 +305,11 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 		LEFT JOIN Tbl_Designation d ON e.designation_id = d.id
 	`
 
-	// Count total for pagination
 	var totalCount int
-	if err := r.DB.Get(&totalCount,
-		"SELECT COUNT(*) "+baseJoins+whereClause, args...); err != nil {
-		return nil, err
+	if err := r.db.GetContext(ctx, &totalCount, "SELECT COUNT(*) "+baseJoins+whereClause, args...); err != nil {
+		return nil, fmt.Errorf("GetAllEmployees count: %w", err)
 	}
 
-	// Pagination defaults
 	if params.Page < 1 {
 		params.Page = 1
 	}
@@ -166,7 +320,6 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 		params.PageSize = 100
 	}
 	offset := (params.Page - 1) * params.PageSize
-
 	orderBy := resolveEmployeeSort(params.SortBy, params.SortOrder)
 
 	query := fmt.Sprintf(`
@@ -175,8 +328,7 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 			r.type AS role, e.manager_id, e.designation_id,
 			%s, e.joining_date, e.birth_date, e.ending_date,
 			e.created_at, e.updated_at,
-			m.full_name AS manager_name,
-			d.designation_name
+			m.full_name AS manager_name, d.designation_name
 		%s%s
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d
@@ -184,9 +336,9 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 
 	args = append(args, params.PageSize, offset)
 
-	rows, err := r.DB.Query(query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetAllEmployees select: %w", err)
 	}
 	defer rows.Close()
 
@@ -200,170 +352,88 @@ func (r *Repository) GetAllEmployees(params models.EmployeeFilterParams, role st
 			&emp.CreatedAt, &emp.UpdatedAt,
 			&emp.ManagerName, &emp.DesignationName,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetAllEmployees scan: %w", err)
 		}
 		employees = append(employees, emp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllEmployees rows: %w", err)
 	}
 
 	totalPages := (totalCount + params.PageSize - 1) / params.PageSize
 
 	return &models.PaginatedEmployeeResponse{
-		Employees:  employees,
-		TotalCount: totalCount,
-		Page:       params.Page,
-		PageSize:   params.PageSize,
-		TotalPages: totalPages,
+		Employees: employees, TotalCount: totalCount,
+		Page: params.Page, PageSize: params.PageSize, TotalPages: totalPages,
 	}, nil
 }
 
-// buildWhere joins conditions into a WHERE clause string.
-func buildWhere(conditions []string) string {
-	if len(conditions) == 0 {
-		return ""
-	}
-	clause := " WHERE " + conditions[0]
-	for _, c := range conditions[1:] {
-		clause += " AND " + c
-	}
-	return clause
-}
-
-func (r *Repository) GetHrEmail() []string {
-	var hrEmails []string
-	r.DB.Select(&hrEmails, `
-		SELECT e.email FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE r.type = 'HR' AND e.status = 'active'
-	`)
-	return hrEmails
-}
-
-// GetTodayBirthdays returns all active employees whose birth_date month+day matches today in the configured timezone.
-// We pass today's date explicitly instead of relying on PostgreSQL's CURRENT_DATE,
-// which would use UTC on Railway and return the wrong day near midnight.
-func (r *Repository) GetTodayBirthdays() ([]models.BirthdayEmployee, error) {
-	year, month, day := timezone.TodayDate()
-
-	rows, err := r.DB.Query(`
-		SELECT id::text, full_name, email, birth_date
-		FROM Tbl_Employee
-		WHERE status = 'active'
-		  AND birth_date IS NOT NULL
-		  AND EXTRACT(MONTH FROM birth_date) = $1
-		  AND EXTRACT(DAY   FROM birth_date) = $2
-		ORDER BY full_name
-	`, month, day)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	_ = year // used for logging/debugging if needed
-
-	var result []models.BirthdayEmployee
-	for rows.Next() {
-		var emp models.BirthdayEmployee
-		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Email, &emp.BirthDate); err != nil {
-			return nil, err
-		}
-		result = append(result, emp)
-	}
-	return result, nil
-}
-
-// GetBirthdays fetches active employees based on month/year calendar filters.
-//
-// month=4&year=2026  → employees whose birth month = April (any year), shown in context of 2026
-// year=2026          → all employees, shown across full year 2026
-// (no params)        → upcoming 30 days from today IST (year-wrap safe)
-func (r *Repository) GetBirthdays(month, year int) ([]models.BirthdayEmployee, error) {
-	base := `
-	SELECT id::text, full_name, email, birth_date
-	FROM Tbl_Employee
-	WHERE status = 'active'
-	  AND birth_date IS NOT NULL
-	`
-
-	var (
-		query string
-		args  []interface{}
+func (r *employeeRepository) GetEmployeeByID(empID uuid.UUID) (*models.EmployeeResponse, error) {
+	var emp models.EmployeeResponse
+	query := `
+        SELECT 
+            e.id, e.full_name, e.email, e.status,
+            r.type AS role, e.manager_id, e.designation_id,
+            e.salary, e.joining_date, e.birth_date, e.ending_date,
+            e.created_at, e.updated_at,
+            m.full_name AS manager_name,
+            d.designation_name
+        FROM Tbl_Employee e
+        JOIN Tbl_Role r ON e.role_id = r.id
+        LEFT JOIN Tbl_Employee m ON e.manager_id = m.id
+        LEFT JOIN Tbl_Designation d ON e.designation_id = d.id
+        WHERE e.id = $1
+    `
+	err := r.db.QueryRow(query, empID).Scan(
+		&emp.ID,
+		&emp.FullName,
+		&emp.Email,
+		&emp.Status,
+		&emp.Role,
+		&emp.ManagerID,
+		&emp.DesignationID,
+		&emp.Salary,
+		&emp.JoiningDate,
+		&emp.BirthDate,
+		&emp.EndingDate,
+		&emp.CreatedAt,
+		&emp.UpdatedAt,
+		&emp.ManagerName,
+		&emp.DesignationName,
 	)
 
-	switch {
-	case month > 0 && year > 0:
-		// Specific month of a specific year — match by birth month only
-		query = base + `
-		AND EXTRACT(MONTH FROM birth_date) = $1
-		ORDER BY EXTRACT(DAY FROM birth_date)
-		`
-		args = append(args, month)
+	return &emp, err
+}
 
-	case year > 0:
-		// Full year view — return all employees, service will classify by that year
-		query = base + `ORDER BY EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date)`
-
-	default:
-		// Upcoming 30 days from today in the configured application timezone.
-		// We pass the app-timezone date as a parameter instead of relying on PostgreSQL's CURRENT_DATE
-		// (which uses UTC on Railway and would return the wrong day near midnight).
-		now := timezone.Now()
-		todayStr := fmt.Sprintf("%04d-%02d-%02d", now.Year(), int(now.Month()), now.Day())
-
-		query = base + `
-		AND (
-			make_date(
-				EXTRACT(YEAR FROM $1::date)::int,
-				EXTRACT(MONTH FROM birth_date)::int,
-				EXTRACT(DAY FROM birth_date)::int
-			) BETWEEN $1::date AND $1::date + INTERVAL '30 days'
-			OR
-			make_date(
-				EXTRACT(YEAR FROM $1::date)::int + 1,
-				EXTRACT(MONTH FROM birth_date)::int,
-				EXTRACT(DAY FROM birth_date)::int
-			) BETWEEN $1::date AND $1::date + INTERVAL '30 days'
-		)
-		ORDER BY
-			LEAST(
-				make_date(EXTRACT(YEAR FROM $1::date)::int,     EXTRACT(MONTH FROM birth_date)::int, EXTRACT(DAY FROM birth_date)::int),
-				make_date(EXTRACT(YEAR FROM $1::date)::int + 1, EXTRACT(MONTH FROM birth_date)::int, EXTRACT(DAY FROM birth_date)::int)
-			)
-		`
-		args = append(args, todayStr)
-	}
-
-	rows, err := r.DB.Query(query, args...)
+func (r *employeeRepository) UpdateManager(ctx context.Context, empID, managerID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE Tbl_Employee SET manager_id = $1, updated_at = NOW() WHERE id = $2`,
+		managerID, empID,
+	)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("UpdateManager id=%s: %w", empID, err)
 	}
-	defer rows.Close()
 
-	var result []models.BirthdayEmployee
-	for rows.Next() {
-		var emp models.BirthdayEmployee
-		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Email, &emp.BirthDate); err != nil {
-			return nil, err
-		}
-		result = append(result, emp)
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("UpdateManager id=%s: employee not found", empID)
 	}
-	return result, nil
+
+	return nil
 }
 
-// GetAllActiveEmployeesWithRoles returns id, role, and joining_date for all active employees.
-// Used when allocating leave balance for a newly created leave type.
-type ActiveEmployeeRole struct {
-	ID          uuid.UUID  `db:"id"`
-	Role        string     `db:"role"`
-	JoiningDate *time.Time `db:"joining_date"`
-}
+func (r *employeeRepository) UpdateDesignation(ctx context.Context, empID uuid.UUID, designationID *uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE Tbl_Employee SET designation_id = $1, updated_at = NOW() WHERE id = $2`,
+		designationID, empID,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateDesignation id=%s: %w", empID, err)
+	}
 
-func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]ActiveEmployeeRole, error) {
-	var employees []ActiveEmployeeRole
-	err := tx.Select(&employees, `
-		SELECT e.id, r.type AS role, e.joining_date
-		FROM Tbl_Employee e
-		JOIN Tbl_Role r ON e.role_id = r.id
-		WHERE e.status = 'active'
-	`)
-	return employees, err
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("UpdateDesignation id=%s: employee not found", empID)
+	}
+	return nil
 }

@@ -7,12 +7,13 @@ import (
 	"fmt"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/constant"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
 type LeaveFlowRepository interface {
-	InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTimingStr *string) (uuid.UUID, error)
+	InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTiming *string, appliedBy uuid.UUID) (uuid.UUID, error)
 	GetAllEmployeeLeaveByMonthYear(userID uuid.UUID, month, year int) ([]models.LeaveResponse, error)
 	GetAllleavebaseonassignManagerByMonthYear(userID uuid.UUID, month, year int) ([]models.LeaveResponse, error)
 	GetAllLeaveByMonthYear(month, year int) ([]models.LeaveResponse, error)
@@ -33,27 +34,39 @@ func NewLeaveFlow(db *sqlx.DB) LeaveFlowRepository {
 	}
 }
 
-func (r *leaveFlow) InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTimingStr *string) (uuid.UUID, error) {
+func (r *leaveFlow) InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTiming *string, appliedBy uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
 
-	var leaveID uuid.UUID
-
-	err := tx.QueryRow(`
-		INSERT INTO Tbl_Leave 
-		(employee_id, leave_type_id, half_id, start_date, end_date, days, status, reason, leave_timing)
-		VALUES ($1,$2,$3,$4,$5,$6,'Pending',$7,$8)
+	query := `
+		INSERT INTO Tbl_Leave (
+			employee_id, leave_type_id, start_date, end_date,
+			days, reason, leave_timing, status, applied_by,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4,
+			$5, $6, $7, $8, $9,
+			NOW(), NOW()
+		)
 		RETURNING id
-	`,
+	`
+
+	err := tx.QueryRow(
+		query,
 		leave.EmployeeID,
 		leave.LeaveTypeID,
-		leave.LeaveTimingID,
 		leave.StartDate,
 		leave.EndDate,
 		leave.Days,
 		leave.Reason,
-		leaveTimingStr,
-	).Scan(&leaveID)
+		leaveTiming,
+		constant.LEAVE_PENDING,
+		appliedBy,
+	).Scan(&id)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("InsertLeave: %w", err)
+	}
 
-	return leaveID, err
+	return id, nil
 }
 
 func (r *leaveFlow) GetByID(ctx context.Context, leaveID string) (*models.Leave, error) {
@@ -109,7 +122,12 @@ func (r *leaveFlow) GetAllEmployeeLeaveByMonthYear(userID uuid.UUID, month, year
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -124,6 +142,9 @@ func (r *leaveFlow) GetAllEmployeeLeaveByMonthYear(userID uuid.UUID, month, year
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE 
 		l.employee_id = $1
@@ -176,7 +197,12 @@ func (r *leaveFlow) GetAllleavebaseonassignManagerByMonthYear(userID uuid.UUID, 
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -191,6 +217,9 @@ func (r *leaveFlow) GetAllleavebaseonassignManagerByMonthYear(userID uuid.UUID, 
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE
 		(e.manager_id = $1 OR l.employee_id = $1)
@@ -244,7 +273,12 @@ func (r *leaveFlow) GetAllLeaveByMonthYear(month, year int) ([]models.LeaveRespo
 		COALESCE(l.reason,'') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -259,6 +293,9 @@ func (r *leaveFlow) GetAllLeaveByMonthYear(month, year int) ([]models.LeaveRespo
 
 	LEFT JOIN Tbl_Employee approver
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE
 		l.start_date::date <= (
@@ -310,7 +347,12 @@ func (r *leaveFlow) GetMyLeavesByMonthYear(userID uuid.UUID, month, year int) ([
 		COALESCE(l.reason, '') AS reason,
 		l.status,
 		l.created_at AS applied_at,
-		approver.full_name AS approval_name
+		approver.full_name AS approval_name,
+		CASE
+			WHEN l.applied_by IS NOT NULL AND l.applied_by != l.employee_id
+			THEN applier.full_name
+			ELSE NULL
+		END AS applied_by_name
 
 	FROM Tbl_Leave l
 
@@ -325,6 +367,9 @@ func (r *leaveFlow) GetMyLeavesByMonthYear(userID uuid.UUID, month, year int) ([
 
 	LEFT JOIN Tbl_Employee approver 
 		ON l.approved_by = approver.id
+
+	LEFT JOIN Tbl_Employee applier
+		ON l.applied_by = applier.id
 
 	WHERE 
 		l.employee_id = $1

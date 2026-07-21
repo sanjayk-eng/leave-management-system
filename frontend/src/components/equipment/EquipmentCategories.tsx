@@ -21,16 +21,23 @@ import { TableSkeleton } from '../skeletons/TableSkeleton';
 import { ServerPagination } from '../ServerPagination';
 import { useToast } from '@/hooks/use-toast';
 import { SortableTableHead, useSearchSort } from './shared';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ApiError } from '@/lib/api';
 
 const EMPTY_FORM: EquipmentCategoryRequest = { name: '', description: '' };
+
+// Returns true when the error is a 403 or 401 — no point showing write actions
+function isAccessDenied(err: Error | null): boolean {
+  return err instanceof ApiError && (err.status === 403 || err.status === 401);
+}
 
 const EquipmentCategories: React.FC = () => {
   const { searchQuery, debouncedSearch, currentPage, pageSize, sortBy, sortDir,
     params, onSearch, onPageChange, onPageSizeChange, handleSort } = useSearchSort<'name' | 'created_at'>();
 
   const {
-    categories, loading, fetching, createCategory, updateCategory, deleteCategory,
-    totalItems, totalPages,
+    categories, loading, fetching, error, createCategory, updateCategory, deleteCategory,
+    totalItems, totalPages, fetchCategories,
   } = useEquipmentCategories(params);
 
   const { toast } = useToast();
@@ -117,7 +124,8 @@ const EquipmentCategories: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Toolbar — hidden when access is denied */}
+      {!isAccessDenied(error) && (
       <div className="flex justify-between items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -155,11 +163,16 @@ const EquipmentCategories: React.FC = () => {
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
       {/* Table */}
       <div className="border rounded-lg">
         {loading && categories.length === 0 ? (
           <TableSkeleton rows={5} columns={3} showActions />
+        ) : error ? (
+          <div className="p-4">
+            <ErrorDisplay error={error} onRetry={() => fetchCategories(params)} />
+          </div>
         ) : (
           <div className={fetching ? 'opacity-60 pointer-events-none transition-opacity duration-150' : ''}>
             <Table>

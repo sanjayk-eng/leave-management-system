@@ -1,6 +1,4 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -9,10 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, Package, RefreshCw } from 'lucide-react';
+import { Loader2, Package } from 'lucide-react';
 import { useEmployeeEquipment } from '../../hooks/useEmployeeEquipment';
-// Removed formatPurchaseDate import - Purchase Date column removed from dashboard
-// Removed utility imports - backend handles all data formatting
+import { ErrorDisplay } from '@/components/ErrorDisplay';
 
 interface EmployeeEquipmentDashboardProps {
   employeeId: string;
@@ -65,20 +62,12 @@ const EmployeeEquipmentDashboard: React.FC<EmployeeEquipmentDashboardProps> = ({
           <TableBody>
             {error ? (
               <TableRow>
-                <TableCell colSpan={3} className="text-center py-6">
-                  <div className="flex flex-col items-center gap-2">
-                    <p className="text-sm text-destructive font-medium">Unable to load asset data</p>
-                    <p className="text-xs text-muted-foreground">{error}</p>
-                    <p className="text-xs text-muted-foreground">Employee ID: {employeeId}</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={refetch}
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Try Again
-                    </Button>
-                  </div>
+                <TableCell colSpan={3} className="py-4">
+                  <ErrorDisplay
+                    error={error}
+                    onRetry={refetch}
+                    compact
+                  />
                 </TableCell>
               </TableRow>
             ) : !Array.isArray(assignments) || assignments.length === 0 ? (

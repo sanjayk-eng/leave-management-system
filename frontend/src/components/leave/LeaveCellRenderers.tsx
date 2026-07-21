@@ -5,8 +5,9 @@
 import { ICellRendererParams } from 'ag-grid-community';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Eye } from 'lucide-react';
+import { Eye, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export const ReasonCellRenderer = (params: ICellRendererParams) => {
   const reason = params.value;
@@ -69,6 +70,51 @@ export const TimingCellRenderer = (params: ICellRendererParams) => {
 export const StatusCellRenderer = (params: ICellRendererParams) => (
   <StatusBadge status={params.data.status} approvalName={params.data.approval_name} />
 );
+
+/**
+ * EmployeeCellRenderer
+ * Shows employee name with an "Applied by X" sub-line when someone applied on their behalf.
+ * Use this on the Employee column in admin/manager leave grids.
+ */
+export const EmployeeCellRenderer = (params: ICellRendererParams) => {
+  const name: string        = params.value ?? params.data?.employee ?? '—';
+  const appliedByName: string | undefined = params.data?.applied_by_name;
+
+  return (
+    <div className="flex flex-col justify-center gap-0.5 py-1 leading-tight">
+      <span className="font-medium text-sm">{name}</span>
+      {appliedByName && (
+        <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+          <UserCheck className="h-3 w-3 shrink-0" />
+          via {appliedByName}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/**
+ * AppliedByCellRenderer
+ * Standalone cell for the "Applied By" column — shows a badge when it was on-behalf,
+ * or a muted "Self" label otherwise.
+ */
+export const AppliedByCellRenderer = (params: ICellRendererParams) => {
+  const appliedByName: string | undefined = params.data?.applied_by_name;
+
+  if (!appliedByName) {
+    return <span className="text-xs text-muted-foreground italic">Self</span>;
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1 border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300 text-xs font-medium"
+    >
+      <UserCheck className="h-3 w-3 shrink-0" />
+      {appliedByName}
+    </Badge>
+  );
+};
 
 /**
  * ApprovalLogCellRenderer

@@ -6,7 +6,7 @@ import { useApiErrorHandler } from './useApiErrorHandler';
 export const useDesignations = () => {
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const handleApiError = useApiErrorHandler();
 
   const fetchDesignations = useCallback(async () => {
@@ -17,8 +17,7 @@ export const useDesignations = () => {
       setDesignations(data || []);
     } catch (err: unknown) {
       handleApiError(err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch designations';
-      setError(errorMessage);
+      setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }
@@ -33,8 +32,7 @@ export const useDesignations = () => {
       return true;
     } catch (err: unknown) {
       handleApiError(err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create designation';
-      setError(errorMessage);
+      setError(err instanceof Error ? err : new Error(String(err)));
       return false;
     } finally {
       setLoading(false);
@@ -50,8 +48,7 @@ export const useDesignations = () => {
       return true;
     } catch (err: unknown) {
       handleApiError(err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update designation';
-      setError(errorMessage);
+      setError(err instanceof Error ? err : new Error(String(err)));
       return false;
     } finally {
       setLoading(false);
@@ -67,8 +64,7 @@ export const useDesignations = () => {
       return true;
     } catch (err: unknown) {
       handleApiError(err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete designation';
-      setError(errorMessage);
+      setError(err instanceof Error ? err : new Error(String(err)));
       return false;
     } finally {
       setLoading(false);

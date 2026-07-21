@@ -1,123 +1,151 @@
-import { useLogs } from '@/hooks/useLogs';
-import { LogsFilter } from '@/components/LogsFilter';
+import { useState, useMemo, useCallback } from 'react';
+import { useLogs }     from '@/hooks/useLogs';
+import { useLogsMeta } from '@/hooks/useLogsMeta';
+import { LogsFilter }  from '@/components/LogsFilter';
 import { LogsTable } from '@/components/LogsTable';
-import { LoadingState } from '@/components/LoadingState';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Activity } from 'lucide-react';
+import { ApiError } from '@/lib/api';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Activity } from 'lucide-react';
+
+const DEFAULT_PAGE_SIZE = 20;
+
+// 403 → authenticated but no log:read permission
+function isAccessDenied(err: Error | null): boolean {
+  return err instanceof ApiError && err.status === 403;
+}
 
 const Logs = () => {
-  const {
-    logs,
-    loading,
-    error,
-    totalCount,
-    daysFilter,
-    setDaysFilter,
-    dateFrom,
-    fetchLogs,
-    refreshLogs,
-  } = useLogs();
+  // ── Filter / pagination state (owned here, like EquipmentCategories) ────────
+  const [currentPage, setCurrentPage]   = useState(1);
+  const [pageSize, setPageSize]         = useState(DEFAULT_PAGE_SIZE);
+  const [searchRaw, setSearchRaw]       = useState('');
+  const [component, setComponentState]  = useState('');
+  const [action, setActionState]        = useState('');
 
-  if (loading && logs.length === 0) {
-    return <LoadingState message="Loading system logs..." />;
-  }
+  // Debounce search 350 ms — same as useLogs previously did internally
+  const search = useDebounce(searchRaw, 350);
 
-  if (error && logs.length === 0) {
+  // Combine into params object — useLogs useEffect watches each field
+  const params = useMemo(() => ({
+    page:      currentPage,
+    page_size: pageSize,
+    search:    search    || undefined,
+    component: component || undefined,
+    action:    action    || undefined,
+  }), [currentPage, pageSize, search, component, action]);
+
+  // ── Data ─────────────────────────────────────────────────────────────────────
+  const { entries, pagination, initialLoading, fetching, error, fetchLogs } = useLogs(params);
+  const { components, actions, loading: metaLoading } = useLogsMeta();
+
+  // ── Filter setters — all reset to page 1 ────────────────────────────────────
+  const setSearch = useCallback((v: string) => {
+    setSearchRaw(v);
+    setCurrentPage(1);
+  }, []);
+
+  const setComponent = useCallback((v: string) => {
+    setActionState('');   // clear action when component changes
+    setComponentState(v);
+    setCurrentPage(1);
+  }, []);
+
+  const setAction = useCallback((v: string) => {
+    setActionState(v);
+    setCurrentPage(1);
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setSearchRaw('');
+    setComponentState('');
+    setActionState('');
+    setCurrentPage(1);
+  }, []);
+
+  const refresh = useCallback(() => {
+    fetchLogs(params);
+  }, [fetchLogs, params]);
+
+  // ── Pagination handlers (same shape as onPageChange/onPageSizeChange in asset) ──
+  const onPageChange = useCallback((page: number) => setCurrentPage(page), []);
+  const onPageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  }, []);
+
+  // ── Access denied — show amber lock box, keep the header ────────────────────
+  if (isAccessDenied(error)) {
     return (
-      <ErrorDisplay
-        error={new Error(error)}
-        onRetry={() => setDaysFilter(daysFilter)}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
             <Activity className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">System Logs</h1>
-            <p className="text-muted-foreground">
-              Monitor and track all system activities and user actions
+            <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>
+            <p className="text-sm text-muted-foreground">
+              Audit trail — every state-changing action, who did it, and what changed.
             </p>
           </div>
         </div>
+        <ErrorDisplay error={error} />
+      </div>
+    );
+  }
+
+  // ── Other error on empty page (network, 500, etc.) ───────────────────────────
+  if (error && entries.length === 0) {
+    return <ErrorDisplay error={error} onRetry={refresh} />;
+  }
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-primary/10 rounded-lg">
+          <Activity className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Activity Log</h1>
+          <p className="text-sm text-muted-foreground">
+            Audit trail — every state-changing action, who did it, and what changed.
+          </p>
+        </div>
       </div>
 
-      {/* Stats Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Logs</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCount}</div>
-            <p className="text-xs text-muted-foreground">
-              Last {daysFilter} {daysFilter === 1 ? 'day' : 'days'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Date Range</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{daysFilter}</div>
-            <p className="text-xs text-muted-foreground">
-              {daysFilter === 1 ? 'Day' : 'Days'} filter active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">From Date</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-lg font-bold">
-              {dateFrom ? new Date(dateFrom).toLocaleDateString() : 'N/A'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Starting date
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter Controls */}
+      {/* ── Filters ─────────────────────────────────────────────────────────── */}
       <LogsFilter
-        currentDays={daysFilter}
-        onFilterChange={setDaysFilter}
-        onRefresh={refreshLogs}
-        loading={loading}
+        searchRaw={searchRaw}
+        component={component}
+        action={action}
+        components={components}
+        actions={actions}
+        metaLoading={metaLoading}
+        onSearch={setSearch}
+        onComponentChange={setComponent}
+        onActionChange={setAction}
+        onClear={clearFilters}
+        onRefresh={refresh}
+        loading={initialLoading || fetching}
       />
 
-      {/* Error Display (if error occurs during refresh) */}
-      {error && logs.length > 0 && (
-        <ErrorDisplay
-          error={new Error(error)}
-          onRetry={() => setDaysFilter(daysFilter)}
-          compact
-        />
+      {/* Non-fatal inline error (e.g. refetch failed but we have stale data) */}
+      {error && entries.length > 0 && (
+        <ErrorDisplay error={error} onRetry={refresh} compact />
       )}
 
-      {/* Logs Table */}
+      {/* ── Table + ServerPagination ─────────────────────────────────────────── */}
       <LogsTable
-        logs={logs}
-        totalCount={totalCount}
-        daysFilter={daysFilter}
-        dateFrom={dateFrom}
-        loading={loading}
+        entries={entries}
+        pagination={pagination}
+        loading={initialLoading}
+        fetching={fetching}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
       />
+
     </div>
   );
 };

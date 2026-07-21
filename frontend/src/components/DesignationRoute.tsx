@@ -17,7 +17,7 @@ export const DesignationRoute = ({ children }: DesignationRouteProps) => {
   const canAccess = canManageDesignations(currentUser.role);
   
   if (!canAccess) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/access-denied" replace />;
   }
 
   return <>{children}</>;

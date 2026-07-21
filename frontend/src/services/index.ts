@@ -8,3 +8,4 @@ export * from './holidayService';
 export * from './logsService';
 export * from './leaveTimingService';
 export * from './approvalFlowService';
+export * from './permissionService';

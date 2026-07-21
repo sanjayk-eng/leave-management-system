@@ -24,8 +24,14 @@ import { SearchableSelect } from '../SearchableSelect';
 import { useToast } from '@/hooks/use-toast';
 import { formatPurchaseDate } from '../../utils/dateUtils';
 import { SortableTableHead, useSearchSort, useCategorySelect } from './shared';
+import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ApiError } from '@/lib/api';
 
 type EquipmentSortCol = 'name' | 'category' | 'price' | 'remaining_quantity' | 'purchase_date';
+
+function isAccessDenied(err: Error | null): boolean {
+  return err instanceof ApiError && (err.status === 403 || err.status === 401);
+}
 
 const DEFAULT_FORM: EquipmentRequest = {
   name: '',
@@ -52,7 +58,7 @@ const EquipmentList: React.FC = () => {
   } = useSearchSort<EquipmentSortCol>();
 
   const {
-    equipment, loading, fetching, createEquipment, updateEquipment, deleteEquipment,
+    equipment, loading, fetching, error, createEquipment, updateEquipment, deleteEquipment,
     fetchEquipment, fetchEquipmentByCategory, totalItems, totalPages,
   } = useEquipment(params);
 
@@ -228,7 +234,8 @@ const EquipmentList: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
+      {/* Toolbar — hidden when access is denied */}
+      {!isAccessDenied(error) && (
       <div className="flex justify-between items-center gap-4">
         <div className="flex items-center gap-4 flex-1">
           <h3 className="text-lg font-medium">Equipment</h3>
@@ -288,11 +295,16 @@ const EquipmentList: React.FC = () => {
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
       {/* Table */}
       <div className="border rounded-lg">
         {loading ? (
           <TableSkeleton rows={5} columns={7} showActions />
+        ) : error ? (
+          <div className="p-4">
+            <ErrorDisplay error={error} onRetry={() => fetchEquipment(params)} />
+          </div>
         ) : (
           <div className={fetching ? 'opacity-60 pointer-events-none transition-opacity duration-150' : ''}>
             <Table>

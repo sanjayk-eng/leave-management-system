@@ -69,6 +69,7 @@ type LeaveResponse struct {
 	Status          string           `db:"status" json:"status"`
 	AppliedAt       time.Time        `db:"applied_at" json:"applied_at"`
 	ApprovalName    *string          `db:"approval_name" json:"approval_name,omitempty"`
+	AppliedByName   *string          `db:"applied_by_name" json:"applied_by_name,omitempty"` // Non-nil only when someone applied on behalf
 	ApprovalLog     []LeaveFlowStage `json:"approval_log" db:"approval_log"`
 }
 

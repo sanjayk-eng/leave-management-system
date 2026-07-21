@@ -60,4 +60,28 @@ export const designationService = {
     }
     return api.delete<{ message: string }>(`/designations/${id}`);
   },
+
+  // Assign an employee to this designation.
+  // Route: PATCH /designations/:designationId/assign-employee
+  // Body: { employee_id }
+  assignEmployee: async (designationId: string, employeeId: string) => {
+    if (!designationId || designationId === 'undefined') throw new Error('Invalid designation ID');
+    if (!employeeId   || employeeId   === 'undefined') throw new Error('Invalid employee ID');
+    return api.patch<{
+      message: string;
+      employee_id: string;
+      designation_id: string;
+      designation_name: string;
+    }>(`/designations/${designationId}/assign-employee`, { employee_id: employeeId });
+  },
+
+  // Remove a designation from an employee (sets designation_id → NULL).
+  // Route: DELETE /designations/:designationId/assign-employee/:employeeId
+  removeEmployee: async (designationId: string, employeeId: string) => {
+    if (!designationId || designationId === 'undefined') throw new Error('Invalid designation ID');
+    if (!employeeId   || employeeId   === 'undefined') throw new Error('Invalid employee ID');
+    return api.delete<{ message: string; employee_id: string }>(
+      `/designations/${designationId}/assign-employee/${employeeId}`
+    );
+  },
 };

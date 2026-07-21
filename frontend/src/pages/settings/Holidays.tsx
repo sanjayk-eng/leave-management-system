@@ -37,12 +37,11 @@ import {
 
 const Holidays = () => {
   const { holidays = [], isLoading: isLoadingHolidays, addHoliday, isAdding, deleteHoliday, isDeleting } = useHolidays();
-  
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedHolidayId, setSelectedHolidayId] = useState<string | null>(null);
-  
-  // Form state for adding holiday
+
   const [holidayForm, setHolidayForm] = useState({
     name: "",
     date: "",
@@ -51,19 +50,12 @@ const Holidays = () => {
 
   const handleAddHoliday = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Convert date to ISO 8601 format with IST timezone
-    // Input format: "2025-11-28" (from date input)
-    // Output format: "2025-11-28T00:00:00+05:30" (ISO 8601 IST)
     const isoDate = dateInputToISO(holidayForm.date);
-    
     addHoliday({
       name: holidayForm.name,
       date: isoDate,
       type: holidayForm.type,
     });
-    
-    // Reset form and close dialog
     setHolidayForm({ name: "", date: "", type: "HOLIDAY" });
     setDialogOpen(false);
   };
@@ -83,11 +75,6 @@ const Holidays = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Holiday Management</h1>
-        <p className="text-muted-foreground">Manage company holidays and observances</p>
-      </div>
-
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -113,40 +100,38 @@ const Holidays = () => {
                 <form onSubmit={handleAddHoliday} className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="holidayName">Holiday Name</Label>
-                    <Input 
-                      id="holidayName" 
-                      placeholder="e.g., Diwali" 
+                    <Input
+                      id="holidayName"
+                      placeholder="e.g., Diwali"
                       value={holidayForm.name}
                       onChange={(e) => setHolidayForm({ ...holidayForm, name: e.target.value })}
-                      required 
+                      required
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="holidayDate">Date</Label>
-                    <Input 
-                      id="holidayDate" 
-                      type="date" 
+                    <Input
+                      id="holidayDate"
+                      type="date"
                       value={holidayForm.date}
                       onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })}
-                      required 
+                      required
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="holidayType">Type</Label>
-                    <Input 
-                      id="holidayType" 
-                      placeholder="HOLIDAY" 
+                    <Input
+                      id="holidayType"
+                      placeholder="HOLIDAY"
                       value={holidayForm.type}
                       onChange={(e) => setHolidayForm({ ...holidayForm, type: e.target.value })}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Default: HOLIDAY
-                    </p>
+                    <p className="text-xs text-muted-foreground">Default: HOLIDAY</p>
                   </div>
                   <div className="flex gap-3 pt-4 border-t">
-                    <Button 
-                      type="button" 
-                      variant="outline" 
+                    <Button
+                      type="button"
+                      variant="outline"
                       onClick={() => setDialogOpen(false)}
                       className="flex-1"
                     >
@@ -192,13 +177,13 @@ const Holidays = () => {
                       <TableCell className="font-medium">{holiday.name}</TableCell>
                       <TableCell>
                         {formatDate(holiday.date, {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
                         })}
                       </TableCell>
                       <TableCell>
-                        {holiday.day || formatDate(holiday.date, { weekday: 'long' })}
+                        {holiday.day || formatDate(holiday.date, { weekday: "long" })}
                       </TableCell>
                       <TableCell>
                         <Badge className="bg-primary text-primary-foreground">
@@ -234,7 +219,10 @@ const Holidays = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

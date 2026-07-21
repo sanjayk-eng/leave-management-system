@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dateInputToISO } from "@/lib/dateUtils";
 import { validateSecurePassword } from "@/lib/passwordValidation";
@@ -11,12 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEmployees } from "@/hooks/useEmployees";
-import { useDesignations } from "@/hooks/useDesignations";
 import { useDebounce } from "@/hooks/useDebounce";
-import { getCurrentUser } from "@/lib/api";
+import { getCurrentUser, ApiError } from "@/lib/api";
 import { leaveBalanceService, employeeService } from "@/services";
 import type { Employee } from "@/services/employeeService";
-import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase } from "lucide-react";
+import { useMyPermissions } from "@/hooks/usePermissions";
+import { isPermissionEnabled } from "@/lib/pagePermissions";
+import { UserPlus, Search, Loader2, Key, MoreVertical, UserCog, Users, UserX, UserCheck, Calendar, Edit, Briefcase, Eye } from "lucide-react";
+import { LeaveBalanceSheet } from "@/components/LeaveBalanceSheet";
+import { ApplyOnBehalfDialog } from "@/components/leave/ApplyOnBehalfDialog";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiErrorHandler } from "@/hooks/useApiErrorHandler";
@@ -25,6 +29,7 @@ import { ServerPagination } from "@/components/ServerPagination";
 import { SortableTableHead } from "@/components/equipment/shared";
 import { useManagerSelect } from "@/components/equipment/shared";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { ErrorDisplay } from "@/components/ErrorDisplay";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -44,6 +49,23 @@ function formatDate(iso?: string | null) {
   if (!iso) return <span className="text-muted-foreground italic">-</span>;
   const d = new Date(iso);
   return <span>{d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>;
+}
+
+const AVATAR_COLOURS = [
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-rose-500",
+  "bg-sky-500",
+  "bg-orange-500",
+  "bg-indigo-500",
+];
+function avatarColour(index: number) {
+  return AVATAR_COLOURS[index % AVATAR_COLOURS.length];
+}
+function getInitials(name: string) {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 type SortCol = 'name' | 'email' | 'joining_date' | 'ending_date' | 'salary' | 'birth_date' | 'manager_name' | 'role' | 'status';
@@ -68,7 +90,53 @@ const Employees = () => {
   const [sortBy,            setSortBy]            = useState<SortCol | ''>('');
   const [sortDir,           setSortDir]           = useState<'asc' | 'desc'>('asc');
 
-  const { designations } = useDesignations();
+  // ── dialog state — declared early so lazy hooks below can read them ───────────
+  const [dialogOpen,            setDialogOpen]            = useState(false);
+  const [roleDialogOpen,        setRoleDialogOpen]        = useState(false);
+  const [managerDialogOpen,     setManagerDialogOpen]     = useState(false);
+  const [designationDialogOpen, setDesignationDialogOpen] = useState(false);
+  const [leaveAdjustDialogOpen, setLeaveAdjustDialogOpen] = useState(false);
+  const [editInfoDialogOpen,    setEditInfoDialogOpen]    = useState(false);
+  const [passwordDialogOpen,    setPasswordDialogOpen]    = useState(false);
+  const [deactivateDialogOpen,  setDeactivateDialogOpen]  = useState(false);
+
+  // ── leave balance sheet (view-only, visible to all roles) ────────────────────
+  const [balanceSheetOpen,      setBalanceSheetOpen]      = useState(false);
+
+  // ── apply leave on behalf ─────────────────────────────────────────────────────
+  const [applyOnBehalfOpen,     setApplyOnBehalfOpen]     = useState(false);
+
+  const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
+  const [newRole,              setNewRole]              = useState("");
+  const [newManagerId,         setNewManagerId]         = useState("");
+  const [newDesignationId,     setNewDesignationId]     = useState("");
+  const [isUpdatingDesignation,setIsUpdatingDesignation]= useState(false);
+  const [isAdjustingLeave,     setIsAdjustingLeave]     = useState(false);
+  const [isUpdatingPassword,   setIsUpdatingPassword]   = useState(false);
+  const [newPassword,          setNewPassword]          = useState("");
+  const [confirmPassword,      setConfirmPassword]      = useState("");
+
+  const [adjustmentData, setAdjustmentData] = useState({ leave_type_id: "", quantity: "", reason: "" });
+  const [editInfoForm,   setEditInfoForm]   = useState({
+    full_name: "", email: "", salary: 0, joining_date: "", ending_date: "", birth_date: "",
+  });
+  const [formData, setFormData] = useState({
+    full_name: "", email: "", role: "", salary: "", joining_date: "", ending_date: "",
+  });
+
+  // ── lazy: fetch designations only when the filter dropdown or assign dialog is used
+  // Silent on 403/401 — user may not have designation permission, filter just shows empty
+  const { data: designationData } = useQuery({
+    queryKey: ['designations'],
+    queryFn: async () => {
+      const { designationService } = await import('@/services/designationService');
+      return designationService.getAll();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    throwOnError: false,
+  });
+  const designations = designationData ?? [];
 
   // debounce search input
   const debouncedSearch   = useDebounce(searchQuery,   500);
@@ -103,11 +171,34 @@ const Employees = () => {
   const isAdmin      = currentUser?.role === 'ADMIN' || isSuperAdmin;
   const isHR         = currentUser?.role === 'HR';
   const queryClient  = useQueryClient();
+  const { data: permissionData } = useMyPermissions();
+  const resources = permissionData?.resources;
 
-  // ── server-driven manager select ─────────────────────────────────────────────
-  const managerSelect = useManagerSelect();
+  const canAddEmployee = isPermissionEnabled(resources, { resource: 'employee', action: 'add' });
+  const canChangePassword = isPermissionEnabled(resources, { resource: 'employee', action: 'change_password' });
+  const canEditEmployee = isPermissionEnabled(resources, { resource: 'employee', action: 'edit' });
+  const canUpdateRole = isPermissionEnabled(resources, { resource: 'employee', action: 'update_role' });
+  const canAssignManager = isPermissionEnabled(resources, { resource: 'employee', action: 'assign_manager' });
+  const canManageDesignation = isPermissionEnabled(resources, { resource: 'employee', action: 'designation_management' });
+  const canAdjustLeave = isPermissionEnabled(resources, { resource: 'leave_balance', action: 'adjust' });
+  const canApplyOnBehalf = isPermissionEnabled(resources, { resource: 'leave', action: 'apply' });
+  const canChangeStatus = isPermissionEnabled(resources, { resource: 'employee', action: 'status_management' });
 
-  // ── unified sort handler — mirrors useTableSort in shared.tsx (no stale closure)
+  // 403/401 → hide write controls and filters (same pattern as Designations page)
+  const isAccessDenied = error instanceof ApiError && (error.status === 403 || error.status === 401);
+
+  // ── lazy: manager list only fetches when "Assign Manager" dialog opens ────────
+  const managerSelect = useManagerSelect(managerDialogOpen);
+
+  // ── lazy: leave policies only fetches when "Adjust Leave Balance" dialog opens
+  const { data: leavePolicies } = useQuery({
+    queryKey: ['leavePolicies'],
+    queryFn: async () => { const { leaveService } = await import('@/services'); return leaveService.getAllPolicies(); },
+    enabled: leaveAdjustDialogOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ── unified sort handler ──────────────────────────────────────────────────────
   const handleSort = useCallback((col: string) => {
     const c = col as SortCol;
     setSortBy(prev => {
@@ -121,42 +212,10 @@ const Employees = () => {
     setCurrentPage(1);
   }, []);
 
-  // ── dialog state ─────────────────────────────────────────────────────────────
-  const [dialogOpen,            setDialogOpen]            = useState(false);
-  const [roleDialogOpen,        setRoleDialogOpen]        = useState(false);
-  const [managerDialogOpen,     setManagerDialogOpen]     = useState(false);
-  const [designationDialogOpen, setDesignationDialogOpen] = useState(false);
-  const [leaveAdjustDialogOpen, setLeaveAdjustDialogOpen] = useState(false);
-  const [editInfoDialogOpen,    setEditInfoDialogOpen]    = useState(false);
-  const [passwordDialogOpen,    setPasswordDialogOpen]    = useState(false);
-  const [deactivateDialogOpen,  setDeactivateDialogOpen]  = useState(false);
-
-  const [selectedEmployee,     setSelectedEmployee]     = useState<Employee | null>(null);
-  const [newRole,              setNewRole]              = useState("");
-  const [newManagerId,         setNewManagerId]         = useState("");
-  const [newDesignationId,     setNewDesignationId]     = useState("");
-  const [isUpdatingDesignation,setIsUpdatingDesignation]= useState(false);
-  const [isAdjustingLeave,     setIsAdjustingLeave]     = useState(false);
-  const [isUpdatingPassword,   setIsUpdatingPassword]   = useState(false);
-  const [newPassword,          setNewPassword]          = useState("");
-  const [confirmPassword,      setConfirmPassword]      = useState("");
-
-  const [adjustmentData, setAdjustmentData] = useState({ leave_type_id: "", quantity: "", reason: "" });
-  const [editInfoForm,   setEditInfoForm]   = useState({
-    full_name: "", email: "", salary: 0, joining_date: "", ending_date: "", birth_date: "",
-  });
-  const [formData, setFormData] = useState({
-    full_name: "", email: "", role: "", salary: "", joining_date: "", ending_date: "",
-  });
-
-  const { data: leavePolicies } = useQuery({
-    queryKey: ['leavePolicies'],
-    queryFn: async () => { const { leaveService } = await import('@/services'); return leaveService.getAllPolicies(); },
-  });
-
   // ── action handlers ───────────────────────────────────────────────────────────
   const handleAddEmployee = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAddEmployee) { toast.error('You do not have permission to add employees'); return; }
     if (formData.role === 'SUPERADMIN' && !isSuperAdmin) { toast.error('Only SUPERADMIN can create SUPERADMIN users'); return; }
     createEmployee({
       full_name: formData.full_name, email: formData.email, role: formData.role,
@@ -199,10 +258,24 @@ const Employees = () => {
     if (!selectedEmployee) return;
     try {
       setIsUpdatingDesignation(true);
-      const designationId = (newDesignationId === "" || newDesignationId === "NONE") ? null : newDesignationId;
-      await employeeService.updateDesignation(selectedEmployee.id, designationId);
+      const isRemoving = newDesignationId === "" || newDesignationId === "NONE";
+      if (isRemoving) {
+        // Remove: employee must have a current designation to clear
+        const currentDesignationId = selectedEmployee.designation_id;
+        if (!currentDesignationId) {
+          toast.info('Employee has no designation to remove');
+          setDesignationDialogOpen(false); setSelectedEmployee(null); setNewDesignationId("");
+          return;
+        }
+        const { designationService } = await import('@/services/designationService');
+        await designationService.removeEmployee(currentDesignationId, selectedEmployee.id);
+      } else {
+        // Assign: PATCH /designations/:designationId/assign-employee
+        const { designationService } = await import('@/services/designationService');
+        await designationService.assignEmployee(newDesignationId, selectedEmployee.id);
+      }
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      toast.success('Designation updated successfully');
+      toast.success(isRemoving ? 'Designation removed successfully' : 'Designation assigned successfully');
       setDesignationDialogOpen(false); setSelectedEmployee(null); setNewDesignationId("");
     } catch (err: unknown) { handleError(err); }
     finally { setIsUpdatingDesignation(false); }
@@ -264,6 +337,17 @@ const Employees = () => {
     setAdjustmentData({ leave_type_id: "", quantity: "", reason: "" });
     setLeaveAdjustDialogOpen(true);
   };
+
+  const handleViewBalance = (emp: Employee) => {
+    setSelectedEmployee(emp);
+    setBalanceSheetOpen(true);
+  };
+
+  const handleApplyOnBehalf = (emp: Employee) => {
+    setSelectedEmployee(emp);
+    setApplyOnBehalfOpen(true);
+  };
+
   const submitLeaveAdjustment = async () => {
     if (!adjustmentData.leave_type_id || !adjustmentData.quantity || !adjustmentData.reason) { toast.error("Please fill all fields"); return; }
     if (!selectedEmployee?.id) { toast.error("No employee selected"); return; }
@@ -341,12 +425,14 @@ const Employees = () => {
           <p className="text-sm text-muted-foreground">Manage employee records and roles</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto">
-              <UserPlus className="mr-2 h-4 w-4" />
-              <span>Add Employee</span>
-            </Button>
-          </DialogTrigger>
+          {!isAccessDenied && canAddEmployee && (
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <UserPlus className="mr-2 h-4 w-4" />
+                <span>Add Employee</span>
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Employee</DialogTitle>
@@ -417,90 +503,92 @@ const Employees = () => {
           <CardTitle>All Employees</CardTitle>
           <CardDescription>View and manage all employees</CardDescription>
 
-          {/* Filters row 1 — search + role + status */}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mt-2">
-            <div className="relative sm:col-span-2">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search by name, email, or manager..." className="pl-9 pr-9"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} />
-              {searchQuery !== debouncedSearch && (
-                <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by role" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                <SelectItem value="INTERN">Intern</SelectItem>
-                <SelectItem value="MANAGER">Manager</SelectItem>
-                <SelectItem value="HR">HR</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                {isSuperAdmin && <SelectItem value="SUPERADMIN">Super Admin</SelectItem>}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="deactive">Deactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Filters — hidden when access is denied */}
+          {!isAccessDenied && (
+            <>
+              {/* Filters row 1 — search + role + status */}
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mt-2">
+                <div className="relative sm:col-span-2">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search by name, email, or manager..." className="pl-9 pr-9"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} />
+                  {searchQuery !== debouncedSearch && (
+                    <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by role" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                    <SelectItem value="INTERN">Intern</SelectItem>
+                    <SelectItem value="MANAGER">Manager</SelectItem>
+                    <SelectItem value="HR">HR</SelectItem>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    {isSuperAdmin && <SelectItem value="SUPERADMIN">Super Admin</SelectItem>}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="deactive">Deactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Filters row 2 — designation */}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2">
-            <Select value={designationFilter} onValueChange={(v) => { setDesignationFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger><SelectValue placeholder="Filter by designation" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Designations</SelectItem>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {designations?.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>{d.designation_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Filters row 2 — designation */}
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2">
+                <Select value={designationFilter} onValueChange={(v) => { setDesignationFilter(v); setCurrentPage(1); }}>
+                  <SelectTrigger><SelectValue placeholder="Filter by designation" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Designations</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {designations?.map((d) => (
+                      <SelectItem key={d.id} value={String(d.id)}>{d.designation_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Active filter chips */}
-          {hasActiveFilters && (
-            <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
-              <span className="text-muted-foreground">Filters:</span>
-              {searchQuery    && <Badge variant="secondary">Search: "{searchQuery}"</Badge>}
-              {roleFilter !== "all"        && <Badge variant="secondary">Role: {roleFilter}</Badge>}
-              {statusFilter !== "all"      && <Badge variant="secondary">Status: {statusFilter}</Badge>}
-              {designationFilter !== "all" && (
-                <Badge variant="secondary">
-                  {designationFilter === "unassigned"
-                    ? "Unassigned"
-                    : designations.find(d => String(d.id) === designationFilter)?.designation_name}
-                </Badge>
+              {/* Active filter chips */}
+              {hasActiveFilters && (
+                <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-muted-foreground">Filters:</span>
+                  {searchQuery    && <Badge variant="secondary">Search: "{searchQuery}"</Badge>}
+                  {roleFilter !== "all"        && <Badge variant="secondary">Role: {roleFilter}</Badge>}
+                  {statusFilter !== "all"      && <Badge variant="secondary">Status: {statusFilter}</Badge>}
+                  {designationFilter !== "all" && (
+                    <Badge variant="secondary">
+                      {designationFilter === "unassigned"
+                        ? "Unassigned"
+                        : designations.find(d => String(d.id) === designationFilter)?.designation_name}
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">({totalCount} {totalCount === 1 ? 'employee' : 'employees'})</span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      setSearchQuery(""); setRoleFilter("all");
+                      setDesignationFilter("all"); setStatusFilter("all"); setCurrentPage(1);
+                    }}>
+                    Clear All
+                  </Button>
+                </div>
               )}
-              <span className="text-muted-foreground">({totalCount} {totalCount === 1 ? 'employee' : 'employees'})</span>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs"
-                onClick={() => {
-                  setSearchQuery(""); setRoleFilter("all");
-                  setDesignationFilter("all"); setStatusFilter("all"); setCurrentPage(1);
-                }}>
-                Clear All
-              </Button>
-            </div>
+            </>
           )}
         </CardHeader>
 
         <CardContent>
           {isLoading ? (
-            <TableSkeleton rows={pageSize} columns={isHR ? 9 : 10} showActions />
+            <TableSkeleton rows={pageSize} columns={isHR ? 8 : 9} showActions />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <p className="text-lg font-semibold text-destructive">Failed to load employees</p>
-              <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
-              <Button onClick={() => refetch()} variant="outline">
-                <Loader2 className="mr-2 h-4 w-4" />Retry
-              </Button>
-            </div>
+            <ErrorDisplay
+              error={error}
+              onRetry={isAccessDenied ? undefined : () => refetch()}
+            />
           ) : (
             <>
               {/* smooth fade while re-fetching (sort / filter change) */}
@@ -517,7 +605,6 @@ const Employees = () => {
                       {!isHR && <SortableTableHead column="salary" label="Salary"   {...sh} className="min-w-[110px] hidden md:table-cell" />}
                       <SortableTableHead column="joining_date" label="Joining Date" {...sh} className="min-w-[130px] hidden lg:table-cell" />
                       <SortableTableHead column="birth_date"   label="Birth Date"   {...sh} className="min-w-[130px] hidden xl:table-cell" />
-                      <SortableTableHead column="ending_date"  label="Ending Date"  {...sh} className="min-w-[120px] hidden xl:table-cell" />
                       <SortableTableHead column="status"       label="Status"       {...sh} className="min-w-[90px]" />
                       {/* sticky right — Actions */}
                       <TableHead className="sticky right-0 z-10 bg-background w-[60px] text-center shadow-[-1px_0_0_0_hsl(var(--border))]">Actions</TableHead>
@@ -526,14 +613,23 @@ const Employees = () => {
                   <TableBody>
                     {filteredUsers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={isHR ? 10 : 11} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={isHR ? 9 : 10} className="text-center py-8 text-muted-foreground">
                           No employees found.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredUsers.map((emp) => (
+                      filteredUsers.map((emp, idx) => (
                         <TableRow key={emp.id}>
-                          <TableCell className="sticky left-0 z-10 bg-background font-medium shadow-[1px_0_0_0_hsl(var(--border))]">{emp.full_name}</TableCell>
+                          <TableCell className="sticky left-0 z-10 bg-background shadow-[1px_0_0_0_hsl(var(--border))]">
+                            <div className="flex items-center gap-2.5">
+                              <Avatar className="h-8 w-8 shrink-0">
+                                <AvatarFallback className={`${avatarColour(idx)} text-white text-xs font-bold`}>
+                                  {getInitials(emp.full_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium">{emp.full_name}</span>
+                            </div>
+                          </TableCell>
                           <TableCell className="text-sm hidden sm:table-cell">{emp.email}</TableCell>
                           <TableCell>
                             <Badge className={roleBadgeClass[emp.role] || roleBadgeClass.EMPLOYEE}>
@@ -549,7 +645,6 @@ const Employees = () => {
                           {!isHR && <TableCell className="text-sm hidden md:table-cell">₹{(emp.salary || 0).toLocaleString()}</TableCell>}
                           <TableCell className="hidden lg:table-cell">{formatDate(emp.joining_date)}</TableCell>
                           <TableCell className="hidden xl:table-cell">{formatDate(emp.birth_date)}</TableCell>
-                          <TableCell className="hidden xl:table-cell">{formatDate(emp.ending_date)}</TableCell>
                           <TableCell>
                             <Badge className={emp.status === 'active' ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}>
                               {emp.status}
@@ -569,37 +664,58 @@ const Employees = () => {
                                   </DropdownMenuItem>
                                 ) : (
                                   <>
-                                    {(isAdmin || isHR )  && (
+                                    {canChangePassword && (
                                       <DropdownMenuItem onClick={() => handleChangePassword(emp)}>
                                         <Key className="mr-2 h-4 w-4" />Change Password
                                       </DropdownMenuItem>
                                     )}
-                                    <DropdownMenuItem onClick={() => handleEditInfo(emp)}>
-                                      <Edit className="mr-2 h-4 w-4" />Edit Info
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateRole(emp)}>
-                                      <UserCog className="mr-2 h-4 w-4" />Update Role
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateManager(emp)}>
-                                      <Users className="mr-2 h-4 w-4" />Assign Manager
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateDesignation(emp)}>
-                                      <Briefcase className="mr-2 h-4 w-4" />Assign Designation
-                                    </DropdownMenuItem>
-                                    {(isSuperAdmin || isAdmin) && (
+                                    {canEditEmployee && (
+                                      <DropdownMenuItem onClick={() => handleEditInfo(emp)}>
+                                        <Edit className="mr-2 h-4 w-4" />Edit Info
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canUpdateRole && (
+                                      <DropdownMenuItem onClick={() => handleUpdateRole(emp)}>
+                                        <UserCog className="mr-2 h-4 w-4" />Update Role
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canAssignManager && (
+                                      <DropdownMenuItem onClick={() => handleUpdateManager(emp)}>
+                                        <Users className="mr-2 h-4 w-4" />Assign Manager
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canManageDesignation && (
+                                      <DropdownMenuItem onClick={() => handleUpdateDesignation(emp)}>
+                                        <Briefcase className="mr-2 h-4 w-4" />Assign Designation
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canAdjustLeave && (
                                       <DropdownMenuItem onClick={() => handleAdjustLeave(emp)}>
                                         <Calendar className="mr-2 h-4 w-4" />Adjust Leave Balance
                                       </DropdownMenuItem>
                                     )}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeactivate(emp)}
-                                      className={emp.status === 'active' ? 'text-destructive' : 'text-success'}
-                                    >
-                                      {emp.status === 'active'
-                                        ? <><UserX className="mr-2 h-4 w-4" />Deactivate</>
-                                        : <><UserCheck className="mr-2 h-4 w-4" />Activate</>}
+                                    <DropdownMenuItem onClick={() => handleViewBalance(emp)}>
+                                      <Eye className="mr-2 h-4 w-4" />View Leave Balance
                                     </DropdownMenuItem>
+                                    {canApplyOnBehalf && (
+                                      <DropdownMenuItem onClick={() => handleApplyOnBehalf(emp)}>
+                                        <UserCheck className="mr-2 h-4 w-4 text-primary" />
+                                        <span className="text-primary font-medium">Apply Leave on Behalf</span>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canChangeStatus && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleDeactivate(emp)}
+                                          className={emp.status === 'active' ? 'text-destructive' : 'text-success'}
+                                        >
+                                          {emp.status === 'active'
+                                            ? <><UserX className="mr-2 h-4 w-4" />Deactivate</>
+                                            : <><UserCheck className="mr-2 h-4 w-4" />Activate</>}
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </DropdownMenuContent>
@@ -850,9 +966,23 @@ const Employees = () => {
         </DialogContent>
       </Dialog>
 
+      {/* ── Leave Balance Sheet (view-only slide-over) ──────────────────── */}
+      <LeaveBalanceSheet
+        open={balanceSheetOpen}
+        onOpenChange={(o) => { setBalanceSheetOpen(o); if (!o) setSelectedEmployee(null); }}
+        employeeId={selectedEmployee?.id ?? ''}
+        employeeName={selectedEmployee?.full_name ?? ''}
+      />
+
+      {/* ── Apply Leave on Behalf dialog ────────────────────────────────── */}
+      <ApplyOnBehalfDialog
+        employee={selectedEmployee}
+        open={applyOnBehalfOpen}
+        onOpenChange={(o) => { setApplyOnBehalfOpen(o); if (!o) setSelectedEmployee(null); }}
+      />
+
       {/* Deactivate/Activate Confirmation Dialog — replaces window.confirm */}
-      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
-        <AlertDialogContent>
+      <AlertDialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {selectedEmployee?.status === 'active' ? 'Deactivate' : 'Activate'} Employee

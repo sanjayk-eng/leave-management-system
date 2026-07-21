@@ -130,20 +130,16 @@ export const employeeService = {
     return api.get<{ message: string }>(`/employee/${id}/reports`);
   },
 
-  getMyTeam: async () => {
-    const response = await api.get<{ 
-      message: string; 
-      manager_id: string;
-      team_count: number;
-      team_members: Employee[] 
-    }>('/employee/my-team');
-    return response.team_members;
-  },
-
-  updateDesignation: async (id: string, designationId: string | null) => {
-    return api.patch<{ message: string; employee_id: string; designation_id: string | null }>(
-      `/employee/${id}/designation`,
-      { designation_id: designationId }
-    );
+  updateDesignation: async (employeeId: string, designationId: string | null) => {
+    if (designationId) {
+      // Assign: PATCH /designations/:designationId/assign-employee  { employee_id }
+      return api.patch<{ message: string; employee_id: string; designation_id: string; designation_name: string }>(
+        `/designations/${designationId}/assign-employee`,
+        { employee_id: employeeId }
+      );
+    }
+    // Remove — requires the employee's current designation_id, handled by caller passing it
+    // This path should not be reached via this function — use designationService.removeEmployee instead
+    throw new Error('Use designationService.removeEmployee to clear a designation');
   },
 };

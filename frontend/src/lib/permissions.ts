@@ -36,14 +36,14 @@ export const canApproveLeaves = (userRole: string): boolean => {
   return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.HR, ROLES.MANAGER]);
 };
 
-// Check if user can manage payroll (HR CANNOT manage payroll)
+// Check if user can manage payroll (HR CAN manage payroll)
 export const canManagePayroll = (userRole: string): boolean => {
-  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.HR]);
 };
 
-// Check if user can manage settings (HR CANNOT manage settings)
+// Check if user can manage settings (HR CAN manage settings)
 export const canManageSettings = (userRole: string): boolean => {
-  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.HR]);
 };
 
 // Check if user can manage holidays
@@ -64,12 +64,12 @@ export const canAddLeaveForOthers = (userRole: string, allowManagerAddLeave: boo
   return userRole === ROLES.MANAGER && allowManagerAddLeave;
 };
 
-// Check if user can manage designations (HR CANNOT manage designations)
+// Check if user can manage designations (HR CAN manage designations)
 export const canManageDesignations = (userRole: string): boolean => {
-  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.HR]);
 };
 
-// Check if user can manage assets/equipment (HR CANNOT manage assets)
+// Check if user can manage assets/equipment (HR CAN manage assets)
 export const canManageAssets = (userRole: string): boolean => {
-  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+  return hasPermission(userRole, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.HR]);
 };

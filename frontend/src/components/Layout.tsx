@@ -14,7 +14,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="mb-4">
             <SidebarTrigger />
           </div>
-          <div className="w-full max-w-7xl">
+          <div className="w-full max-w-7xl mx-auto">
             {children}
           </div>
         </main>

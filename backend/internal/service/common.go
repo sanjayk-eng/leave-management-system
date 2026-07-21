@@ -265,49 +265,6 @@ type LeaveTypeData struct {
 	InternEntitlement  *float64
 }
 
-// CalculatedBalance represents the calculated leave balance result
-type CalculatedBalance struct {
-	LeaveTypeID int     `json:"leave_type_id"`
-	LeaveType   string  `json:"leave_type"`
-	Opening     float64 `json:"opening"`
-	Accrued     float64 `json:"accrued"`
-	Used        float64 `json:"used"`
-	Adjusted    float64 `json:"adjusted"`
-	Total       float64 `json:"total"`
-	Available   float64 `json:"available"`
-}
-
-// CalculateLeaveBalances calculates leave balances using map-based approach.
-// Only leave types that have an actual balance row in the DB are returned.
-func CalculateLeaveBalances(leaveTypes []LeaveTypeData, balanceRecords []LeaveBalanceData) []CalculatedBalance {
-	// Build a name lookup: leave_type_id -> leave_type_name
-	nameMap := make(map[int]string, len(leaveTypes))
-	for _, lt := range leaveTypes {
-		nameMap[lt.LeaveTypeID] = lt.LeaveTypeName
-	}
-
-	var calculatedBalances []CalculatedBalance
-
-	// Only iterate over actual DB balance records — no synthetic entries
-	for _, balance := range balanceRecords {
-		name := nameMap[balance.LeaveTypeID]
-		total := balance.Opening
-
-		calculatedBalances = append(calculatedBalances, CalculatedBalance{
-			LeaveTypeID: balance.LeaveTypeID,
-			LeaveType:   name,
-			Opening:     balance.Opening,
-			Accrued:     balance.Accrued,
-			Used:        balance.Used,
-			Adjusted:    balance.Adjusted,
-			Total:       total,
-			Available:   balance.Closing,
-		})
-	}
-
-	return calculatedBalances
-}
-
 // validateLeaveTiming
 
 func CalculateProratedLeave(yearlyLeave int, joinMonth int) int {

@@ -41,3 +41,27 @@ type LeaveBalanceForAdjustment struct {
 	LeaveTypeID int       `db:"leave_type_id"`
 	Year        int       `db:"year"`
 }
+
+type LeaveBalanceAdjustInput struct {
+	LeaveTypeID int     `json:"leave_type_id" binding:"required"`
+	Quantity    float64 `json:"quantity" binding:"required"` // +ve or -ve
+	Reason      string  `json:"reason" binding:"required"`
+}
+
+type LeaveBalanceAdjustResult struct {
+	EmployeeID   uuid.UUID
+	LeaveTypeID  int
+	Year         int
+	OldAdjusted  float64
+	OldClosing   float64
+	NewAdjusted  float64
+	NewClosing   float64
+	QuantityDiff float64
+	Reason       string
+}
+
+type EmployeeBalancesResult struct {
+	EmployeeID uuid.UUID `json:"employee_id"`
+	Year       int       `json:"year"`
+	Balances   []Balance `json:"balances"`
+}

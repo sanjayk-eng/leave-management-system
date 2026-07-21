@@ -15,6 +15,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/repositories"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification/handlers"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification/providers"
@@ -32,7 +33,7 @@ func main() {
 
 	// ── Config + Timezone ─────────────────────────────────────────────────────
 	env := config.LoadENV()
-	
+
 	// Initialize application timezone before any time operations.
 	// This must happen before cron, birthday calculations, or any time.Now() calls.
 	timezone.Initialize(env.TIMEZONE)
@@ -70,23 +71,74 @@ func main() {
 	notifCfg := notification.DefaultConfig() // Workers:3, Buffer:256, MaxRetries:3
 	notifSvc := notification.NewService(processor, notifCfg, logger)
 
+	leaveTimingRepo := repositories.NewLeaveTimingRepository(db)
+	leaveTimingService := service.NewLeaveTimingService(leaveTimingRepo)
+
 	// Start worker pool — graceful shutdown via context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	notifSvc.Start(ctx)
 	defer notifSvc.Stop()
 
+	// ── Audit log system ─────────────────────────────────────────────────────
+	// Follows the same async channel pattern as NotificationSvc.
+	// Worker pool writes to tbl_audit_log; reads bypass the channel entirely.
+	auditRepo := audit.NewRepository(db, logger)
+	auditCfg := audit.DefaultConfig() // Workers:2, Buffer:512
+	auditSvc := audit.NewService(auditRepo, auditCfg, logger)
+	auditSvc.Start(ctx)
+	defer auditSvc.Stop()
+
+	// Partition cron — creates next month's partition on the 25th of each month.
+	// Also runs once on boot to cover the current month.
+	partitionCron := audit.NewPartitionCron(db, logger)
+	partitionCron.Start()
+	defer partitionCron.Stop()
+
+	// role_repo
+	roleRepo := repositories.NewRoleRepository(db)
+	hrbcService := service.NewHrbc(roleRepo)
+
 	// ── Domain services ──────────────────────────────────────────────────────
+
 	leaveApproverFlowRepo := repositories.NewLeaveApprovalFlowRepository(db)
-	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo)
+	leaveApporverService := service.NewLeaveApprovalFlowService(db, leaveApproverFlowRepo, auditSvc)
+
+	employeeRepo := repositories.NewEmployeeRepository(db)
+
+	// ── Leave Balance services ──────────────────────────────────────────────────────
+	leaveBalanceRepo := repositories.NewLeaveBalanceRepository(db)
+	leaveBalanceService := service.NewLeaveBalance(db, hrbcService, *repo, roleRepo, leaveBalanceRepo, employeeRepo)
 
 	leavePolicyRepo := repositories.NewLeavePolicy(db)
-	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leavePolicyRepo, repo)
+	leavePolicyService := service.NewLeavePolicy(db, leaveApporverService, leaveBalanceService, leavePolicyRepo, repo)
 
 	leaveFlowLogRepo := repositories.NewLeaveFlowLog(db)
 	leaveFlowLogService := service.NewLeaveFlowLog(db, leavePolicyService, leaveFlowLogRepo)
 
+	//----------------orgservice
+
 	leaveFlowRepo := repositories.NewLeaveFlow(db)
+	// ── Permission (RBAC) ────────────────────────────────────────────────────
+	permissionRepo := repositories.NewPermissionRepository(db)
+	permissionSvc := service.NewPermissionService(db, permissionRepo)
+
+	holidayRepo := repositories.NewHolidayRepository(db)
+	holidayservice := service.NewHolidayService(holidayRepo)
+
+	// ── Asset  ───────────────────────────────────────────────────────
+	repository := repositories.NewAssetRepository(db)
+	assetService := service.NewAssetService(db, repository)
+
+	// ── Designation  ───────────────────────────────────────────────────────
+	designationRepo := repositories.NewDesignationRepository(db)
+
+	// ── HTTP handler ─────────────────────────────────────────────────────────
+
+	designationSvc := service.NewDesignationService(designationRepo, employeeRepo, roleRepo, hrbcService, auditSvc)
+
+	employeeSvc := service.NewEmployeeService(db, hrbcService, employeeRepo, notifSvc, roleRepo, *repo, permissionSvc, leaveBalanceService)
+
 	leaveFlowService := leaveflow.NewLeaveFlow(
 		db,
 		leaveFlowLogService,
@@ -96,16 +148,23 @@ func main() {
 		leaveFlowLogRepo,
 		repo,
 		notifSvc, // injected — leaveflow publishes events, never touches email directly
+		auditSvc, // injected — leaveflow logs audit entries asynchronously
+		permissionSvc,
+		hrbcService,
+		employeeSvc,
 	)
-	holidayRepo := repositories.NewHolidayRepository(db)
-	holidayservice := service.NewHolidayService(holidayRepo)
-
-	// ── HTTP handler ─────────────────────────────────────────────────────────
 	handlerFunc := handler.NewHandler(
 		env, repo, validator,
 		leaveApporverService, leavePolicyService,
 		leaveFlowService, leaveFlowLogService,
 		notifSvc, holidayservice,
+		permissionSvc,
+		assetService,
+		employeeSvc,
+		auditSvc,
+		designationSvc,
+		leaveBalanceService,
+		leaveTimingService,
 	)
 
 	// ── Cron jobs ────────────────────────────────────────────────────────────

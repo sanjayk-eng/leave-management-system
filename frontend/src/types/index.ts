@@ -99,25 +99,69 @@ export interface Designation {
   description?: string;
 }
 
-export type LogAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
+// ─── Audit / Activity Log (new API) ──────────────────────────────────────────
 
-export type LogComponent = 'EMPLOYEE' | 'LEAVE' | 'PAYROLL' | 'SETTINGS' | 'DESIGNATION' | 'HOLIDAY' | 'AUTH';
-
-export interface SystemLog {
+/** Read-side shape — what the feed API returns per entry. No raw diffs. */
+export interface ActivityEntry {
   id: string;
-  user_name: string;
-  action: LogAction;
-  component: LogComponent;
+  actor_name: string;
+  actor_role: string;
+  component: string;
+  action: string;
+  resource_type: string;
+  resource_name: string;
+  description: string;
   created_at: string;
 }
 
-export interface LogsResponse {
-  data: {
-    logs: SystemLog[];
-    total_count: number;
-    days_filter: number;
-    date_from: string;
-  };
+export interface ActivityPagination {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface ActivityFeedResponse {
+  message: string;
+  pagination: ActivityPagination;
+  data: ActivityEntry[];
+}
+
+export interface ActivityFeedFilter {
+  resource_id?: string;
+  actor_id?: string;
+  component?: string;
+  action?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+// ─── Audit meta — served by GET /api/logs/meta ───────────────────────────────
+
+/** One action entry in the meta catalogue. */
+export interface AuditActionMeta {
+  component: string;
+  action: string;
+  label: string;
+}
+
+/** One component group with its nested actions. */
+export interface AuditComponentMeta {
+  value: string;
+  label: string;
+  actions: AuditActionMeta[];
+}
+
+/** Shape of GET /api/logs/meta response.data */
+export interface AuditMeta {
+  components: AuditComponentMeta[];
+  actions: AuditActionMeta[];
+}
+
+export interface AuditMetaResponse {
+  message: string;
+  data: AuditMeta;
 }
 
 export type LeaveTimingType = 'FIRST_HALF' | 'SECOND_HALF' | 'FULL' | 'EARLY';

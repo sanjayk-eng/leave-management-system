@@ -2,8 +2,8 @@
 -- COMPLETE DATABASE SCHEMA - HR & LEAVE MANAGEMENT SYSTEM
 -- =====================================================
 -- Database: PostgreSQL
--- Last Updated: April 9, 2026
--- Total Tables: 18
+-- Last Updated: July 15, 2026
+-- Total Tables: 26  (includes partitioned audit log tables, added tbl_permission + tbl_role_permission)
 -- =====================================================
 
 -- Enable UUID generation
@@ -15,6 +15,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS Tbl_Role (
     id SERIAL PRIMARY KEY,
     type TEXT NOT NULL UNIQUE,
+    priority INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -28,6 +29,8 @@ INSERT INTO Tbl_Role (type) VALUES
     ('EMPLOYEE'),
     ('INTERN')
 ON CONFLICT (type) DO NOTHING;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_role_priority ON Tbl_Role(priority) WHERE priority > 0;
 
 -- =====================================================
 -- 2. TBL_DESIGNATION - Job Designations
@@ -334,7 +337,62 @@ CREATE TABLE IF NOT EXISTS Tbl_Audit (
 );
 
 -- =====================================================
--- 19. TBL_LEAVE_APPROVAL_FLOW - Approval Workflow Engine
+-- 19. TBL_AUDIT_LOG - Append-only Audit Trail
+-- =====================================================
+CREATE TABLE IF NOT EXISTS tbl_audit_log (
+    id            UUID        NOT NULL DEFAULT gen_random_uuid(),
+    actor_id      UUID        NOT NULL,
+    actor_name    TEXT        NOT NULL,
+    actor_role    TEXT        NOT NULL DEFAULT 'System',
+    component     TEXT        NOT NULL,
+    action        TEXT        NOT NULL,
+    resource_type TEXT        NOT NULL,
+    resource_id   TEXT        NOT NULL,
+    resource_name TEXT        NOT NULL,
+    old_value     JSONB,
+    new_value     JSONB,
+    description   TEXT        NOT NULL,
+    metadata      JSONB,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id, created_at)
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_07
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_08
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+CREATE TABLE IF NOT EXISTS tbl_audit_log_2026_09
+    PARTITION OF tbl_audit_log
+    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource
+    ON tbl_audit_log (resource_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor
+    ON tbl_audit_log (actor_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_component_action
+    ON tbl_audit_log (component, action, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_metadata_gin
+    ON tbl_audit_log USING GIN (metadata);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'lms_app'
+    ) THEN
+        EXECUTE 'REVOKE UPDATE, DELETE ON tbl_audit_log FROM lms_app';
+    END IF;
+END;
+$$;
+
+-- =====================================================
+-- 20. TBL_LEAVE_APPROVAL_FLOW - Approval Workflow Engine
 -- =====================================================
 CREATE TABLE leave_approval_flow (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -375,8 +433,115 @@ CREATE TABLE IF NOT EXISTS Tbl_Leave_Flow (
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL
+    deleted_at TIMESTAMP NULL,
+
+    CONSTRAINT fk_leave_flow_leave
+        FOREIGN KEY (leave_id)
+        REFERENCES Tbl_Leave(id)
+        ON DELETE CASCADE
 );
+
+-- =====================================================
+-- 21. RBAC — Permission Catalogue + Role Matrix
+-- =====================================================
+
+-- Enum: every protectable domain entity
+-- Matches Go constants in pkg/constant/rbsc/resource.go
+CREATE TYPE permission_resource AS ENUM (
+    'employee',
+    'leave',
+    'leave_balance',
+    'leave_report',
+    'payroll',
+    'settings',
+    'designation',
+    'asset',
+    'payslip',
+    'permission',
+    'log'
+);
+
+-- Enum: every allowed operation verb
+-- Matches Go constants in pkg/constant/rbsc/actor.go
+CREATE TYPE permission_action AS ENUM (
+    -- universal CRUD
+    'add', 'read', 'edit', 'remove',
+    -- employee lifecycle
+    'change_password', 'update_role',
+    'assign_manager', 'status_management',
+    'designation_management', 'read_salary',
+    -- leave workflow
+    'apply', 'approve', 'reject', 'cancel', 'withdraw', 'apply_on_behalf',
+    -- balance
+    'adjust',
+    -- payroll
+    'run', 'payroll_managment',
+    -- settings sub-actions
+    'manage_holidays', 'manage_leave_policy', 'manage_leave_flow', 'manage_birthdays',
+    'manage_company_info', 'manage_leave_timing',
+    -- equipment
+    'assign'
+);
+
+-- tbl_permission
+-- System-owned catalogue. Rows are seeded by migration.
+-- No user can INSERT or DELETE rows.
+-- Users only toggle tbl_role_permission.is_enabled.
+CREATE TABLE IF NOT EXISTS tbl_permission (
+    id          SERIAL               PRIMARY KEY,
+    resource    permission_resource  NOT NULL,
+    action      permission_action    NOT NULL,
+    label       TEXT                 NOT NULL,   -- human-readable, shown in UI
+    description TEXT                 NOT NULL,   -- tooltip / help text
+    is_visible  BOOLEAN              NOT NULL DEFAULT TRUE,
+        -- FALSE = internal permission hidden from the UI
+        -- (e.g. permission:read used only by the RBAC middleware)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_permission_resource_action UNIQUE (resource, action)
+);
+
+CREATE INDEX IF NOT EXISTS idx_permission_resource ON tbl_permission(resource);
+CREATE INDEX IF NOT EXISTS idx_permission_action   ON tbl_permission(action);
+CREATE INDEX IF NOT EXISTS idx_permission_visible  ON tbl_permission(is_visible);
+
+-- tbl_role_permission
+-- Bridge table: one row per (role, permission) pair.
+--
+-- Columns:
+--   scope             'own'  — actor acts only on their own records
+--                     'team' — actor acts on records of employees they manage
+--                     'all'  — actor acts on any record in the system
+--   require_seniority  TRUE = actor's role rank must be > target's role rank
+--                      Seniority: SUPERADMIN=6 HR=5 ADMIN=4 MANAGER=3 EMPLOYEE=2 INTERN=1
+--   is_enabled        THE ONLY COLUMN A USER CAN CHANGE (TRUE / FALSE toggle).
+--                     scope and require_seniority require a code migration to change.
+CREATE TABLE IF NOT EXISTS tbl_role_permission (
+    role_id              INT     NOT NULL REFERENCES Tbl_Role(id)       ON DELETE CASCADE,
+    permission_id        INT     NOT NULL REFERENCES tbl_permission(id) ON DELETE CASCADE,
+    scope                TEXT    NOT NULL DEFAULT 'own'
+        CHECK (scope IN ('own', 'team', 'all')),
+    require_seniority    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_perm_role      ON tbl_role_permission(role_id);
+CREATE INDEX IF NOT EXISTS idx_role_perm_permission ON tbl_role_permission(permission_id);
+CREATE INDEX IF NOT EXISTS idx_role_perm_enabled    ON tbl_role_permission(is_enabled);
+
+COMMENT ON TABLE tbl_permission IS
+    'System-owned permission catalogue. Seeded by migration. Users cannot add or remove rows.';
+COMMENT ON TABLE tbl_role_permission IS
+    'Per-role permission assignments. is_enabled is the only user-editable column.';
+COMMENT ON COLUMN tbl_role_permission.scope IS
+    '''own'' = own records only | ''team'' = managed employees | ''all'' = entire system';
+COMMENT ON COLUMN tbl_role_permission.require_seniority IS
+    'TRUE = actor role rank must be strictly higher than the target employee role rank';
+COMMENT ON COLUMN tbl_role_permission.is_enabled IS
+    'THE ONLY USER-EDITABLE FIELD. TRUE = permission granted. FALSE = permission revoked.';
 
 -- =====================================================
 -- INDEXES FOR PERFORMANCE
@@ -395,6 +560,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_employee ON Tbl_Leave(employee_id);
 CREATE INDEX IF NOT EXISTS idx_leave_status ON Tbl_Leave(status);
 CREATE INDEX IF NOT EXISTS idx_leave_dates ON Tbl_Leave(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_leave_type ON Tbl_Leave(leave_type_id);
+CREATE INDEX IF NOT EXISTS idx_leave_type_approval_flow_id ON Tbl_Leave_type(approval_flow_id);
 
 -- Leave balance indexes
 CREATE INDEX IF NOT EXISTS idx_leave_balance_employee ON Tbl_Leave_balance(employee_id);
@@ -403,6 +569,14 @@ CREATE INDEX IF NOT EXISTS idx_leave_balance_year ON Tbl_Leave_balance(year);
 -- Leave accrual log indexes
 CREATE INDEX IF NOT EXISTS idx_accrual_log_employee   ON Tbl_Leave_accrual_log(employee_id);
 CREATE INDEX IF NOT EXISTS idx_accrual_log_month_year ON Tbl_Leave_accrual_log(year, month);
+
+-- Leave flow indexes
+CREATE INDEX IF NOT EXISTS idx_leave_flow_leave_id
+    ON tbl_leave_flow(leave_id);
+CREATE INDEX IF NOT EXISTS idx_leave_flow_deleted_at
+    ON tbl_leave_flow(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_leave_flow_approval_log
+    ON tbl_leave_flow USING GIN (approval_log);
 
 -- Payslip indexes
 CREATE INDEX IF NOT EXISTS idx_payslip_employee ON Tbl_Payslip(employee_id);
@@ -420,6 +594,8 @@ CREATE INDEX IF NOT EXISTS idx_log_created ON tbl_log(created_at);
 -- Audit indexes
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON Tbl_Audit(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON Tbl_Audit(entity, entity_id);
+
+-- Permission indexes are defined inline with the table above.
 
 -- =====================================================
 -- COMMENTS ON TABLES
@@ -443,6 +619,8 @@ COMMENT ON TABLE tbl_equipment_assignment IS 'Equipment assignment history';
 COMMENT ON TABLE Tbl_Company_Settings IS 'Global company configuration and branding';
 COMMENT ON TABLE tbl_log IS 'System activity logging';
 COMMENT ON TABLE Tbl_Audit IS 'Detailed audit trail with JSON metadata';
+COMMENT ON TABLE tbl_permission IS 'System-owned permission catalogue — seeded by migration, read-only from API';
+COMMENT ON TABLE tbl_role_permission IS 'Per-role permission matrix — is_enabled is the only user-editable column';
 
 -- =====================================================
 -- END OF SCHEMA

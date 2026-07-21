@@ -30,18 +30,16 @@ func NewLeaveFlowLog(db *sqlx.DB, leavePolicyService LeavePolicyService, leaveFl
 	}
 }
 
-var roleLevels = map[string]int{
-	"INTERN":     1,
-	"EMPLOYEE":   2,
-	"MANAGER":    3,
-	"HR":         4,
-	"ADMIN":      5,
-	"SUPERADMIN": 6,
+// getRoleLevel fetches the priority of a role from Tbl_Role.
+// Priority is the single source of truth — stored in DB, not hardcoded.
+// Returns 0 if the role is not found (treated as lowest rank).
+func (s *leaveFlowLog) getRoleLevel(role string) int {
+	var priority int
+	_ = s.DB.QueryRowContext(context.Background(),
+		`SELECT priority FROM Tbl_Role WHERE type = $1`, role).Scan(&priority)
+	return priority
 }
 
-func getRoleLevel(role string) int {
-	return roleLevels[role]
-}
 func (s *leaveFlowLog) Create(ctx context.Context, tx *sqlx.Tx, leaveID uuid.UUID, leaveTypeRes *models.LeaveTypeResponse, role string) error {
 
 	approvalLog := s.generateApprovalLog(leaveTypeRes, role)
@@ -128,7 +126,7 @@ func (s *leaveFlowLog) generateApprovalLog(leaveTypeRes *models.LeaveTypeRespons
 		return nil
 	}
 
-	applicantLevel := getRoleLevel(role)
+	applicantLevel := s.getRoleLevel(role)
 
 	approvalLog := make([]models.LeaveFlowStage, 0, len(leaveTypeRes.ApprovalFlow.Flow))
 
@@ -136,7 +134,7 @@ func (s *leaveFlowLog) generateApprovalLog(leaveTypeRes *models.LeaveTypeRespons
 
 		// Include stages at EQUAL level (same role — e.g. a MANAGER above in hierarchy)
 		// and ABOVE. Only strictly lower levels are skipped.
-		if getRoleLevel(string(stage.ApproverRole)) < applicantLevel {
+		if s.getRoleLevel(string(stage.ApproverRole)) < applicantLevel {
 			continue
 		}
 

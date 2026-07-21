@@ -14,6 +14,7 @@ import (
 type HolidayService interface {
 	AddHoliday(ctx context.Context, input *models.Holiday) (string, error)
 	GetAllHolidays(ctx context.Context) ([]models.Holiday, error)
+	GetHolidayByID(ctx context.Context, id string) (*models.Holiday, error)
 	DeleteHoliday(ctx context.Context, id string) error
 }
 type holidayService struct {
@@ -52,6 +53,10 @@ func (s *holidayService) AddHoliday(ctx context.Context, input *models.Holiday) 
 
 func (s *holidayService) GetAllHolidays(ctx context.Context) ([]models.Holiday, error) {
 	return s.Repo.GetAllHolidays(ctx)
+}
+
+func (s *holidayService) GetHolidayByID(ctx context.Context, id string) (*models.Holiday, error) {
+	return s.Repo.GetHolidayByID(ctx, id)
 }
 
 func (s *holidayService) DeleteHoliday(ctx context.Context, id string) error {
