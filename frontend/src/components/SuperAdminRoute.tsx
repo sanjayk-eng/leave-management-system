@@ -17,7 +17,7 @@ export const SuperAdminRoute = ({ children }: SuperAdminRouteProps) => {
   const isSuperAdmin = currentUser.role === 'SUPERADMIN' || currentUser.role === 'SUPER_ADMIN';
   
   if (!isSuperAdmin) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/access-denied" replace />;
   }
 
   return <>{children}</>;

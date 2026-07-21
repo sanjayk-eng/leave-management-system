@@ -17,7 +17,7 @@ export const PayrollRoute = ({ children }: PayrollRouteProps) => {
   const canAccess = canManagePayroll(currentUser.role);
   
   if (!canAccess) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/access-denied" replace />;
   }
 
   return <>{children}</>;

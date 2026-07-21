@@ -71,11 +71,13 @@ export const PAGE_MENU_ITEMS: MenuItemDefinition[] = [
     title: 'Apply Leave',
     url: '/apply-leave',
     icon: Calendar,
+    permissionAll: [{ resource: 'leave', action: 'apply' }],
   },
   {
     title: 'My Leave History',
     url: '/my-leave-history',
     icon: History,
+    
   },
   {
     title: 'Leave Approvals',

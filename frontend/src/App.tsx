@@ -12,7 +12,8 @@ import { AdminRoute } from "@/components/AdminRoute";
 import { PayrollRoute } from "@/components/PayrollRoute";
 import { DesignationRoute } from "@/components/DesignationRoute";
 import { AssetRoute } from "@/components/AssetRoute";
-import { LeaveReportRoute } from "@/components/LeaveReportRoute";
+import { PermissionRoute } from "@/components/PermissionRoute";
+import { AccessDenied } from "@/components/AccessDenied";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
@@ -64,13 +65,41 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               <Route path="/" element={<AuthGuard><Layout><Dashboard /></Layout></AuthGuard>} />
               <Route path="/dashboard" element={<AuthGuard><Layout><Dashboard /></Layout></AuthGuard>} />
-              <Route path="/employees" element={<AuthGuard><Layout><Employees /></Layout></AuthGuard>} />
-              <Route path="/apply-leave" element={<AuthGuard><Layout><ApplyLeave /></Layout></AuthGuard>} />
+              <Route path="/employees" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAll={[{ resource: 'employee', action: 'read' }]}>
+                    <Layout><Employees /></Layout>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
+              <Route path="/apply-leave" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAll={[{ resource: 'leave', action: 'apply' }]}>
+                    <Layout><ApplyLeave /></Layout>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
               <Route path="/my-leave-history" element={<AuthGuard><Layout><MyLeaveHistory /></Layout></AuthGuard>} />
-              <Route path="/approvals" element={<AuthGuard><Layout><Approvals /></Layout></AuthGuard>} />
+              <Route path="/approvals" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAny={[
+                    { resource: 'leave', action: 'approve' },
+                    { resource: 'leave', action: 'reject' },
+                    { resource: 'leave', action: 'read' },
+                  ]}>
+                    <Layout><Approvals /></Layout>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
               <Route path="/calendar" element={<AuthGuard><Layout><LeaveCalendar /></Layout></AuthGuard>} />
               <Route path="/payroll" element={<AuthGuard><PayrollRoute><Layout><Payroll /></Layout></PayrollRoute></AuthGuard>} />
-              <Route path="/payslips" element={<AuthGuard><Layout><Payslips /></Layout></AuthGuard>} />
+              <Route path="/payslips" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAll={[{ resource: 'payslip', action: 'read' }]}>
+                    <Layout><Payslips /></Layout>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
               <Route path="/settings" element={<AuthGuard><AdminRoute><Layout><Settings /></Layout></AdminRoute></AuthGuard>}>
                 <Route index element={<Navigate to="/settings/company" replace />} />
                 <Route path="company" element={<CompanySettings />} />
@@ -83,8 +112,21 @@ const App = () => (
               </Route>
               <Route path="/designations" element={<AuthGuard><DesignationRoute><Layout><Designations /></Layout></DesignationRoute></AuthGuard>} />
               <Route path="/equipment" element={<AuthGuard><AssetRoute><Layout><Equipment /></Layout></AssetRoute></AuthGuard>} />
-              <Route path="/logs" element={<AuthGuard><AdminRoute><Layout><Logs /></Layout></AdminRoute></AuthGuard>} />
-              <Route path="/leave-monthly-report" element={<AuthGuard><LeaveReportRoute><Layout><LeaveMonthlyReport /></Layout></LeaveReportRoute></AuthGuard>} />
+              <Route path="/logs" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAll={[{ resource: 'log', action: 'read' }]}>
+                    <AdminRoute><Layout><Logs /></Layout></AdminRoute>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
+              <Route path="/leave-monthly-report" element={
+                <AuthGuard>
+                  <PermissionRoute permissionAll={[{ resource: 'leave_report', action: 'read' }]}>
+                    <Layout><LeaveMonthlyReport /></Layout>
+                  </PermissionRoute>
+                </AuthGuard>
+              } />
+              <Route path="/access-denied" element={<AccessDenied />} />
               <Route path="*" element={<AuthGuard><NotFound /></AuthGuard>} />
             </Routes>
           </AuthProvider>

@@ -17,7 +17,7 @@ export const AdminRoute = ({ children }: AdminRouteProps) => {
   const isAdmin = canManageSettings(currentUser.role);
   
   if (!isAdmin) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/access-denied" replace />;
   }
 
   return <>{children}</>;

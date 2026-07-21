@@ -17,7 +17,7 @@ export const AssetRoute = ({ children }: AssetRouteProps) => {
   const canAccess = canManageAssets(currentUser.role);
   
   if (!canAccess) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/access-denied" replace />;
   }
 
   return <>{children}</>;
