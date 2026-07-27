@@ -29,8 +29,8 @@ func ValidateUnpaidLeaveApplication(repo *repositories.Repository, tx *sqlx.Tx, 
 		return fmt.Errorf("failed to fetch leave type: %w", err)
 	}
 
-	// Paid leave (non-WFH) — no validation needed
-	if result.IsPaid && !result.IsWorkFromHome {
+	// Paid leave (WFH) — no validation needed
+	if result.IsPaid && result.IsWorkFromHome {
 		return nil
 	}
 
