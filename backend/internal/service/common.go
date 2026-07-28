@@ -30,7 +30,7 @@ func ValidateUnpaidLeaveApplication(repo *repositories.Repository, tx *sqlx.Tx, 
 	}
 
 	// Paid leave (WFH) — no validation needed
-	if result.IsPaid && result.IsWorkFromHome {
+	if result.IsPaid || result.IsWorkFromHome {
 		return nil
 	}
 
