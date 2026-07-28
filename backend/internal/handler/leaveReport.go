@@ -1,12 +1,14 @@
 package handler
 
 import (
+	stderrors "errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
+	"github.com/Zenithive/LeaveManagementSystem/internal/service/leavereport"
 	accessrole "github.com/Zenithive/LeaveManagementSystem/pkg/accessrole"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
@@ -21,10 +23,17 @@ func (h *HandlerFunc) GetLeaveReport(c *gin.Context) {
 
 	req := models.LeaveReportRequest{ReportType: reportType}
 
-	// ── Resolve scope + caller from RBAC context ──────────────────────────
-	// RequirePermission middleware sets "perm_scope"; fall back to "all" for
-	// routes that still use the legacy role middleware.
-	scope := "all"
+	// ── Caller identity: hard-fail, don't proceed with empty CallerID ─────
+	userID, ok := c.Get("user_id")
+	uid, uidOK := userID.(string)
+	if !ok || !uidOK || uid == "" {
+		errors.RespondWithError(c, http.StatusUnauthorized, "Missing caller identity")
+		return
+	}
+	req.CallerID = uid
+
+	// ── Scope: fail-closed default ─────────────────────────────────────────
+	scope := "self"
 	if s, ok := c.Get("perm_scope"); ok {
 		if sv, ok := s.(string); ok && sv != "" {
 			scope = sv
@@ -32,134 +41,110 @@ func (h *HandlerFunc) GetLeaveReport(c *gin.Context) {
 	}
 	req.Scope = scope
 
-	if userID, ok := c.Get("user_id"); ok {
-		if uid, ok := userID.(string); ok {
-			req.CallerID = uid
-		}
-	}
-
 	switch reportType {
 	case "monthly":
-		monthStr := c.Query("month")
-		yearStr := c.Query("year")
-		if monthStr == "" || yearStr == "" {
-			errors.RespondWithError(c, http.StatusBadRequest, "Monthly report requires: month, year")
-			return
-		}
-		month, err := strconv.Atoi(monthStr)
+		month, err := strconv.Atoi(c.Query("month"))
 		if err != nil || month < 1 || month > 12 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid month. Must be between 1-12")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing month. Must be between 1-12")
 			return
 		}
-		year, err := strconv.Atoi(yearStr)
+		year, err := strconv.Atoi(c.Query("year"))
 		if err != nil || year < 2000 || year > 2100 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid year. Must be between 2000-2100")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing year. Must be between 2000-2100")
 			return
 		}
-		req.Month = month
-		req.Year = year
+		req.Month, req.Year = month, year
 
 	case "yearly":
-		yearStr := c.Query("year")
-		if yearStr == "" {
-			errors.RespondWithError(c, http.StatusBadRequest, "Yearly report requires: year")
-			return
-		}
-		year, err := strconv.Atoi(yearStr)
+		year, err := strconv.Atoi(c.Query("year"))
 		if err != nil || year < 2000 || year > 2100 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid year. Must be between 2000-2100")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing year. Must be between 2000-2100")
 			return
 		}
 		req.Year = year
 
 	case "range":
-		fromMonthStr := c.Query("from_month")
-		fromYearStr := c.Query("from_year")
-		toMonthStr := c.Query("to_month")
-		toYearStr := c.Query("to_year")
-
-		if fromMonthStr == "" || fromYearStr == "" || toMonthStr == "" || toYearStr == "" {
-			errors.RespondWithError(c, http.StatusBadRequest, "Range report requires: from_month, from_year, to_month, to_year")
-			return
-		}
-
-		fromMonth, err := strconv.Atoi(fromMonthStr)
+		fromMonth, err := strconv.Atoi(c.Query("from_month"))
 		if err != nil || fromMonth < 1 || fromMonth > 12 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid from_month. Must be between 1-12")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing from_month. Must be between 1-12")
 			return
 		}
-		fromYear, err := strconv.Atoi(fromYearStr)
+		fromYear, err := strconv.Atoi(c.Query("from_year"))
 		if err != nil || fromYear < 2000 || fromYear > 2100 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid from_year. Must be between 2000-2100")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing from_year. Must be between 2000-2100")
 			return
 		}
-		toMonth, err := strconv.Atoi(toMonthStr)
+		toMonth, err := strconv.Atoi(c.Query("to_month"))
 		if err != nil || toMonth < 1 || toMonth > 12 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid to_month. Must be between 1-12")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing to_month. Must be between 1-12")
 			return
 		}
-		toYear, err := strconv.Atoi(toYearStr)
+		toYear, err := strconv.Atoi(c.Query("to_year"))
 		if err != nil || toYear < 2000 || toYear > 2100 {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid to_year. Must be between 2000-2100")
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid or missing to_year. Must be between 2000-2100")
 			return
 		}
-
-		req.FromMonth = fromMonth
-		req.FromYear = fromYear
-		req.ToMonth = toMonth
-		req.ToYear = toYear
+		req.FromMonth, req.FromYear = fromMonth, fromYear
+		req.ToMonth, req.ToYear = toMonth, toYear
 
 	default:
 		errors.RespondWithError(c, http.StatusBadRequest, "Invalid report_type. Must be: monthly, yearly, or range")
 		return
 	}
 
-	// 4️ Parse optional filter / sort params
+	// ── Filters / sort ──────────────────────────────────────────────────
 	req.Search = strings.TrimSpace(c.Query("search"))
-	req.Role = strings.TrimSpace(c.Query("role"))
-	req.SortBy = strings.TrimSpace(c.Query("sort_by"))
-	req.SortOrder = strings.TrimSpace(c.Query("sort_order"))
-
-	// Validate role filter if provided
-	if req.Role != "" {
-		validRoles := map[string]bool{
-			accessrole.ROLE_EMPLOYEE:    true,
-			accessrole.ROLE_INTERN:      true,
-			accessrole.ROLE_HR:          true,
-			accessrole.ROLE_ADMIN:       true,
-			accessrole.ROLE_SUPER_ADMIN: true,
-			accessrole.ROLE_MANAGER:     true,
-		}
-		if !validRoles[strings.ToUpper(req.Role)] {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid role filter. Must be: EMPLOYEE, INTERN, HR, ADMIN, SUPERADMIN, MANAGER")
-			return
-		}
-		req.Role = strings.ToUpper(req.Role)
-	}
-
-	// Validate sort_by if provided
-	if req.SortBy != "" {
-		validSortFields := map[string]bool{
-			"name": true, "email": true, "role": true,
-			"total_leaves": true, "paid_leaves": true,
-			"unpaid_leaves": true, "early_leaves": true,
-			"accrued_leaves": true, "balance_leaves": true, "used_leaves": true,
-		}
-		if !validSortFields[req.SortBy] {
-			errors.RespondWithError(c, http.StatusBadRequest, "Invalid sort_by. Must be: name, email, role, total_leaves, paid_leaves, unpaid_leaves, early_leaves, accrued_leaves, balance_leaves, used_leaves")
-			return
-		}
-	}
-
-	// 5️ Call service layer
-	response, err := h.LeaveReportSvc.GetLeaveReport(&req)
-	if err != nil {
-		slog.Error("GetLeaveReport service error", "err", err)
-		errors.RespondWithError(c, http.StatusInternalServerError, "Failed to fetch leave report: "+err.Error())
+	if len(req.Search) > 100 {
+		errors.RespondWithError(c, http.StatusBadRequest, "search query too long (max 100 chars)")
 		return
 	}
 
-	// 6️ Return success
+	req.Role = strings.TrimSpace(c.Query("role"))
+	if req.Role != "" {
+		validRoles := map[string]bool{
+			accessrole.ROLE_EMPLOYEE: true, accessrole.ROLE_INTERN: true,
+			accessrole.ROLE_HR: true, accessrole.ROLE_ADMIN: true,
+			accessrole.ROLE_SUPER_ADMIN: true, accessrole.ROLE_MANAGER: true,
+		}
+		req.Role = leavereport.NormalizeRole(req.Role)
+		if !validRoles[req.Role] {
+			errors.RespondWithError(c, http.StatusBadRequest, "Invalid role filter. Must be: EMPLOYEE, INTERN, HR, ADMIN, SUPER_ADMIN, MANAGER")
+			return
+		}
+	}
+
+	req.SortBy = strings.TrimSpace(c.Query("sort_by"))
+	req.SortOrder = strings.TrimSpace(c.Query("sort_order"))
+	if err := leavereport.ValidateSortBy(req.SortBy); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := leavereport.ValidateSortOrder(req.SortOrder); err != nil {
+		errors.RespondWithError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// ── Service call ────────────────────────────────────────────────────
+	response, err := h.LeaveReportSvc.GetLeaveReport(c.Request.Context(), &req)
+	if err != nil {
+		switch {
+		case stderrors.Is(err, leavereport.ErrInvalidReportType),
+			stderrors.Is(err, leavereport.ErrInvalidDateRange),
+			stderrors.Is(err, leavereport.ErrRangeTooLarge),
+			stderrors.Is(err, leavereport.ErrInvalidSortBy),
+			stderrors.Is(err, leavereport.ErrInvalidSortOrder):
+			errors.RespondWithError(c, http.StatusBadRequest, err.Error())
+
+		case stderrors.Is(err, leavereport.ErrMissingCaller):
+			errors.RespondWithError(c, http.StatusUnauthorized, err.Error())
+
+		default:
+			slog.Error("GetLeaveReport service error", "err", err)
+			errors.RespondWithError(c, http.StatusInternalServerError, "Failed to fetch leave report")
+		}
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Leave report fetched successfully",
 		"data":    response,

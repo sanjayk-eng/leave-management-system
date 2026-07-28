@@ -6,6 +6,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	authsvc "github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
+	leavereport "github.com/Zenithive/LeaveManagementSystem/internal/service/leavereport"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/actor"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
@@ -23,7 +24,7 @@ type HandlerFunc struct {
 	Validator                *validator.Validate
 	AuthSvc                  authsvc.AuthService
 	LeaveAccrual             *service.LeaveAccrualService
-	LeaveReportSvc           *service.LeaveReportService
+	LeaveReportSvc           *leavereport.Service
 	LeaveTypeSvc             *service.LeaveTypeService
 	LeaveApproverFlowService service.LeaveApprovalFlowService
 	LeavePolicyService       service.LeavePolicyService
@@ -64,7 +65,7 @@ func NewHandler(
 		Query:                    query,
 		Validator:                validator,
 		AuthSvc:                  authsvc.New(query, env.SECRET_KEY), // created once here
-		LeaveReportSvc:           service.NewLeaveReportService(query),
+		LeaveReportSvc:           leavereport.NewService(query),
 		LeaveTypeSvc:             service.NewLeaveTypeService(query),
 		LeaveApproverFlowService: leaveApproverFlowService,
 		LeavePolicyService:       leavePolicyService,
