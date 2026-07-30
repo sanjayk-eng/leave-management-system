@@ -10,10 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MonthSelect, YearSelect } from "@/components/ui/MonthYearSelect";
+import { getMonthLabel } from "@/lib/dateConstants";
 import { DollarSign, PlayCircle, CheckCircle, Download } from "lucide-react";
-import { MONTHS, YEARS } from "@/lib/dateConstants";
-import { toast } from "sonner";
+import { MONTHS, YEARS } from "@/lib/dateConstants";import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,8 +32,8 @@ const Payroll = () => {
   const { runPayroll, isRunning, payrollPreview, finalizePayroll, isFinalizing, downloadPayslip } = usePayroll();
   
   const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1));
-  const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [showRunDialog, setShowRunDialog] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [payslipIds, setPayslipIds] = useState<string[]>([]);
@@ -41,7 +41,7 @@ const Payroll = () => {
   const handleRunPayroll = () => {
     setPayslipIds([]); // Reset payslip IDs when running new payroll
     runPayroll(
-      { month: parseInt(selectedMonth), year: parseInt(selectedYear) },
+      { month: selectedMonth, year: selectedYear },
       {
         onSuccess: () => {
           setShowRunDialog(false);
@@ -179,32 +179,18 @@ const Payroll = () => {
         <CardContent>
           <div className="flex gap-4 mb-6">
             <div className="flex-1">
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((month) => (
-                    <SelectItem key={month.value} value={String(month.value)}>
-                      {month.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MonthSelect
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                className="w-full"
+              />
             </div>
             <div className="flex-1">
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {YEARS.map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <YearSelect
+                value={selectedYear}
+                onChange={setSelectedYear}
+                className="w-full"
+              />
             </div>
           </div>
 
@@ -287,7 +273,7 @@ const Payroll = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Run Payroll</AlertDialogTitle>
             <AlertDialogDescription>
-              This will calculate salaries for {MONTHS.find(m => String(m.value) === selectedMonth)?.label} {selectedYear} based on attendance and leave data.
+              This will calculate salaries for {getMonthLabel(selectedMonth)} {selectedYear} based on attendance and leave data.
               Are you sure you want to proceed?
             </AlertDialogDescription>
           </AlertDialogHeader>

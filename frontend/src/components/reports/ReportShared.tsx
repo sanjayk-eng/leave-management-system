@@ -4,39 +4,20 @@
  * and LeavePolicyReport (and any future report pages).
  */
 import React from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { REPORT_MONTHS, REPORT_YEARS } from '@/lib/reportConstants';
 
-// ── MonthYearSelect ───────────────────────────────────────────────────────────
-
-export interface MonthYearSelectProps {
-  month: number;
-  year: number;
-  onMonthChange: (v: number) => void;
-  onYearChange:  (v: number) => void;
-}
-
-export const MonthYearSelect: React.FC<MonthYearSelectProps> = ({
-  month, year, onMonthChange, onYearChange,
-}) => (
-  <>
-    <Select value={String(month)} onValueChange={(v) => onMonthChange(Number(v))}>
-      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {REPORT_MONTHS.map((m) => (
-          <SelectItem key={m.value} value={String(m.value)}>{m.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-    <Select value={String(year)} onValueChange={(v) => onYearChange(Number(v))}>
-      <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {REPORT_YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-      </SelectContent>
-    </Select>
-  </>
-);
+// MonthYearSelect / YearSelect / MonthSelect live in the canonical location.
+// Re-export from here so existing report imports don't need to change.
+export {
+  MonthYearSelect,
+  YearSelect,
+  MonthSelect,
+} from '@/components/ui/MonthYearSelect';
+export type {
+  MonthYearSelectProps,
+  YearSelectProps,
+  MonthSelectProps,
+} from '@/components/ui/MonthYearSelect';
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
 
@@ -88,18 +69,4 @@ export const StatCardsSkeleton: React.FC<StatCardsSkeletonProps> = ({
   </div>
 );
 
-// ── YearSelect ────────────────────────────────────────────────────────────────
 
-export interface YearSelectProps {
-  value: number;
-  onChange: (v: number) => void;
-}
-
-export const YearSelect: React.FC<YearSelectProps> = ({ value, onChange }) => (
-  <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
-    <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-    <SelectContent>
-      {REPORT_YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-    </SelectContent>
-  </Select>
-);

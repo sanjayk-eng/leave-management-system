@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MonthSelect, YearSelect } from '@/components/ui/MonthYearSelect';
 import { RefreshCw, Calendar } from 'lucide-react';
-import { MONTHS, YEARS, getMonthLabel } from '@/lib/dateConstants';
+import { getMonthLabel } from '@/lib/dateConstants';
 
 interface LeaveFilterProps {
   currentMonth: number;
@@ -24,14 +24,6 @@ export const LeaveFilter = ({
   loading,
   totalCount 
 }: LeaveFilterProps) => {
-  const handleMonthChange = (month: string) => {
-    onFilterChange(parseInt(month), currentYear);
-  };
-
-  const handleYearChange = (year: string) => {
-    onFilterChange(currentMonth, parseInt(year));
-  };
-
   const goToCurrentMonth = () => {
     const now = new Date();
     onFilterChange(now.getMonth() + 1, now.getFullYear());
@@ -47,37 +39,21 @@ export const LeaveFilter = ({
               <Calendar className="h-4 w-4" />
               Filter by Month
             </Label>
-            <Select value={currentMonth.toString()} onValueChange={handleMonthChange} disabled={loading}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Select month" />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((month) => (
-                  <SelectItem key={month.value} value={month.value.toString()}>
-                    {month.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MonthSelect
+              value={currentMonth}
+              onChange={(m) => onFilterChange(m, currentYear)}
+              disabled={loading}
+            />
           </div>
 
           {/* Year Filter */}
           <div className="flex flex-col gap-2">
-            <Label className="text-sm font-medium">
-              Filter by Year
-            </Label>
-            <Select value={currentYear.toString()} onValueChange={handleYearChange} disabled={loading}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Select year" />
-              </SelectTrigger>
-              <SelectContent>
-                {YEARS.map((year) => (
-                  <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-sm font-medium">Filter by Year</Label>
+            <YearSelect
+              value={currentYear}
+              onChange={(y) => onFilterChange(currentMonth, y)}
+              disabled={loading}
+            />
           </div>
 
           {/* Quick Actions */}
