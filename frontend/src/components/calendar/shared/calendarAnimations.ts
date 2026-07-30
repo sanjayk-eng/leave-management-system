@@ -54,6 +54,17 @@ export const calendarAnimations = `
     }
   }
   
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   @keyframes expandWidth {
     from {
       width: 0;

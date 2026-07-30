@@ -212,3 +212,34 @@ export const formatDateDisplay = (dateStr: string): string => {
     year: 'numeric'
   });
 };
+
+// Shared status badge class helper (single source of truth)
+export const getStatusBadgeClass = (status: string): string => {
+  switch (status.toUpperCase()) {
+    case 'APPROVED':           return 'bg-green-600 text-white hover:bg-green-700';
+    case 'PENDING':            return 'bg-yellow-500 text-white hover:bg-yellow-600';
+    case 'REJECTED':           return 'bg-gray-500 text-white hover:bg-gray-600';
+    case 'CANCELLED':          return 'bg-orange-500 text-white hover:bg-orange-600';
+    case 'WITHDRAWN':          return 'bg-amber-600 text-white hover:bg-amber-700';
+    case 'WITHDRAWAL_PENDING': return 'bg-purple-500 text-white hover:bg-purple-600';
+    default:                   return 'bg-gray-400 text-white';
+  }
+};
+
+// Human-readable status labels (single source of truth)
+export const STATUS_LABELS: Record<string, string> = {
+  WITHDRAWAL_PENDING: 'Withdrawal Pending',
+};
+
+// Leave type legend entries for the calendar legend UI
+export const LEAVE_TYPE_LEGEND = [
+  { name: 'Casual Leave (CL)',     color: 'bg-blue-500',   category: 'Leave Types' },
+  { name: 'Work From Home (WFH)',  color: 'bg-purple-500', category: 'Leave Types' },
+  { name: 'Other Approved',        color: 'bg-green-500',  category: 'Leave Types' },
+  { name: 'Pending',               color: 'bg-yellow-500', category: 'Status'      },
+  { name: 'Cancelled',             color: 'bg-orange-500', category: 'Status'      },
+  { name: 'Withdrawn',             color: 'bg-amber-600',  category: 'Status'      },
+  { name: 'Rejected',              color: 'bg-gray-500',   category: 'Status'      },
+  { name: 'Public Holiday',        color: 'bg-rose-600',   category: 'Special'     },
+  { name: 'Weekend',               color: 'bg-gray-300',   category: 'Special'     },
+] as const;

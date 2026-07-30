@@ -18,6 +18,7 @@ import { ApprovalLogDrawer } from "@/components/leave/ApprovalLogDrawer";
 import { AppliedByCellRenderer } from "@/components/leave/LeaveCellRenderers";
 import { LeaveResponse } from "@/services/leaveService";
 import { Loader2, X, RefreshCw, Edit, Save, Calendar, Clock, Eye } from "lucide-react";
+import { MONTHS, YEARS_EXTENDED } from "@/lib/dateConstants";
 import { ColDef, ICellRendererParams } from "ag-grid-community";
 import {
   AlertDialog,
@@ -324,17 +325,7 @@ const MyLeaveHistory = () => {
     },
   ], [ActionsCellRenderer, AppliedDateCellRenderer]);
 
-  const months = [
-    { value: 1, label: "January" }, { value: 2, label: "February" }, { value: 3, label: "March" },
-    { value: 4, label: "April" }, { value: 5, label: "May" }, { value: 6, label: "June" },
-    { value: 7, label: "July" }, { value: 8, label: "August" }, { value: 9, label: "September" },
-    { value: 10, label: "October" }, { value: 11, label: "November" }, { value: 12, label: "December" },
-  ];
-
-  const years = [];
-  for (let i = currentDate.getFullYear() - 2; i <= currentDate.getFullYear() + 2; i++) {
-    years.push(i);
-  }
+  const { sortBy, sortDir, handleSort } = useTableSort<SortCol>();
 
   return (
     <div className="space-y-6">
@@ -356,7 +347,7 @@ const MyLeaveHistory = () => {
               <Select value={selectedMonth.toString()} onValueChange={handleMonthChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {months.map((m) => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}
+                  {MONTHS.map((m) => <SelectItem key={m.value} value={m.value.toString()}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -365,7 +356,7 @@ const MyLeaveHistory = () => {
               <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {years.map((y) => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
+                  {YEARS_EXTENDED.map((y) => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -387,7 +378,7 @@ const MyLeaveHistory = () => {
         <CardHeader>
           <CardTitle>Leave Applications</CardTitle>
           <Badge variant="secondary" className="text-sm">
-            {total} {total === 1 ? 'application' : 'applications'} in {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+            {total} {total === 1 ? 'application' : 'applications'} in {MONTHS.find(m => m.value === selectedMonth)?.label} {selectedYear}
           </Badge>
         </CardHeader>
         <CardContent>

@@ -1,26 +1,17 @@
-// Shared constants used by all leave report pages.
+/**
+ * reportConstants.ts
+ *
+ * Report-page constants and helpers.
+ * Month/year primitives are re-exported from dateConstants — do not redefine them here.
+ */
 
-export const REPORT_MONTHS = [
-  { value: 1,  label: 'January'   },
-  { value: 2,  label: 'February'  },
-  { value: 3,  label: 'March'     },
-  { value: 4,  label: 'April'     },
-  { value: 5,  label: 'May'       },
-  { value: 6,  label: 'June'      },
-  { value: 7,  label: 'July'      },
-  { value: 8,  label: 'August'    },
-  { value: 9,  label: 'September' },
-  { value: 10, label: 'October'   },
-  { value: 11, label: 'November'  },
-  { value: 12, label: 'December'  },
-];
-
-export const REPORT_CURRENT_YEAR  = new Date().getFullYear();
-export const REPORT_CURRENT_MONTH = new Date().getMonth() + 1;
-export const REPORT_YEARS = Array.from(
-  { length: REPORT_CURRENT_YEAR - 2019 },
-  (_, i) => 2020 + i,
-);
+export {
+  MONTHS       as REPORT_MONTHS,
+  YEARS        as REPORT_YEARS,
+  CURRENT_YEAR  as REPORT_CURRENT_YEAR,
+  CURRENT_MONTH as REPORT_CURRENT_MONTH,
+  getMonthLabel as monthLabel,
+} from './dateConstants';
 
 export const REPORT_ROLES = ['EMPLOYEE', 'INTERN', 'MANAGER', 'HR', 'ADMIN', 'SUPERADMIN'];
 
@@ -35,9 +26,6 @@ export const ROLE_BADGE_CLASSES: Record<string, string> = {
 
 export const roleBadgeClass = (role: string): string =>
   ROLE_BADGE_CLASSES[role] ?? 'bg-gray-100 text-gray-700 border-gray-200';
-
-export const monthLabel = (m: number): string =>
-  REPORT_MONTHS.find((x) => x.value === m)?.label ?? '';
 
 /** Format a leave/day number: null for 0, integer string, or 1-decimal string. */
 export const fmtLeaveNum = (n: number): string | null =>
@@ -58,7 +46,7 @@ export const POLICY_COLOURS = [
 /** Returns the Monday–Sunday bounds of the current ISO week as month/year pairs. */
 export function currentWeekBounds() {
   const now  = new Date();
-  const day  = now.getDay(); // 0 = Sun
+  const day  = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   const mon  = new Date(now);
   mon.setDate(now.getDate() + diff);

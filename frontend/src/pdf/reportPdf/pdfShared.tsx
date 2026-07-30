@@ -12,6 +12,7 @@
  */
 
 import { StyleSheet, View, Text } from "@react-pdf/renderer";
+import { MONTHS_INDEXED } from "@/lib/dateConstants";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. DESIGN TOKENS
@@ -217,10 +218,8 @@ export const pdfStyles = StyleSheet.create({
 // 3. SHARED HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const PDF_MONTHS = [
-  "", "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-] as const;
+// Re-export so PDF templates only need to import from pdfShared.
+export { MONTHS_INDEXED as PDF_MONTHS };
 
 /** Format a leave number: "—" for zero, integer or 1-decimal string otherwise. */
 export function fmtPdf(n: number): string {
@@ -235,10 +234,10 @@ export function buildPeriodLabel(d: {
   to_month: number;   to_year: number;
 }): string {
   if (d.report_type === "monthly")
-    return `${PDF_MONTHS[d.from_month]} ${d.from_year}`;
+    return `${MONTHS_INDEXED[d.from_month]} ${d.from_year}`;
   if (d.report_type === "yearly")
     return String(d.from_year);
-  return `${PDF_MONTHS[d.from_month]} ${d.from_year} – ${PDF_MONTHS[d.to_month]} ${d.to_year}`;
+  return `${MONTHS_INDEXED[d.from_month]} ${d.from_year} – ${MONTHS_INDEXED[d.to_month]} ${d.to_year}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

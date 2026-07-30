@@ -2,7 +2,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Badge } from "@/components/ui/badge";
 import { User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Leave, getLeaveColor } from "./calendarUtils";
+import { Leave, getLeaveColor, getStatusBadgeClass, STATUS_LABELS } from "./calendarUtils";
 import { LeaveDetailsContent } from "./LeaveDetailsContent";
 
 interface LeaveHoverCardProps {
@@ -12,24 +12,6 @@ interface LeaveHoverCardProps {
   onMobileClick?: () => void;
   openDelay?: number;
 }
-
-// Map status → badge style
-const getStatusBadgeClass = (status: string): string => {
-  switch (status.toUpperCase()) {
-    case 'APPROVED':           return 'bg-green-600 text-white hover:bg-green-700';
-    case 'PENDING':            return 'bg-yellow-500 text-white hover:bg-yellow-600';
-    case 'REJECTED':           return 'bg-gray-500 text-white hover:bg-gray-600';
-    case 'CANCELLED':          return 'bg-orange-500 text-white hover:bg-orange-600';
-    case 'WITHDRAWN':          return 'bg-amber-600 text-white hover:bg-amber-700';
-    case 'WITHDRAWAL_PENDING': return 'bg-purple-500 text-white hover:bg-purple-600';
-    default:                   return 'bg-gray-400 text-white';
-  }
-};
-
-// Human-readable status labels
-const STATUS_LABELS: Record<string, string> = {
-  WITHDRAWAL_PENDING: 'Withdrawal Pending',
-};
 
 export const LeaveHoverCard = ({ 
   leave, 

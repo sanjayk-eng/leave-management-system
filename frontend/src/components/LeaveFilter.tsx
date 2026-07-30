@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RefreshCw, Calendar } from 'lucide-react';
+import { MONTHS, YEARS, getMonthLabel } from '@/lib/dateConstants';
 
 interface LeaveFilterProps {
   currentMonth: number;
@@ -14,24 +15,6 @@ interface LeaveFilterProps {
   totalCount: number;
 }
 
-const MONTHS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-];
-
-// Generate years from 2020 to current year + 2
-const currentYear = new Date().getFullYear();
-const YEARS = Array.from({ length: currentYear - 2020 + 3 }, (_, i) => 2020 + i);
 
 export const LeaveFilter = ({ 
   currentMonth, 
@@ -52,11 +35,6 @@ export const LeaveFilter = ({
   const goToCurrentMonth = () => {
     const now = new Date();
     onFilterChange(now.getMonth() + 1, now.getFullYear());
-  };
-
-  const getMonthLabel = (month: number) => {
-    const monthObj = MONTHS.find(m => m.value === month);
-    return monthObj ? monthObj.label : 'Unknown';
   };
 
   return (

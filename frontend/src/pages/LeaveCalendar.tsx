@@ -15,19 +15,7 @@ import { useLeaveCalendar } from "@/hooks/useLeaves";
 import { useCalendarBirthdays } from "@/hooks/useBirthday";
 import { MonthlyCalendar, WeeklyCalendar, HolidaysList } from "@/components/calendar";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
-
-const LEAVE_TYPE_COLORS = [
-  { name: "Casual Leave (CL)", color: "bg-blue-500", category: "Leave Types" },
- // { name: "Sick Leave (SL)", color: "bg-red-500", category: "Leave Types" },
-  { name: "Work From Home (WFH)", color: "bg-purple-500", category: "Leave Types" },
-  { name: "Other Approved", color: "bg-green-500", category: "Leave Types" },
-  { name: "Pending", color: "bg-yellow-500", category: "Status" },
-  { name: "Cancelled", color: "bg-orange-500", category: "Status" },
-  { name: "Withdrawn", color: "bg-amber-600", category: "Status" },
-  { name: "Rejected", color: "bg-gray-500", category: "Status" },
-  { name: "Public Holiday", color: "bg-rose-600", category: "Special" },
-  { name: "Weekend", color: "bg-gray-300", category: "Special" },
-];
+import { LEAVE_TYPE_LEGEND } from "@/components/calendar/shared/calendarUtils";
 
 const LeaveCalendar = () => {
   const { holidays, isLoading: holidaysLoading } = useHolidays();
@@ -237,7 +225,7 @@ const LeaveCalendar = () => {
             <div>
               <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Leave Types (Approved)</h4>
               <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Leave Types").map((type, index) => (
+                {LEAVE_TYPE_LEGEND.filter(t => t.category === "Leave Types").map((type, index) => (
                   <div 
                     key={index}
                     className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
@@ -253,7 +241,7 @@ const LeaveCalendar = () => {
             <div>
               <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Leave Status</h4>
               <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Status").map((type, index) => (
+                {LEAVE_TYPE_LEGEND.filter(t => t.category === "Status").map((type, index) => (
                   <div 
                     key={index}
                     className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
@@ -269,7 +257,7 @@ const LeaveCalendar = () => {
             <div>
               <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Special Days</h4>
               <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Special").map((type, index) => (
+                {LEAVE_TYPE_LEGEND.filter(t => t.category === "Special").map((type, index) => (
                   <div 
                     key={index}
                     className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
