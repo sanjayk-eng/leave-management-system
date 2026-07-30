@@ -126,7 +126,7 @@ export const MonthlyCalendar = ({
                 // fills
                 "bg-background",
                 !cell.dayNumber && "bg-muted/20",
-                cell.isWeekend && cell.dayNumber && "bg-muted/[0.07]",
+                cell.isWeekend && cell.dayNumber && "bg-muted/[0.07] shadow-[inset_0_0_0_1px_hsl(var(--muted-foreground)/0.08)]",
                 holiday && "bg-rose-50/70 dark:bg-rose-950/20",
                 // today — ring inside the cell, no outline trick
                 isToday && "bg-primary/[0.04] dark:bg-primary/10"
