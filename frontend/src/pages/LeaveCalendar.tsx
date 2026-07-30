@@ -102,35 +102,39 @@ const LeaveCalendar = () => {
           <div className="flex flex-col gap-3 sm:gap-4">
             {/* Date Navigation */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 sm:gap-2">
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={goToPrevious}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </Button>
-                <Button 
-                  variant="outline" 
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={goToPrevious}
+                className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
+              >
+                <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
+
+              {/* Center: current date range + today shortcut */}
+              <div className="flex flex-col items-center gap-1 min-w-0">
+                <div className="text-sm sm:text-base lg:text-lg font-semibold flex items-center gap-1 sm:gap-2">
+                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-primary shrink-0" />
+                  <span className="truncate">{formatDateRange()}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={goToToday}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors text-[11px] sm:text-xs lg:text-sm h-8 sm:h-9 lg:h-10 px-2 sm:px-3 lg:px-4"
+                  className="h-6 px-2 text-[10px] sm:text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                 >
-                  Today
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={goToNext}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
-                >
-                  <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Go to Today
                 </Button>
               </div>
-              <div className="text-xs sm:text-sm lg:text-lg font-semibold flex items-center gap-1 sm:gap-2 min-w-0">
-                <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-primary shrink-0" />
-                <span className="truncate">{formatDateRange()}</span>
-              </div>
+
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={goToNext}
+                className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
+              >
+                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
             </div>
             
             {/* View Controls */}
