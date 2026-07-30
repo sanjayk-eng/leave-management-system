@@ -1,248 +1,99 @@
 import { View, Text } from "@react-pdf/renderer";
 import type { LeaveReportResponse } from "@/types";
-import { stylesPDF } from "./PdfStyle";
+import {
+  pdfStyles as s,
+  fmtPdf,
+  buildPeriodLabel,
+  PdfHeader,
+  PdfInfoBox,
+  PdfStatCards,
+  PdfFooter,
+  PdfEmptyState,
+} from "./pdfShared";
 
-type Props = {
-  data: LeaveReportResponse["data"];
+type Props = { data: LeaveReportResponse["data"] };
+
+// Column widths — must sum to ≤ 100 %
+const COL = {
+  name:   { width: "18%", fontSize: 8.5, fontWeight: "bold" as const, color: "#111827", paddingHorizontal: 2, lineHeight: 1.3 },
+  email:  { width: "24%", fontSize: 7.8, color: "#4b5563", paddingHorizontal: 2, lineHeight: 1.3 },
+  role:   { width: "12%", fontSize: 7.8, textAlign: "center" as const, color: "#6b7280", fontWeight: "bold" as const },
+  number: { width: "9%",  fontSize: 8,   textAlign: "center" as const, color: "#1f2937", fontWeight: "bold" as const },
 };
-
-const MONTHS = [
-  "",
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 export const LeaveReportTemplate = ({ data }: Props) => {
   const generatedAt = new Date().toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
+    dateStyle: "medium", timeStyle: "short",
   });
 
-  // ── Summary ─────────────────────────────
-  const totalAccrued =
-    data.records?.reduce(
-      (sum, emp) => sum + emp.accrued_leaves,
-      0
-    ) || 0;
+  const totalAccrued = data.records?.reduce((s, e) => s + e.accrued_leaves, 0) ?? 0;
+  const totalUsed    = data.records?.reduce((s, e) => s + e.used_leaves,    0) ?? 0;
+  const totalPaid    = data.records?.reduce((s, e) => s + e.paid_leaves,    0) ?? 0;
+  const totalUnpaid  = data.records?.reduce((s, e) => s + e.unpaid_leaves,  0) ?? 0;
 
-  const totalUsed =
-    data.records?.reduce(
-      (sum, emp) => sum + emp.used_leaves,
-      0
-    ) || 0;
-
-  const totalPaid =
-    data.records?.reduce(
-      (sum, emp) => sum + emp.paid_leaves,
-      0
-    ) || 0;
-
-  const totalUnpaid =
-    data.records?.reduce(
-      (sum, emp) => sum + emp.unpaid_leaves,
-      0
-    ) || 0;
-
-  // ── Period Format ──────────────────────
-  let periodText = "";
-
-  if (data.report_type === "monthly") {
-    periodText = `${MONTHS[data.from_month]} ${data.from_year}`;
-  } else if (data.report_type === "yearly") {
-    periodText = `${data.from_year}`;
-  } else {
-    periodText = `${MONTHS[data.from_month]} ${data.from_year} to ${MONTHS[data.to_month]} ${data.to_year}`;
-  }
+  const stats = [
+    { label: "Total Accrued", value: fmtPdf(totalAccrued) },
+    { label: "Total Used",    value: fmtPdf(totalUsed)    },
+    { label: "Paid Leaves",   value: fmtPdf(totalPaid)    },
+    { label: "Unpaid Leaves", value: fmtPdf(totalUnpaid)  },
+  ];
 
   return (
-    <View style={stylesPDF.page}>
+    <View style={s.page}>
 
-      {/* HEADER */}
-      <View style={stylesPDF.headerContainer}>
-        <Text style={stylesPDF.header}>
-          Employee Leave Report
-        </Text>
+      <PdfHeader title="Employee Leave Report" subtitle="Leave Management System" />
 
-        <Text style={stylesPDF.subHeader}>
-          Leave Management System
-        </Text>
-      </View>
+      <PdfInfoBox
+        reportType={data.report_type}
+        period={buildPeriodLabel(data)}
+        totalEmployees={data.total}
+        generatedAt={generatedAt}
+      />
 
-      {/* REPORT INFO */}
-      <View style={stylesPDF.infoContainer}>
-        <View style={stylesPDF.infoGrid}>
+      <PdfStatCards stats={stats} />
 
-          <View style={stylesPDF.infoItem}>
-            <Text style={stylesPDF.infoText}>
-              <Text style={stylesPDF.infoLabel}>
-                Report Type:
-              </Text>{" "}
-              {data.report_type.toUpperCase()}
-            </Text>
-          </View>
+      {/* Table */}
+      <View style={s.table}>
 
-          <View style={stylesPDF.infoItem}>
-            <Text style={stylesPDF.infoText}>
-              <Text style={stylesPDF.infoLabel}>
-                Total Employees:
-              </Text>{" "}
-              {data.total}
-            </Text>
-          </View>
-
-          <View style={stylesPDF.infoItem}>
-            <Text style={stylesPDF.infoText}>
-              <Text style={stylesPDF.infoLabel}>
-                Period:
-              </Text>{" "}
-              {periodText}
-            </Text>
-          </View>
-
-          <View style={stylesPDF.infoItem}>
-            <Text style={stylesPDF.infoText}>
-              <Text style={stylesPDF.infoLabel}>
-                Generated:
-              </Text>{" "}
-              {generatedAt}
-            </Text>
-          </View>
-
-        </View>
-      </View>
-
-      {/* SUMMARY */}
-      <View style={stylesPDF.statsContainer}>
-
-        <View style={stylesPDF.statCard}>
-          <Text style={stylesPDF.statValue}>
-            {totalAccrued}
-          </Text>
-
-          <Text style={stylesPDF.statLabel}>
-            Total Accrued
-          </Text>
+        {/* Header */}
+        <View style={s.tableHeaderRow}>
+          <Text style={[s.tableHeaderText, COL.name]}>NAME</Text>
+          <Text style={[s.tableHeaderText, COL.email]}>EMAIL</Text>
+          <Text style={[s.tableHeaderText, COL.role]}>ROLE</Text>
+          <Text style={[s.tableHeaderText, COL.number]}>ACCRUED</Text>
+          <Text style={[s.tableHeaderText, COL.number]}>USED</Text>
+          <Text style={[s.tableHeaderText, COL.number]}>PAID</Text>
+          <Text style={[s.tableHeaderText, COL.number]}>UNPAID</Text>
+          <Text style={[s.tableHeaderText, COL.number]}>BALANCE</Text>
         </View>
 
-        <View style={stylesPDF.statCard}>
-          <Text style={stylesPDF.statValue}>
-            {totalUsed}
-          </Text>
-
-          <Text style={stylesPDF.statLabel}>
-            Total Used
-          </Text>
-        </View>
-
-        <View style={stylesPDF.statCard}>
-          <Text style={stylesPDF.statValue}>
-            {totalPaid}
-          </Text>
-
-          <Text style={stylesPDF.statLabel}>
-            Paid Leaves
-          </Text>
-        </View>
-
-        <View style={stylesPDF.statCard}>
-          <Text style={stylesPDF.statValue}>
-            {totalUnpaid}
-          </Text>
-
-          <Text style={stylesPDF.statLabel}>
-            Unpaid Leaves
-          </Text>
-        </View>
-
-      </View>
-
-      {/* TABLE */}
-      <View style={stylesPDF.table}>
-
-        {/* HEADER */}
-        <View style={stylesPDF.tableHeader}>
-          <Text style={stylesPDF.colName}>NAME</Text>
-          <Text style={stylesPDF.colEmail}>EMAIL</Text>
-          <Text style={stylesPDF.colRole}>ROLE</Text>
-          <Text style={stylesPDF.colNumber}>ACCRUED</Text>
-          <Text style={stylesPDF.colNumber}>USED</Text>
-          <Text style={stylesPDF.colNumber}>PAID</Text>
-          <Text style={stylesPDF.colNumber}>UNPAID</Text>
-          <Text style={stylesPDF.colNumber}>BALANCE</Text>
-        </View>
-
-        {/* ROWS */}
-        {data?.records && data.records.length > 0 ? (
-          data.records.map((emp, index) => (
+        {/* Rows */}
+        {data.records && data.records.length > 0 ? (
+          data.records.map((emp, idx) => (
             <View
               key={emp.employee_id}
               style={[
-                stylesPDF.tableRow,
-                index % 2 === 0 &&
-                  stylesPDF.evenRow,
-                index ===
-                  data.records.length - 1 &&
-                  stylesPDF.lastRow,
+                s.tableRow,
+                idx % 2 !== 0          ? s.tableRowEven : {},
+                idx === data.records.length - 1 ? s.tableRowLast : {},
               ]}
             >
-              <Text style={stylesPDF.colName}>
-                {emp.employee_name}
-              </Text>
-
-              <Text style={stylesPDF.colEmail}>
-                {emp.email}
-              </Text>
-
-              <Text style={stylesPDF.colRole}>
-                {emp.role}
-              </Text>
-
-              <Text style={stylesPDF.colNumber}>
-                {emp.accrued_leaves}
-              </Text>
-
-              <Text style={stylesPDF.colNumber}>
-                {emp.used_leaves}
-              </Text>
-
-              <Text style={stylesPDF.colNumber}>
-                {emp.paid_leaves}
-              </Text>
-
-              <Text style={stylesPDF.colNumber}>
-                {emp.unpaid_leaves}
-              </Text>
-
-              <Text style={stylesPDF.colNumber}>
-                {emp.balance_leaves}
-              </Text>
+              <Text style={COL.name}>{emp.employee_name}</Text>
+              <Text style={COL.email}>{emp.email}</Text>
+              <Text style={COL.role}>{emp.role}</Text>
+              <Text style={COL.number}>{fmtPdf(emp.accrued_leaves)}</Text>
+              <Text style={COL.number}>{fmtPdf(emp.used_leaves)}</Text>
+              <Text style={COL.number}>{fmtPdf(emp.paid_leaves)}</Text>
+              <Text style={COL.number}>{fmtPdf(emp.unpaid_leaves)}</Text>
+              <Text style={COL.number}>{fmtPdf(emp.balance_leaves)}</Text>
             </View>
           ))
         ) : (
-          <View style={stylesPDF.emptyState}>
-            <Text>
-              No employee records found for the selected period.
-            </Text>
-          </View>
+          <PdfEmptyState message="No employee records found for the selected period." />
         )}
-
       </View>
 
-      {/* FOOTER */}
-      <Text style={stylesPDF.footer}>
-        Confidential Employee Leave Report • Generated on {generatedAt}
-      </Text>
-
+      <PdfFooter text={`Confidential Employee Leave Report  •  Generated on ${generatedAt}`} />
     </View>
   );
 };

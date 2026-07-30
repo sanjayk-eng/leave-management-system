@@ -1,5 +1,11 @@
 import { api } from '@/lib/api';
-import { LeaveReportParams, LeaveReportResponse, UpdateLeaveTimingRequest } from '@/types';
+import {
+  LeaveReportParams,
+  LeaveReportResponse,
+  LeavePolicyReportParams,
+  LeavePolicyReportResponse,
+  UpdateLeaveTimingRequest,
+} from '@/types';
 
 // --- REQUEST INTERFACES ---
 
@@ -207,6 +213,28 @@ export const leaveService = {
   getLeaveLog: async (leaveId: string) => {
     return api.get<{ leave_id: string; approval_log: ApprovalLogEntry[] }>(
       `/leaves/log/?leave_id=${leaveId}`
+    );
+  },
+
+  getLeavePolicyReport: async (params: LeavePolicyReportParams) => {
+    const p = new URLSearchParams();
+    // Weekly is sent as range to the backend; the original report_type is kept
+    // for display purposes on the frontend only.
+    const backendType =
+      params.report_type === 'weekly' ? 'range' : params.report_type;
+    p.append('report_type', backendType);
+    if (params.month      !== undefined) p.append('month',      String(params.month));
+    if (params.year       !== undefined) p.append('year',       String(params.year));
+    if (params.from_month !== undefined) p.append('from_month', String(params.from_month));
+    if (params.from_year  !== undefined) p.append('from_year',  String(params.from_year));
+    if (params.to_month   !== undefined) p.append('to_month',   String(params.to_month));
+    if (params.to_year    !== undefined) p.append('to_year',    String(params.to_year));
+    if (params.search)     p.append('search',     params.search);
+    if (params.role)       p.append('role',       params.role);
+    if (params.sort_by)    p.append('sort_by',    params.sort_by);
+    if (params.sort_order) p.append('sort_order', params.sort_order);
+    return api.get<LeavePolicyReportResponse>(
+      `/leaves/Get-Leave-Policy-Report?${p.toString()}`
     );
   },
 };
