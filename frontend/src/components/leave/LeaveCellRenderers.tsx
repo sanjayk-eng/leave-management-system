@@ -1,16 +1,18 @@
 /**
- * Shared AG-Grid cell renderers for leave tables.
- * Used by Approvals, MyLeaveHistory, and any future leave grids.
+ * Shared cell renderers for leave tables.
+ * Used by Approvals, MyLeaveHistory, and any future leave tables.
+ * Each renderer receives the full row data object directly (no AG Grid params).
  */
-import { ICellRendererParams } from 'ag-grid-community';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Eye, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { LeaveResponse } from '@/services/leaveService';
 
-export const ReasonCellRenderer = (params: ICellRendererParams) => {
-  const reason = params.value;
+// ─── Reason ──────────────────────────────────────────────────────────────────
+export const ReasonCellRenderer = (data: LeaveResponse) => {
+  const reason = data.reason;
   if (!reason) {
     return <span className="text-muted-foreground italic text-xs">No reason</span>;
   }
@@ -42,8 +44,9 @@ export const ReasonCellRenderer = (params: ICellRendererParams) => {
   );
 };
 
-export const TimingCellRenderer = (params: ICellRendererParams) => {
-  const { leave_timing_type, leave_timing } = params.data;
+// ─── Timing ───────────────────────────────────────────────────────────────────
+export const TimingCellRenderer = (data: LeaveResponse) => {
+  const { leave_timing_type, leave_timing } = data;
 
   const getTimingLabel = (type?: string) => {
     switch (type) {
@@ -56,7 +59,7 @@ export const TimingCellRenderer = (params: ICellRendererParams) => {
   };
 
   return (
-    <div className="flex flex-col justify-center gap-0.5 leading-tight py-1">
+    <div className="flex flex-col gap-0.5 leading-tight">
       <span className="font-medium text-sm whitespace-nowrap">
         {getTimingLabel(leave_timing_type)}
       </span>
@@ -67,21 +70,18 @@ export const TimingCellRenderer = (params: ICellRendererParams) => {
   );
 };
 
-export const StatusCellRenderer = (params: ICellRendererParams) => (
-  <StatusBadge status={params.data.status} approvalName={params.data.approval_name} />
+// ─── Status ───────────────────────────────────────────────────────────────────
+export const StatusCellRenderer = (data: LeaveResponse) => (
+  <StatusBadge status={data.status} approvalName={data.approval_name} />
 );
 
-/**
- * EmployeeCellRenderer
- * Shows employee name with an "Applied by X" sub-line when someone applied on their behalf.
- * Use this on the Employee column in admin/manager leave grids.
- */
-export const EmployeeCellRenderer = (params: ICellRendererParams) => {
-  const name: string        = params.value ?? params.data?.employee ?? '—';
-  const appliedByName: string | undefined = params.data?.applied_by_name;
+// ─── Employee (name + optional "applied by" sub-line) ─────────────────────────
+export const EmployeeCellRenderer = (data: LeaveResponse) => {
+  const name: string = data.employee ?? '—';
+  const appliedByName: string | undefined = data.applied_by_name;
 
   return (
-    <div className="flex flex-col justify-center gap-0.5 py-1 leading-tight">
+    <div className="flex flex-col gap-0.5 leading-tight">
       <span className="font-medium text-sm">{name}</span>
       {appliedByName && (
         <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
@@ -93,13 +93,9 @@ export const EmployeeCellRenderer = (params: ICellRendererParams) => {
   );
 };
 
-/**
- * AppliedByCellRenderer
- * Standalone cell for the "Applied By" column — shows a badge when it was on-behalf,
- * or a muted "Self" label otherwise.
- */
-export const AppliedByCellRenderer = (params: ICellRendererParams) => {
-  const appliedByName: string | undefined = params.data?.applied_by_name;
+// ─── Applied By ───────────────────────────────────────────────────────────────
+export const AppliedByCellRenderer = (data: LeaveResponse) => {
+  const appliedByName: string | undefined = data.applied_by_name;
 
   if (!appliedByName) {
     return <span className="text-xs text-muted-foreground italic">Self</span>;
@@ -116,26 +112,19 @@ export const AppliedByCellRenderer = (params: ICellRendererParams) => {
   );
 };
 
-/**
- * ApprovalLogCellRenderer
- * Renders an eye icon button that calls params.context.onViewApprovalLog(leave).
- * The page must pass `context: { onViewApprovalLog: (leave) => void }` to the grid.
- * Shows "—" when there is no approval_log on the row.
- */
-export const ApprovalLogCellRenderer = (params: ICellRendererParams) => {
-  const log = params.data?.approval_log;
-  const hasLog = Array.isArray(log) && log.length > 0;
+// ─── Approval Log (eye button) ────────────────────────────────────────────────
+interface ApprovalLogCellRendererProps {
+  data: LeaveResponse;
+  onViewApprovalLog: (leave: LeaveResponse) => void;
+}
 
-  if (!hasLog) {
-    return <span className="text-muted-foreground text-xs">—</span>;
-  }
-
+export const ApprovalLogCellRenderer = ({ data, onViewApprovalLog }: ApprovalLogCellRendererProps) => {
   return (
     <Button
       variant="ghost"
       size="sm"
       className="h-8 w-8 p-0 hover:bg-muted"
-      onClick={() => params.context?.onViewApprovalLog?.(params.data)}
+      onClick={() => onViewApprovalLog(data)}
       title="View approval flow"
     >
       <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
