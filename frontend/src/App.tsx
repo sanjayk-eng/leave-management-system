@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppStateProvider } from "./contexts/AppStateProvider";
 import { AuthProvider } from "@/contexts/AuthProvider";
+import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { Layout } from "@/components/Layout";
 import { AuthGuard } from "@/components/AuthGuard";
 import { SuperAdminRoute } from "@/components/SuperAdminRoute";
@@ -57,7 +58,8 @@ const queryClient = new QueryClient({
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AppStateProvider>
+    <ThemeProvider>
+      <AppStateProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -140,6 +142,7 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </AppStateProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
