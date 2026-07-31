@@ -325,8 +325,6 @@ const MyLeaveHistory = () => {
     },
   ], [ActionsCellRenderer, AppliedDateCellRenderer]);
 
-  const { sortBy, sortDir, handleSort } = useTableSort<SortCol>();
-
   return (
     <div className="space-y-6">
       {/* Header Section */}
