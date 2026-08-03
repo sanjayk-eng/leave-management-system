@@ -149,12 +149,12 @@ export const leaveService = {
     return api.delete<{ message: string; id: number }>(`/leaves/admin-delete/policy/${id}`);
   },
 
-  getAllPolicies: async () => {
-    return api.get<LeavePolicy[]>('/leaves/Get-All-Leave-Policy');
+  getAllPolicies: async (status: 'active' | 'inactive' | 'all' = 'active') => {
+    return api.get<LeavePolicy[]>(`/leaves/Get-All-Leave-Policy?status=${status}`);
   },
 
   getActivePolicies: async () => {
-    return api.get<LeavePolicy[]>('/leaves/Get-All-Leave-Policy?active_only=true');
+    return api.get<LeavePolicy[]>('/leaves/Get-All-Leave-Policy?status=active');
   },
 
   togglePolicy: async (id: number) => {

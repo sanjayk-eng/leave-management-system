@@ -19,13 +19,13 @@ const buildSummaryFromLeaves = (leaves: LeaveResponse[]): LeaveSummary => ({
   withdrawal_pending: leaves.filter((leave) => leave.status === 'WITHDRAWAL_PENDING').length,
 });
 
-export const useLeavePolicies = () => {
+export const useLeavePolicies = (status: 'active' | 'inactive' | 'all' = 'active') => {
   const queryClient = useQueryClient();
   const handleError = useApiErrorHandler();
 
   const { data: policiesData, isLoading, error, refetch } = useQuery({
-    queryKey: ['leavePolicies'],
-    queryFn: () => leaveService.getAllPolicies(),
+    queryKey: ['leavePolicies', status],
+    queryFn: () => leaveService.getAllPolicies(status),
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     staleTime: 10 * 60 * 1000,
@@ -38,7 +38,7 @@ export const useLeavePolicies = () => {
       leaveService.addPolicy(data),
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });
-      const previousPolicies = queryClient.getQueryData(['leavePolicies']);
+      const previousPolicies = queryClient.getQueryData(['leavePolicies', status]);
       return { previousPolicies };
     },
     onSuccess: () => {
@@ -48,7 +48,7 @@ export const useLeavePolicies = () => {
     },
     onError: (error, variables, context) => {
       if (context?.previousPolicies) {
-        queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
+        queryClient.setQueryData(['leavePolicies', status], context.previousPolicies);
       }
       handleError(error);
     },
@@ -59,7 +59,7 @@ export const useLeavePolicies = () => {
       leaveService.updatePolicy(id, data),
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });
-      const previousPolicies = queryClient.getQueryData(['leavePolicies']);
+      const previousPolicies = queryClient.getQueryData(['leavePolicies', status]);
       return { previousPolicies };
     },
     onSuccess: () => {
@@ -69,7 +69,7 @@ export const useLeavePolicies = () => {
     },
     onError: (error, variables, context) => {
       if (context?.previousPolicies) {
-        queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
+        queryClient.setQueryData(['leavePolicies', status], context.previousPolicies);
       }
       handleError(error);
     },
@@ -79,7 +79,7 @@ export const useLeavePolicies = () => {
     mutationFn: (id: number) => leaveService.deletePolicy(id),
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });
-      const previousPolicies = queryClient.getQueryData(['leavePolicies']);
+      const previousPolicies = queryClient.getQueryData(['leavePolicies', status]);
       return { previousPolicies };
     },
     onSuccess: () => {
@@ -89,7 +89,7 @@ export const useLeavePolicies = () => {
     },
     onError: (error, variables, context) => {
       if (context?.previousPolicies) {
-        queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
+        queryClient.setQueryData(['leavePolicies', status], context.previousPolicies);
       }
       handleError(error);
     },
@@ -99,9 +99,9 @@ export const useLeavePolicies = () => {
     mutationFn: (id: number) => leaveService.togglePolicy(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });
-      const previousPolicies = queryClient.getQueryData(['leavePolicies']);
+      const previousPolicies = queryClient.getQueryData(['leavePolicies', status]);
       // Optimistic update
-      queryClient.setQueryData(['leavePolicies'], (old: typeof policies) =>
+      queryClient.setQueryData(['leavePolicies', status], (old: typeof policies) =>
         old?.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p)
       );
       return { previousPolicies };
@@ -113,7 +113,7 @@ export const useLeavePolicies = () => {
     },
     onError: (error, _id, context) => {
       if (context?.previousPolicies) {
-        queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
+        queryClient.setQueryData(['leavePolicies', status], context.previousPolicies);
       }
       handleError(error);
     },

@@ -8,10 +8,22 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// PolicyStatusFilter controls which policies are returned by Get.
+// "active"   → only is_active = TRUE
+// "inactive" → only is_active = FALSE
+// anything else (e.g. "all") → no filter
+type PolicyStatusFilter string
+
+const (
+	PolicyStatusActive   PolicyStatusFilter = "active"
+	PolicyStatusInactive PolicyStatusFilter = "inactive"
+	PolicyStatusAll      PolicyStatusFilter = "all"
+)
+
 type LeavePolicyRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	GetById(ctx context.Context, id string) (*models.LeaveType, error)
-	Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error)
+	Get(ctx context.Context, status PolicyStatusFilter) (*[]models.LeaveType, error)
 	Update(ctx context.Context, tx *sqlx.Tx, id string, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	Delete(tx *sqlx.Tx, leaveTypeID int) error
 	Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) (bool, error)
@@ -55,7 +67,7 @@ func (r *leavePolicy) GetById(ctx context.Context, id string) (*models.LeaveType
 
 	return &leave, nil
 }
-func (r *leavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error) {
+func (r *leavePolicy) Get(ctx context.Context, status PolicyStatusFilter) (*[]models.LeaveType, error) {
 
 	var leave []models.LeaveType
 
@@ -74,9 +86,14 @@ func (r *leavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.Leave
 			updated_at
 		FROM Tbl_Leave_type
 	`
-	if activeOnly {
+	switch status {
+	case PolicyStatusActive:
 		query += ` WHERE is_active = TRUE`
+	case PolicyStatusInactive:
+		query += ` WHERE is_active = FALSE`
+	// "all" or any other value → no WHERE clause
 	}
+	query += ` ORDER BY id`
 
 	rows, err := r.DB.QueryxContext(ctx, query)
 	if err != nil {

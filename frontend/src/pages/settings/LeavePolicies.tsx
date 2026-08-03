@@ -15,6 +15,8 @@ import { PolicyDeleteDialog } from '@/components/leave/policy/PolicyDeleteDialog
 import { PolicyFormDialog, PolicyFormValues, POLICY_FORM_DEFAULTS } from '@/components/leave/PolicyFormDialog';
 import type { LeavePolicy } from '@/services/leaveService';
 
+type StatusFilter = 'active' | 'inactive' | 'all';
+
 // ── pure helpers (no side-effects) ────────────────────────────────────────────
 
 const toPayload = (v: PolicyFormValues) => ({
@@ -39,6 +41,8 @@ const toFormValues = (p: LeavePolicy): Partial<PolicyFormValues> => ({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function LeavePolicies() {
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+
   const {
     policies = [],
     isLoading,
@@ -46,7 +50,7 @@ export default function LeavePolicies() {
     updatePolicy, isUpdating,
     deletePolicy, isDeleting,
     togglePolicy, isToggling,
-  } = useLeavePolicies();
+  } = useLeavePolicies(statusFilter);
   const { flows = [] } = useApprovalFlow();
 
   const [addOpen,     setAddOpen]     = useState(false);
@@ -103,6 +107,21 @@ export default function LeavePolicies() {
               Add Policy
             </Button>
           </div>
+
+          {/* Status filter */}
+          <div className="flex items-center gap-2 pt-2 flex-wrap">
+            {(['active', 'inactive', 'all'] as StatusFilter[]).map((f) => (
+              <Button
+                key={f}
+                size="sm"
+                variant={statusFilter === f ? 'default' : 'outline'}
+                onClick={() => setStatusFilter(f)}
+                className="capitalize"
+              >
+                {f}
+              </Button>
+            ))}
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -127,7 +146,9 @@ export default function LeavePolicies() {
                       colSpan={6}
                       className="text-center text-muted-foreground py-8"
                     >
-                      No leave policies configured. Click "Add Policy" to create one.
+                      {statusFilter === 'all'
+                        ? 'No leave policies configured. Click "Add Policy" to create one.'
+                        : `No ${statusFilter} policies found.`}
                     </TableCell>
                   </TableRow>
                 ) : (

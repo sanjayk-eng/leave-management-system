@@ -18,7 +18,7 @@ import (
 type LeavePolicyService interface {
 	Create(ctx context.Context, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	GetByID(ctx context.Context, leaveTypeID int) (*models.LeaveTypeResponse, error)
-	Get(ctx context.Context, activeOnly bool) (*[]models.LeaveTypeResponse, error)
+	Get(ctx context.Context, status repositories.PolicyStatusFilter) (*[]models.LeaveTypeResponse, error)
 	Update(ctx context.Context, leaveTypeID int, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	Delete(ctx context.Context, leaveTypeID int) error
 	Toggle(ctx context.Context, leaveTypeID int) (bool, error)
@@ -112,9 +112,9 @@ func (s *LeavePolicy) GetByID(ctx context.Context, leaveTypeID int) (*models.Lea
 	return models.MappPayload(leaveType, leaveApproverFlow), nil
 }
 
-func (s *LeavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.LeaveTypeResponse, error) {
+func (s *LeavePolicy) Get(ctx context.Context, status repositories.PolicyStatusFilter) (*[]models.LeaveTypeResponse, error) {
 
-	leaveType, err := s.LeavePolicyRepo.Get(ctx, activeOnly)
+	leaveType, err := s.LeavePolicyRepo.Get(ctx, status)
 	if err != nil {
 
 		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to get leave policy")
