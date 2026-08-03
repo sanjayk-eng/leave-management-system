@@ -43,6 +43,7 @@ export const useLeavePolicies = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leavePolicies'] });
+      queryClient.invalidateQueries({ queryKey: ['activeLeavePolicies'] });
       toast.success('Leave policy added successfully');
     },
     onError: (error, variables, context) => {
@@ -63,6 +64,7 @@ export const useLeavePolicies = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leavePolicies'] });
+      queryClient.invalidateQueries({ queryKey: ['activeLeavePolicies'] });
       toast.success('Leave policy updated successfully');
     },
     onError: (error, variables, context) => {
@@ -82,9 +84,34 @@ export const useLeavePolicies = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leavePolicies'] });
+      queryClient.invalidateQueries({ queryKey: ['activeLeavePolicies'] });
       toast.success('Leave policy deleted successfully');
     },
     onError: (error, variables, context) => {
+      if (context?.previousPolicies) {
+        queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
+      }
+      handleError(error);
+    },
+  });
+
+  const togglePolicyMutation = useMutation({
+    mutationFn: (id: number) => leaveService.togglePolicy(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });
+      const previousPolicies = queryClient.getQueryData(['leavePolicies']);
+      // Optimistic update
+      queryClient.setQueryData(['leavePolicies'], (old: typeof policies) =>
+        old?.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p)
+      );
+      return { previousPolicies };
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['leavePolicies'] });
+      queryClient.invalidateQueries({ queryKey: ['activeLeavePolicies'] });
+      toast.success(res.message);
+    },
+    onError: (error, _id, context) => {
       if (context?.previousPolicies) {
         queryClient.setQueryData(['leavePolicies'], context.previousPolicies);
       }
@@ -106,6 +133,24 @@ export const useLeavePolicies = () => {
     deletePolicy: deletePolicyMutation.mutate,
     isDeleting: deletePolicyMutation.isPending,
     deleteError: deletePolicyMutation.error,
+    togglePolicy: togglePolicyMutation.mutate,
+    isToggling: togglePolicyMutation.isPending,
+  };
+};
+
+// Lightweight hook for apply-leave form — only active policies.
+export const useActiveLeavePolicies = () => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['activeLeavePolicies'],
+    queryFn: () => leaveService.getActivePolicies(),
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 10 * 60 * 1000,
+  });
+  return {
+    policies: Array.isArray(data) ? data : [],
+    isLoading,
+    error,
   };
 };
 

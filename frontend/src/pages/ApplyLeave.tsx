@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useLeaves, useLeavePolicies } from "@/hooks/useLeaves";
+import { useLeaves, useActiveLeavePolicies } from "@/hooks/useLeaves";
 import { useLeaveBalances } from "@/hooks/useLeaveBalances";
 import { useHolidays } from "@/hooks/useHolidays";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +22,7 @@ const ON_BEHALF_ROLES = ["SUPERADMIN", "ADMIN", "HR", "MANAGER"];
 const ApplyLeave = () => {
   const { currentUser } = useAuth();
   const { applyLeave, isApplying } = useLeaves();
-  const { policies: leaveTypes = [], isLoading: isLoadingPolicies } = useLeavePolicies();
+  const { policies: leaveTypes = [], isLoading: isLoadingPolicies } = useActiveLeavePolicies();
   const { balances = [], isLoading: isLoadingBalances } = useLeaveBalances(currentUser?.id || "");
   const { holidays = [], isLoading: isLoadingHolidays } = useHolidays();
   const { leaveTimings, loading: isLoadingTimings, fetchLeaveTimings } = useLeaveTiming(false);

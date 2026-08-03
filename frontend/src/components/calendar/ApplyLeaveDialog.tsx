@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Loader2, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useLeaves, useLeavePolicies } from "@/hooks/useLeaves";
+import { useLeaves, useActiveLeavePolicies } from "@/hooks/useLeaves";
 import { toast } from "sonner";
 
 interface Holiday {
@@ -30,7 +30,7 @@ interface ApplyLeaveDialogProps {
 }
 
 export const ApplyLeaveDialog = ({ open, onOpenChange, holidays = [] }: ApplyLeaveDialogProps) => {
-  const { policies, isLoading: policiesLoading } = useLeavePolicies();
+  const { policies, isLoading: policiesLoading } = useActiveLeavePolicies();
   const { applyLeave, isApplying } = useLeaves();
   
   const [leaveTypeId, setLeaveTypeId] = useState<string>("");

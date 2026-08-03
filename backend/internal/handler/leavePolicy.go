@@ -61,7 +61,11 @@ func (h *HandlerFunc) LeavePolicy(c *gin.Context) {
 }
 
 func (h *HandlerFunc) GetAllLeavePolicies(c *gin.Context) {
-	res, err := h.LeavePolicyService.Get(c)
+	// ?active_only=true  → only active policies (used by apply-leave)
+	// default (omitted)  → all policies (used by admin settings page)
+	activeOnly := c.Query("active_only") == "true"
+
+	res, err := h.LeavePolicyService.Get(c, activeOnly)
 	if err != nil {
 		errors.Error(c, err)
 		return
@@ -175,4 +179,41 @@ func parseLeaveTypeID(c *gin.Context) (int, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// ToggleLeavePolicy flips is_active on a leave policy (active ↔ inactive).
+func (h *HandlerFunc) ToggleLeavePolicy(c *gin.Context) {
+	leaveTypeID, ok := parseLeaveTypeID(c)
+	if !ok {
+		return
+	}
+
+	newState, err := h.LeavePolicyService.Toggle(c, leaveTypeID)
+	if err != nil {
+		errors.Error(c, err)
+		return
+	}
+
+	status := "activated"
+	if !newState {
+		status = "deactivated"
+	}
+
+	actor := h.resolveActorBestEffort(c)
+	h.AuditSvc.Log(audit.AuditEntry{
+		ActorID:      actor.ID,
+		ActorName:    actor.Name,
+		ActorRole:    actor.Role,
+		Component:    "leave_policy",
+		Action:       "leave_policy." + status,
+		ResourceType: "LeavePolicy",
+		ResourceID:   strconv.Itoa(leaveTypeID),
+		NewValue:     map[string]interface{}{"is_active": newState},
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "leave policy " + status,
+		"id":        leaveTypeID,
+		"is_active": newState,
+	})
 }
