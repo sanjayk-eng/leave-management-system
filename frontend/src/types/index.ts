@@ -239,6 +239,7 @@ export interface LeavePolicyEntry {
   policy_name: string;
   is_paid: boolean;
   is_early: boolean;
+  is_active: boolean;
   used_days: number;
   balance: number;
 }

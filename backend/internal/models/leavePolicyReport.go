@@ -14,6 +14,7 @@ type LeavePolicyEntry struct {
 	PolicyName string  `json:"policy_name" db:"policy_name"`
 	IsPaid     bool    `json:"is_paid"     db:"is_paid"`
 	IsEarly    bool    `json:"is_early"    db:"is_early"`
+	IsActive   bool    `json:"is_active"   db:"is_active"`
 	UsedDays   float64 `json:"used_days"   db:"used_days"`
 	Balance    float64 `json:"balance"     db:"balance"`
 }

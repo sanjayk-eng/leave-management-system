@@ -235,7 +235,7 @@ func (r *leavePolicy) Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) 
 
 func (r *Repository) GetAllLeaveType() ([]models.LeaveType, error) {
 	var leaveType []models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type ORDER BY id`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type WHERE is_active = TRUE ORDER BY id`
 	err := r.DB.Select(&leaveType, query)
 	return leaveType, err
 }

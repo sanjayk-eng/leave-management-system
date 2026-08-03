@@ -26,6 +26,7 @@ type policyFlatRow struct {
 	PolicyName   string  `db:"policy_name"`
 	IsPaid       bool    `db:"is_paid"`
 	IsEarly      bool    `db:"is_early"`
+	IsActive     bool    `db:"is_active"`
 	UsedDays     float64 `db:"used_days"`
 	Balance      float64 `db:"balance"`
 }
@@ -68,12 +69,14 @@ report_period AS (
         (DATE_TRUNC('month', MAKE_DATE($3::int, $4::int, 1)) + INTERVAL '1 month - 1 day')::date AS win_end
 ),
 
--- All leave policies we want to report on
+-- All active leave policies we want to report on
 all_policies AS (
     SELECT id AS policy_id, name AS policy_name,
-           COALESCE(is_paid, FALSE)  AS is_paid,
-           COALESCE(is_early, FALSE) AS is_early
+           COALESCE(is_paid, FALSE)   AS is_paid,
+           COALESCE(is_early, FALSE)  AS is_early,
+           COALESCE(is_active, TRUE)  AS is_active
     FROM Tbl_Leave_Type
+    WHERE is_active = TRUE
 ),
 
 -- Working days per leave that overlaps the window (proration)
@@ -161,6 +164,7 @@ SELECT
     ap.policy_name,
     ap.is_paid,
     ap.is_early,
+    ap.is_active,
 
     COALESCE(pu.used_days, 0)                      AS used_days,
     COALESCE(pb.balance,   0)                      AS balance
@@ -246,6 +250,7 @@ func assemblePolicyRecords(rows []policyFlatRow) []models.LeavePolicyReportRecor
 			PolicyName: row.PolicyName,
 			IsPaid:     row.IsPaid,
 			IsEarly:    row.IsEarly,
+			IsActive:   row.IsActive,
 			UsedDays:   row.UsedDays,
 			Balance:    row.Balance,
 		}

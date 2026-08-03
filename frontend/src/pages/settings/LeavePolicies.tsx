@@ -1,100 +1,87 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { useLeavePolicies } from "@/hooks/useLeaves";
-import { useApprovalFlow } from "@/hooks/useApprovalFlow";
-import { Plus, Trash2, Edit, GitMerge } from "lucide-react";
-import { PolicyFormDialog, PolicyFormValues, POLICY_FORM_DEFAULTS } from "@/components/leave/PolicyFormDialog";
-import { CardSkeleton } from "@/components/skeletons/CardSkeleton";
+import { useState } from 'react';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
+import { FileText, Plus } from 'lucide-react';
+import { useLeavePolicies } from '@/hooks/useLeaves';
+import { useApprovalFlow } from '@/hooks/useApprovalFlow';
+import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
+import { PolicyRow }          from '@/components/leave/policy/PolicyCard';
+import { PolicyDeleteDialog } from '@/components/leave/policy/PolicyDeleteDialog';
+import { PolicyFormDialog, PolicyFormValues, POLICY_FORM_DEFAULTS } from '@/components/leave/PolicyFormDialog';
+import type { LeavePolicy } from '@/services/leaveService';
 
+// ── pure helpers (no side-effects) ────────────────────────────────────────────
+
+const toPayload = (v: PolicyFormValues) => ({
+  name:                v.name,
+  is_paid:             v.is_paid,
+  is_early:            v.is_early,
+  is_work_from_home:   v.is_work_from_home,
+  default_entitlement: parseInt(v.default_entitlement),
+  intern_entitlement:  v.intern_entitlement ? parseInt(v.intern_entitlement) : undefined,
+  approval_flow_id:    v.approval_flow_id   || undefined,
+});
+
+const toFormValues = (p: LeavePolicy): Partial<PolicyFormValues> => ({
+  name:                p.name,
+  is_paid:             p.is_paid,
+  is_early:            p.is_early          ?? false,
+  is_work_from_home:   p.is_work_from_home ?? false,
+  default_entitlement: p.default_entitlement.toString(),
+  intern_entitlement:  p.intern_entitlement ? p.intern_entitlement.toString() : '',
+  approval_flow_id:    p.approval_flow_id  ?? '',
+});
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function LeavePolicies() {
   const {
     policies = [],
-    isLoading: isLoadingPolicies,
-    addPolicy,
-    isAdding: isAddingPolicy,
-    updatePolicy,
-    isUpdating: isUpdatingPolicy,
-    deletePolicy,
-    isDeleting: isDeletingPolicy,
-    togglePolicy,
-    isToggling: isTogglingPolicy,
+    isLoading,
+    addPolicy,    isAdding,
+    updatePolicy, isUpdating,
+    deletePolicy, isDeleting,
+    togglePolicy, isToggling,
   } = useLeavePolicies();
   const { flows = [] } = useApprovalFlow();
 
-  // Dialog state
-  const [policyDialogOpen, setPolicyDialogOpen] = useState(false);
-  const [editPolicyDialogOpen, setEditPolicyDialogOpen] = useState(false);
-  const [deletePolicyDialogOpen, setDeletePolicyDialogOpen] = useState(false);
-  const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
-  const [editPolicyInitial, setEditPolicyInitial] = useState<Partial<PolicyFormValues>>(POLICY_FORM_DEFAULTS);
+  const [addOpen,     setAddOpen]     = useState(false);
+  const [editOpen,    setEditOpen]    = useState(false);
+  const [deleteOpen,  setDeleteOpen]  = useState(false);
+  const [selected,    setSelected]    = useState<number | null>(null);
+  const [editInitial, setEditInitial] = useState<Partial<PolicyFormValues>>(POLICY_FORM_DEFAULTS);
 
-  const handleAddPolicy = (values: PolicyFormValues) => {
-    addPolicy({
-      name:                values.name,
-      is_paid:             values.is_paid,
-      is_early:            values.is_early,
-      is_work_from_home:   values.is_work_from_home,
-      default_entitlement: parseInt(values.default_entitlement),
-      intern_entitlement:  values.intern_entitlement ? parseInt(values.intern_entitlement) : undefined,
-      approval_flow_id:    values.approval_flow_id || undefined,
-    });
-    setPolicyDialogOpen(false);
+  const handleAdd = (values: PolicyFormValues) => {
+    addPolicy(toPayload(values));
+    setAddOpen(false);
   };
 
-  const handleEditPolicyClick = (policy: (typeof policies)[number]) => {
-    setSelectedPolicyId(policy.id);
-    setEditPolicyInitial({
-      name:                policy.name,
-      is_paid:             policy.is_paid,
-      is_early:            policy.is_early        || false,
-      is_work_from_home:   policy.is_work_from_home || false,
-      default_entitlement: policy.default_entitlement.toString(),
-      intern_entitlement:  policy.intern_entitlement ? policy.intern_entitlement.toString() : '',
-      approval_flow_id:    policy.approval_flow_id || '',
-    });
-    setEditPolicyDialogOpen(true);
+  const handleEditOpen = (policy: LeavePolicy) => {
+    setSelected(policy.id);
+    setEditInitial(toFormValues(policy));
+    setEditOpen(true);
   };
 
-  const handleUpdatePolicy = (values: PolicyFormValues) => {
-    if (!selectedPolicyId) return;
-    updatePolicy({
-      id: selectedPolicyId,
-      data: {
-        name:                values.name,
-        is_paid:             values.is_paid,
-        is_early:            values.is_early,
-        is_work_from_home:   values.is_work_from_home,
-        default_entitlement: parseInt(values.default_entitlement),
-        intern_entitlement:  values.intern_entitlement ? parseInt(values.intern_entitlement) : undefined,
-        approval_flow_id:    values.approval_flow_id || undefined,
-      },
-    });
-    setEditPolicyDialogOpen(false);
-    setSelectedPolicyId(null);
+  const handleEdit = (values: PolicyFormValues) => {
+    if (!selected) return;
+    updatePolicy({ id: selected, data: toPayload(values) });
+    setEditOpen(false);
+    setSelected(null);
   };
 
-  const handleDeletePolicyClick = (id: number) => {
-    setSelectedPolicyId(id);
-    setDeletePolicyDialogOpen(true);
+  const handleDeleteOpen = (id: number) => {
+    setSelected(id);
+    setDeleteOpen(true);
   };
 
-  const confirmDeletePolicy = () => {
-    if (selectedPolicyId) deletePolicy(selectedPolicyId);
-    setDeletePolicyDialogOpen(false);
-    setSelectedPolicyId(null);
+  const handleDeleteConfirm = () => {
+    if (selected) deletePolicy(selected);
+    setDeleteOpen(false);
+    setSelected(null);
   };
 
   return (
@@ -102,141 +89,92 @@ export default function LeavePolicies() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Configured Policies</CardTitle>
-            <Button size="sm" onClick={() => setPolicyDialogOpen(true)}>
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Leave Policies
+              </CardTitle>
+              <CardDescription>
+                Configure leave types, entitlements, and approval flows
+              </CardDescription>
+            </div>
+            <Button onClick={() => setAddOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Policy
             </Button>
           </div>
         </CardHeader>
+
         <CardContent>
-          {isLoadingPolicies ? (
-            <CardSkeleton showHeader={false} rows={4} />
+          {isLoading ? (
+            <TableSkeleton rows={4} columns={6} showActions />
           ) : (
-            <div className="space-y-4">
-              {!policies || policies.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No leave policies configured. Click "Add Policy" to create one.
-                </p>
-              ) : (
-                policies.map((policy) => (
-                  <div
-                    key={policy.id}
-                    className={`p-4 border rounded-lg transition-opacity ${!policy.is_active ? "opacity-60" : ""}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      {/* Left: name + status badge */}
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{policy.name}</p>
-                        <Badge
-                          variant="outline"
-                          className={
-                            policy.is_active
-                              ? "text-xs border-green-500 text-green-600"
-                              : "text-xs border-muted-foreground text-muted-foreground"
-                          }
-                        >
-                          {policy.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-
-                      {/* Right: type badges + action buttons */}
-                      <div className="flex items-center gap-2">
-                        <Badge className={policy.is_paid ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}>
-                          {policy.is_paid ? "Paid" : "Unpaid"}
-                        </Badge>
-                        {policy.is_early && <Badge className="bg-blue-500 text-white">Early</Badge>}
-                        {policy.is_work_from_home && <Badge className="bg-purple-500 text-white">WFH</Badge>}
-                        {policy.approval_flow_id && (
-                          <Badge variant="outline" className="text-xs gap-1">
-                            <GitMerge className="h-3 w-3" />
-                            {flows.find(f => f.id === policy.approval_flow_id)?.name ?? "Flow"}
-                          </Badge>
-                        )}
-
-                        {/* Active / Inactive toggle */}
-                        <Switch
-                          checked={policy.is_active}
-                          onCheckedChange={() => togglePolicy(policy.id)}
-                          disabled={isTogglingPolicy}
-                          aria-label={policy.is_active ? "Deactivate policy" : "Activate policy"}
-                        />
-
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditPolicyClick(policy)}
-                          disabled={isUpdatingPolicy}
-                          aria-label="Edit policy"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeletePolicyClick(policy.id)}
-                          disabled={isDeletingPolicy}
-                          aria-label="Delete policy"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">{policy.default_entitlement} days per year</p>
-                    {policy.intern_entitlement != null && (
-                      <p className="text-xs text-muted-foreground">Intern: {policy.intern_entitlement} days per year</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Entitlement / yr</TableHead>
+                  <TableHead>Approval Flow</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {policies.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="text-center text-muted-foreground py-8"
+                    >
+                      No leave policies configured. Click "Add Policy" to create one.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  policies.map(policy => (
+                    <PolicyRow
+                      key={policy.id}
+                      policy={policy}
+                      flows={flows}
+                      isUpdating={isUpdating}
+                      isDeleting={isDeleting}
+                      isToggling={isToggling}
+                      onEdit={handleEditOpen}
+                      onDelete={handleDeleteOpen}
+                      onToggle={togglePolicy}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
-      {/* ── Add Policy Dialog ── */}
       <PolicyFormDialog
         mode="add"
-        open={policyDialogOpen}
-        onOpenChange={setPolicyDialogOpen}
+        open={addOpen}
+        onOpenChange={setAddOpen}
         flows={flows}
-        onSubmit={handleAddPolicy}
-        isSubmitting={isAddingPolicy}
+        onSubmit={handleAdd}
+        isSubmitting={isAdding}
       />
 
-      {/* ── Edit Policy Dialog ── */}
       <PolicyFormDialog
         mode="edit"
-        open={editPolicyDialogOpen}
-        onOpenChange={setEditPolicyDialogOpen}
-        initial={editPolicyInitial}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        initial={editInitial}
         flows={flows}
-        onSubmit={handleUpdatePolicy}
-        isSubmitting={isUpdatingPolicy}
+        onSubmit={handleEdit}
+        isSubmitting={isUpdating}
       />
 
-      {/* ── Delete Policy Confirm ── */}
-      <AlertDialog open={deletePolicyDialogOpen} onOpenChange={setDeletePolicyDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Leave Policy</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes the policy. You can only delete policies that have no leave applications.
-              To temporarily stop employees from applying, deactivate it instead.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeletePolicy}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete Policy
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PolicyDeleteDialog
+        open={deleteOpen}
+        onCancel={() => { setDeleteOpen(false); setSelected(null); }}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }

@@ -156,6 +156,7 @@ func (la *LeaveAggregationCTEs) BuildBalanceSummaryCTE() string {
 		COALESCE(SUM(lb.closing), 0) AS balance_leaves
 
 	FROM Tbl_Leave_balance lb
+	JOIN Tbl_Leave_Type lt ON lt.id = lb.leave_type_id AND lt.is_active = TRUE
 	CROSS JOIN report_period rp
 
 	WHERE lb.year BETWEEN
@@ -174,6 +175,7 @@ func (la *LeaveAggregationCTEs) BuildAccrualSummaryCTE() string {
 		COALESCE(SUM(a.days_credited), 0) AS accrued_leaves
 
 	FROM Tbl_Leave_accrual_log a
+	JOIN Tbl_Leave_Type lt ON lt.id = a.leave_type_id AND lt.is_active = TRUE
 	CROSS JOIN report_period rp
 
 	WHERE (
