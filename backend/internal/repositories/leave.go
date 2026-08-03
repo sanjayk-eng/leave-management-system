@@ -12,7 +12,7 @@ import (
 // 1. Get leave type entitlement
 func (r *Repository) GetLeaveTypeByIdTx(tx *sqlx.Tx, leaveTypeID int) (models.LeaveType, error) {
 	var leaves models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, created_at, updated_at FROM Tbl_Leave_type WHERE id=$1`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type WHERE id=$1`
 	err := tx.Get(&leaves,
 		query,
 		leaveTypeID,
@@ -23,7 +23,7 @@ func (r *Repository) GetLeaveTypeByIdTx(tx *sqlx.Tx, leaveTypeID int) (models.Le
 // 1. Get leave type entitlement
 func (r *Repository) GetLeaveTypeById(leaveTypeID int) (models.LeaveType, error) {
 	var leaves models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, created_at, updated_at FROM Tbl_Leave_type WHERE id=$1`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type WHERE id=$1 AND is_active = TRUE`
 	err := r.DB.Get(&leaves,
 		query,
 		leaveTypeID,

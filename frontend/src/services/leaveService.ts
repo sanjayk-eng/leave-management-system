@@ -83,6 +83,7 @@ export interface LeavePolicy {
   is_paid: boolean;
   is_early?: boolean;
   is_work_from_home?: boolean;
+  is_active: boolean;
   default_entitlement: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
@@ -150,6 +151,14 @@ export const leaveService = {
 
   getAllPolicies: async () => {
     return api.get<LeavePolicy[]>('/leaves/Get-All-Leave-Policy');
+  },
+
+  getActivePolicies: async () => {
+    return api.get<LeavePolicy[]>('/leaves/Get-All-Leave-Policy?active_only=true');
+  },
+
+  togglePolicy: async (id: number) => {
+    return api.patch<{ message: string; id: number; is_active: boolean }>(`/leaves/admin-toggle/policy/${id}`);
   },
 
   action: async (id: string, data: LeaveActionRequest) => {

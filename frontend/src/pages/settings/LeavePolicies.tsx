@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useLeavePolicies } from "@/hooks/useLeaves";
 import { useApprovalFlow } from "@/hooks/useApprovalFlow";
 import { Plus, Trash2, Edit, GitMerge } from "lucide-react";
@@ -28,6 +29,8 @@ export default function LeavePolicies() {
     isUpdating: isUpdatingPolicy,
     deletePolicy,
     isDeleting: isDeletingPolicy,
+    togglePolicy,
+    isToggling: isTogglingPolicy,
   } = useLeavePolicies();
   const { flows = [] } = useApprovalFlow();
 
@@ -117,9 +120,27 @@ export default function LeavePolicies() {
                 </p>
               ) : (
                 policies.map((policy) => (
-                  <div key={policy.id} className="p-4 border rounded-lg">
+                  <div
+                    key={policy.id}
+                    className={`p-4 border rounded-lg transition-opacity ${!policy.is_active ? "opacity-60" : ""}`}
+                  >
                     <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium">{policy.name}</p>
+                      {/* Left: name + status badge */}
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{policy.name}</p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            policy.is_active
+                              ? "text-xs border-green-500 text-green-600"
+                              : "text-xs border-muted-foreground text-muted-foreground"
+                          }
+                        >
+                          {policy.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+
+                      {/* Right: type badges + action buttons */}
                       <div className="flex items-center gap-2">
                         <Badge className={policy.is_paid ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"}>
                           {policy.is_paid ? "Paid" : "Unpaid"}
@@ -132,14 +153,36 @@ export default function LeavePolicies() {
                             {flows.find(f => f.id === policy.approval_flow_id)?.name ?? "Flow"}
                           </Badge>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => handleEditPolicyClick(policy)} disabled={isUpdatingPolicy}>
+
+                        {/* Active / Inactive toggle */}
+                        <Switch
+                          checked={policy.is_active}
+                          onCheckedChange={() => togglePolicy(policy.id)}
+                          disabled={isTogglingPolicy}
+                          aria-label={policy.is_active ? "Deactivate policy" : "Activate policy"}
+                        />
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditPolicyClick(policy)}
+                          disabled={isUpdatingPolicy}
+                          aria-label="Edit policy"
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeletePolicyClick(policy.id)} disabled={isDeletingPolicy}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeletePolicyClick(policy.id)}
+                          disabled={isDeletingPolicy}
+                          aria-label="Delete policy"
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </div>
+
                     <p className="text-sm text-muted-foreground">{policy.default_entitlement} days per year</p>
                     {policy.intern_entitlement != null && (
                       <p className="text-xs text-muted-foreground">Intern: {policy.intern_entitlement} days per year</p>
@@ -179,12 +222,16 @@ export default function LeavePolicies() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Leave Policy</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this leave policy? This action cannot be undone and may affect existing leave applications.
+              This permanently removes the policy. You can only delete policies that have no leave applications.
+              To temporarily stop employees from applying, deactivate it instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeletePolicy} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={confirmDeletePolicy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete Policy
             </AlertDialogAction>
           </AlertDialogFooter>
