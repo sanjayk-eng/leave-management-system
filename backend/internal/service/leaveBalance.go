@@ -119,11 +119,17 @@ func (s *leaveBalance) Adjust(ctx context.Context, actorID uuid.UUID, employeeID
 	}
 	return &result, nil
 }
+
 func (s *leaveBalance) AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int, asOf time.Time) error {
 	// For a brand-new policy created mid-year, existing employees are prorated
 	// based on the given asOf date (typically the policy associate month selected
 	// by the admin in the preview, or time.Now() if not specified).
 	// e.g. asOf = August → remaining months = 13-8 = 5 → 5/12 of annual entitlement.
+	//
+	// This is POLICY-anchored proration: it uses calculateEntitlementForPolicyAsOf,
+	// which does NOT bypass proration for prior-year joiners. The leave TYPE is new
+	// as of asOf, so every existing employee — regardless of how long ago they
+	// joined — is prorated against it.
 	return s.processLeaveBalances(tx, defaultEntitlement, internEntitlement, asOf,
 		func(emp models.ActiveEmployeeRole, entitlement float64) error {
 			return s.Repo.Create(tx, emp.ID, leaveTypeID, entitlement)
@@ -153,6 +159,9 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 	//   new_opening = 18 × 6/12 = 9 days (Jul–Dec only).
 	//   Employee already used 12 days (Jan–Jun, all approved).
 	//   closing = 9 - 12 + 0 = -3  → deficit of 3 days shown to admin.
+	//
+	// This is POLICY-anchored proration — uses calculateEntitlementForPolicyAsOf,
+	// same reasoning as AllocateForNewLeaveType. No prior-year bypass here.
 
 	employees, err := s.CommRepo.GetAllActiveEmployeesWithRoles(tx)
 	if err != nil {
@@ -169,7 +178,8 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 
 	for _, emp := range employees {
 		// Per-employee anchor — current-year joiners only.
-		// Prior-year employees always get full entitlement (handled in calculateEntitlementAsOf).
+		// Prior-year employees still get POLICY-anchored proration (baseAsOf),
+		// not full entitlement — the leave type itself is new as of baseAsOf.
 		asOf := baseAsOf
 		if emp.JoiningDate != nil && emp.JoiningDate.Year() == currentYear &&
 			emp.JoiningDate.After(baseAsOf) {
@@ -181,7 +191,7 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 		switch {
 		case err == sql.ErrNoRows:
 			// No existing row — create fresh with new entitlement.
-			entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
+			entitlement := s.calculateEntitlementForPolicyAsOf(emp.Role, defaultEntitlement, internEntitlement, asOf)
 			if err := s.Repo.Create(tx, emp.ID, leaveTypeID, entitlement); err != nil {
 				return err
 			}
@@ -192,18 +202,18 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 		default:
 			// Row exists — only recalculate opening and closing.
 			// used and adjusted are intentionally preserved.
-			newOpening := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
+			newOpening := s.calculateEntitlementForPolicyAsOf(emp.Role, defaultEntitlement, internEntitlement, asOf)
 
 			// closing = newOpening - used + adjusted
 			// Negative closing = deficit (employee used more than new entitlement).
 			// This is stored as-is so the admin can see and act on it.
 			newClosing := s.calculateClosingBalance(newOpening, balance.Used, balance.Adjusted)
 
-			balance.Opening     = newOpening
-			balance.Closing     = newClosing
-			balance.EmployeeID  = emp.ID
+			balance.Opening = newOpening
+			balance.Closing = newClosing
+			balance.EmployeeID = emp.ID
 			balance.LeaveTypeID = leaveTypeID
-			balance.Year        = currentYear
+			balance.Year = currentYear
 
 			if err := s.Repo.UpdateLeaveBalance(tx, balance); err != nil {
 				return err
@@ -220,7 +230,10 @@ func (s *leaveBalance) AllocateForEmployee(tx *sqlx.Tx, employeeID uuid.UUID, ro
 	//   - the policy's associate_month (the month the admin chose as the allocation anchor).
 	// This prevents a new employee joining in e.g. March from receiving days intended
 	// only from August (the policy's associate month).
-	// If joining date is nil or in a prior year → ProratedLeave returns full entitlement.
+	//
+	// This is EMPLOYEE-anchored proration — uses calculateEntitlementAsOf, which DOES
+	// bypass proration for prior-year joiners (correct here: the policy already
+	// existed when they joined, so they accrue the full year like everyone else).
 	empAsOf := time.Now()
 	if joiningDate != nil {
 		empAsOf = *joiningDate
@@ -380,6 +393,7 @@ func (s *leaveBalance) RecalculateForRoleChange(tx *sqlx.Tx, employeeID uuid.UUI
 
 	return nil
 }
+
 func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int, internEntitlement *int, policyAsOf time.Time, handler func(emp models.ActiveEmployeeRole, entitlement float64) error) error {
 
 	employees, err := s.CommRepo.GetAllActiveEmployeesWithRoles(tx)
@@ -390,20 +404,23 @@ func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int,
 	now := time.Now()
 
 	for _, emp := range employees {
-		// Per-employee asOf — only applies to current-year joiners.
+		// Per-employee asOf.
 		//
-		// Prior-year employees: calculateEntitlementAsOf returns full entitlement
-		// regardless of asOf, so the value of asOf doesn't matter — use policyAsOf.
+		// This is POLICY-anchored proration: unlike calculateEntitlementAsOf,
+		// calculateEntitlementForPolicyAsOf has no prior-year bypass, so asOf always
+		// matters here — regardless of how long ago the employee joined.
 		//
-		// Current-year employees: use the later of the policy's associate month and
+		// Current-year joiners: use the later of the policy's associate month and
 		// their joining date (they shouldn't receive days for months before they joined).
+		// Prior-year joiners: always use policyAsOf — the leave type is new as of
+		// that date, so even a long-tenured employee is prorated against it.
 		asOf := policyAsOf
 		if emp.JoiningDate != nil && emp.JoiningDate.Year() == now.Year() &&
 			emp.JoiningDate.After(policyAsOf) {
 			asOf = *emp.JoiningDate
 		}
 
-		entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
+		entitlement := s.calculateEntitlementForPolicyAsOf(emp.Role, defaultEntitlement, internEntitlement, asOf)
 		if err := handler(emp, entitlement); err != nil {
 			return err
 		}
@@ -412,17 +429,24 @@ func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int,
 	return nil
 }
 
-// calculateEntitlementAsOf picks the correct annual entitlement for the employee's
-// role and then prorates it relative to asOf.
+// resolveEntitlement picks the correct annual entitlement number for the role,
+// with no proration applied. Shared by both entitlement-calculation paths below.
+func (s *leaveBalance) resolveEntitlement(role string, defaultEntitlement int, internEntitlement *int) int {
+	if role == accessrole.ROLE_INTERN && internEntitlement != nil {
+		return *internEntitlement
+	}
+	return defaultEntitlement
+}
+
+// calculateEntitlementAsOf is for EMPLOYEE-anchored proration
+// (AllocateForEmployee, RecalculateForJoiningDate, RecalculateForRoleChange).
 //
 // Key rule: if the employee joined in a prior year they always receive the full
-// annual entitlement — the policy's associate_month anchor is only relevant for
-// employees who joined (or whose policy was created) in the current year.
+// annual entitlement — the policy already existed when they joined, so the
+// associate_month anchor doesn't apply to them. asOf is bypassed entirely in
+// that case.
 func (s *leaveBalance) calculateEntitlementAsOf(role string, joiningDate *time.Time, defaultEntitlement int, internEntitlement *int, asOf time.Time) float64 {
-	entitlement := defaultEntitlement
-	if role == accessrole.ROLE_INTERN && internEntitlement != nil {
-		entitlement = *internEntitlement
-	}
+	entitlement := s.resolveEntitlement(role, defaultEntitlement, internEntitlement)
 
 	// If the employee joined in a prior year, skip proration entirely —
 	// they are entitled to the full annual amount regardless of asOf.
@@ -431,6 +455,20 @@ func (s *leaveBalance) calculateEntitlementAsOf(role string, joiningDate *time.T
 		return float64(entitlement)
 	}
 
+	return ProratedLeave(entitlement, asOf)
+}
+
+// calculateEntitlementForPolicyAsOf is for POLICY-anchored proration
+// (AllocateForNewLeaveType / processLeaveBalances, SyncLeaveBalances).
+//
+// Unlike calculateEntitlementAsOf, there is NO prior-year bypass here. asOf in
+// this path is always max(policyAsOf, employeeJoiningDate) as resolved by the
+// caller (processLeaveBalances / SyncLeaveBalances), and must always be prorated
+// against — regardless of how long ago the employee joined — because the LEAVE
+// TYPE itself is new as of asOf. A 3-year employee doesn't get backdated days
+// for a policy that didn't exist until this year.
+func (s *leaveBalance) calculateEntitlementForPolicyAsOf(role string, defaultEntitlement int, internEntitlement *int, asOf time.Time) float64 {
+	entitlement := s.resolveEntitlement(role, defaultEntitlement, internEntitlement)
 	return ProratedLeave(entitlement, asOf)
 }
 
@@ -456,13 +494,12 @@ func (s *leaveBalance) calculateEntitlement(role string, joiningDate *time.Time,
 //
 // Rules:
 //   - asOf is always expected to be in the current year when this is called
-//     (prior-year check is done in calculateEntitlementAsOf before reaching here).
+//     (prior-year check, where applicable, is done by the caller before reaching here).
 //   - If asOf is NOT in the current year for any reason → full entitlement (safe fallback).
 //   - remainingMonths = 13 - asOf.Month()
 func ProratedLeave(yearlyLeave int, asOf time.Time) float64 {
 	now := time.Now()
 	// Safety: only prorate within the current calendar year.
-	// Prior-year employees are handled upstream in calculateEntitlementAsOf.
 	// Future-year dates should never occur but are treated as full entitlement.
 	if asOf.Year() != now.Year() {
 		return float64(yearlyLeave)
