@@ -255,7 +255,17 @@ func (s *leaveBalance) RecalculateForJoiningDate(tx *sqlx.Tx, employeeID uuid.UU
 			continue
 		}
 
-		entitlement := s.calculateEntitlementAsOf(roleType, joiningDate, leaveType.DefaultEntitlement, leaveType.InternEntitlement, *joiningDate)
+		// Per-policy anchor: use the later of joiningDate and policy's associate_month.
+		asOf := *joiningDate
+		if leaveType.AssociateMonth != nil {
+			now := time.Now()
+			policyAsOf := time.Date(now.Year(), time.Month(*leaveType.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
+			if policyAsOf.After(asOf) {
+				asOf = policyAsOf
+			}
+		}
+
+		entitlement := s.calculateEntitlementAsOf(roleType, joiningDate, leaveType.DefaultEntitlement, leaveType.InternEntitlement, asOf)
 
 		balance, err := s.Repo.GetLeaveBalance(tx, employeeID, leaveType.ID)
 		if err != nil {
@@ -291,16 +301,26 @@ func (s *leaveBalance) RecalculateForRoleChange(tx *sqlx.Tx, employeeID uuid.UUI
 		return err
 	}
 
-	// Use the employee's joining date as the proration anchor.
-	asOf := time.Now()
+	// Base anchor: employee's joining date or today.
+	empAsOf := time.Now()
 	if employee.JoiningDate != nil {
-		asOf = *employee.JoiningDate
+		empAsOf = *employee.JoiningDate
 	}
 
 	for _, leaveType := range leaveTypes {
 
 		if leaveType.IsEarly != nil && *leaveType.IsEarly {
 			continue
+		}
+
+		// Per-policy anchor: use the later of employee's joining date and policy's associate_month.
+		asOf := empAsOf
+		if leaveType.AssociateMonth != nil {
+			now := time.Now()
+			policyAsOf := time.Date(now.Year(), time.Month(*leaveType.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
+			if policyAsOf.After(empAsOf) {
+				asOf = policyAsOf
+			}
 		}
 
 		entitlement := s.calculateEntitlementAsOf(newRole, employee.JoiningDate, leaveType.DefaultEntitlement, leaveType.InternEntitlement, asOf)
@@ -415,14 +435,15 @@ func (s *leaveBalance) calculateLeaveBalances(leaveTypes []models.LeaveTypeData,
 
 		total := rec.Opening + rec.Adjusted
 		balances = append(balances, models.Balance{
-			LeaveTypeID: lt.LeaveTypeID,
-			LeaveType:   lt.LeaveTypeName,
-			Opening:     rec.Opening,
-			Accrued:     rec.Accrued,
-			Used:        rec.Used,
-			Adjusted:    rec.Adjusted,
-			Total:       total,
-			Available:   s.calculateClosingBalance(rec.Opening, rec.Used, rec.Adjusted),
+			LeaveTypeID:    lt.LeaveTypeID,
+			LeaveType:      lt.LeaveTypeName,
+			Opening:        rec.Opening,
+			Accrued:        rec.Accrued,
+			Used:           rec.Used,
+			Adjusted:       rec.Adjusted,
+			Total:          total,
+			Available:      s.calculateClosingBalance(rec.Opening, rec.Used, rec.Adjusted),
+			AssociateMonth: lt.AssociateMonth,
 		})
 	}
 	return balances

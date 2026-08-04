@@ -55,6 +55,7 @@ export interface UpdateLeavePolicyRequest {
   default_entitlement?: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12 proration anchor — send only when changed
 }
 
 export interface LeaveActionRequest {

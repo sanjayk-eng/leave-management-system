@@ -77,16 +77,18 @@ export const PolicyFormDialog = ({
   const [previewLoad,   setPreviewLoad]   = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Reset on open ─────────────────────────────────────────────────────────
+// ── Reset on open ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (open) {
       setStep(1);
       setPreview(null);
+      const savedMonth = initial?.associate_month ?? new Date().getMonth() + 1;
       setForm({
         ...POLICY_FORM_DEFAULTS,
         ...initial,
         approval_flow_id: initial?.approval_flow_id ?? systemFlowId,
-        associate_month:  new Date().getMonth() + 1,
+        // Create: always today's month. Edit: restore the stored associate_month.
+        associate_month: isAdd ? new Date().getMonth() + 1 : savedMonth,
       });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,6 +171,8 @@ export const PolicyFormDialog = ({
           )}
           {step === 3 && (
             <StepEntitlement
+              mode={mode}
+              originalMonth={isAdd ? null : (initial?.associate_month ?? null)}
               form={form}
               preview={preview}
               previewLoad={previewLoad}

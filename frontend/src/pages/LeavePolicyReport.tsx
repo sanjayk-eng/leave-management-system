@@ -54,6 +54,8 @@ function UsageBar({ used, balance }: { used: number; balance: number }) {
 
 // ── Expanded policy detail panel ──────────────────────────────────────────────
 
+const MONTH_SHORT_RPT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 function PolicyDetailPanel({ policies }: { policies: LeavePolicyEntry[] }) {
   const sorted = [...policies].sort((a, b) => a.policy_id - b.policy_id);
 
@@ -66,10 +68,12 @@ function PolicyDetailPanel({ policies }: { policies: LeavePolicyEntry[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40">
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-[220px]">Policy</th>
-              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-[80px]">Type</th>
-              <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs w-[70px]">Used</th>
-              <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs w-[80px]">Balance</th>
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-[200px]">Policy</th>
+              <th className="text-left px-3 py-2 font-medium text-muted-foreground text-xs w-[70px]">Type</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs w-[70px]">Annual</th>
+              <th className="text-center px-3 py-2 font-medium text-muted-foreground text-xs w-[70px]">Basis</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs w-[60px]">Used</th>
+              <th className="text-right px-3 py-2 font-medium text-muted-foreground text-xs w-[70px]">Balance</th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs">Usage</th>
             </tr>
           </thead>
@@ -90,6 +94,24 @@ function PolicyDetailPanel({ policies }: { policies: LeavePolicyEntry[] }) {
 
                   {/* Type badge */}
                   <td className="px-3 py-2.5">{policyTypeBadge(p)}</td>
+
+                  {/* Annual entitlement */}
+                  <td className="px-3 py-2.5 text-right">
+                    <span className="text-xs font-semibold text-foreground tabular-nums">
+                      {p.default_entitlement}d
+                    </span>
+                  </td>
+
+                  {/* Associate month — proration basis */}
+                  <td className="px-3 py-2.5 text-center">
+                    {p.associate_month != null ? (
+                      <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        {MONTH_SHORT_RPT[p.associate_month - 1]}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
 
                   {/* Used */}
                   <td className="px-3 py-2.5 text-right">

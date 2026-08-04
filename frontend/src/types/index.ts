@@ -240,6 +240,8 @@ export interface LeavePolicyEntry {
   is_paid: boolean;
   is_early: boolean;
   is_active: boolean;
+  default_entitlement: number;       // annual days for the policy
+  associate_month?: number;          // 1-12 proration anchor stored on the policy
   used_days: number;
   balance: number;
 }

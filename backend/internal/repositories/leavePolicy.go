@@ -165,6 +165,7 @@ func (r *leavePolicy) Update(ctx context.Context, tx *sqlx.Tx, id string, input 
 			is_early = $5,
 			is_work_from_home = $6,
 			approval_flow_id = $7,
+			associate_month = COALESCE($9, associate_month),
 			updated_at = NOW()
 		WHERE id = $8
 		RETURNING 
@@ -192,6 +193,7 @@ func (r *leavePolicy) Update(ctx context.Context, tx *sqlx.Tx, id string, input 
 		*input.IsWorkFromHome,
 		input.ApprovalFlowID,
 		id,
+		input.AssociateMonth, // $9 — only updates if non-nil
 	).Scan(
 		&leave.ID,
 		&leave.Name,

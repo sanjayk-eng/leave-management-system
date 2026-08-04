@@ -3,20 +3,25 @@ package models
 import "github.com/google/uuid"
 
 type Balance struct {
-	LeaveTypeID int     `json:"leave_type_id"`
-	LeaveType   string  `json:"leave_type"`
-	Opening     float64 `json:"opening"`
-	Accrued     float64 `json:"accrued"`
-	Used        float64 `json:"used"`
-	Adjusted    float64 `json:"adjusted"`
-	Total       float64 `json:"total"`
-	Available   float64 `json:"available"`
+	LeaveTypeID    int     `json:"leave_type_id"`
+	LeaveType      string  `json:"leave_type"`
+	Opening        float64 `json:"opening"`
+	Accrued        float64 `json:"accrued"`
+	Used           float64 `json:"used"`
+	Adjusted       float64 `json:"adjusted"`
+	Total          float64 `json:"total"`
+	Available      float64 `json:"available"`
+	// AssociateMonth is the 1-12 proration anchor stored on the policy.
+	// NULL/0 means legacy policy — anchor was time.Now() at creation.
+	AssociateMonth *int    `json:"associate_month,omitempty"`
 }
+
 type LeaveTypeData struct {
 	LeaveTypeID        int      `db:"leave_type_id"`
 	LeaveTypeName      string   `db:"leave_type_name"`
 	DefaultEntitlement float64  `db:"default_entitlement"`
 	InternEntitlement  *float64 `db:"intern_entitlement"`
+	AssociateMonth     *int     `db:"associate_month"`
 }
 
 // BalanceData represents raw balance data from database

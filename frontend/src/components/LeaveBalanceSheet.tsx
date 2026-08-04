@@ -118,16 +118,19 @@ const StatChip = ({
   </div>
 );
 
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 // ─── Leave balance card ───────────────────────────────────────────────────────
 
 const BalanceCard = ({ b }: { b: {
   leave_type: string;
-  total?:    number;
-  used?:     number;
-  available?: number;
-  opening?:  number;
-  accrued?:  number;
-  adjusted?: number;
+  total?:          number;
+  used?:           number;
+  available?:      number;
+  opening?:        number;
+  accrued?:        number;
+  adjusted?:       number;
+  associate_month?: number;
 }}) => {
   const total     = b.total     ?? 0;
   const used      = b.used      ?? 0;
@@ -146,10 +149,18 @@ const BalanceCard = ({ b }: { b: {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold leading-tight truncate capitalize">{b.leave_type}</p>
 
-          {/* Status pill */}
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold mt-1.5 ${st.bg} ${st.text}`}>
-            {st.label}
-          </span>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {/* Status pill */}
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.bg} ${st.text}`}>
+              {st.label}
+            </span>
+            {/* Associate month badge */}
+            {b.associate_month != null && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                📅 from {MONTH_SHORT[b.associate_month - 1]}
+              </span>
+            )}
+          </div>
 
           {/* Used / Remaining inline */}
           <p className="text-xs text-muted-foreground mt-2">
