@@ -64,6 +64,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		leaves.DELETE("/admin-delete/policy/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.DeleteLeavePolicy) // Admin, SuperAdmin, HR delete leave policy
 		leaves.PATCH("/admin-toggle/policy/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.ToggleLeavePolicy)  // Admin, SuperAdmin, HR toggle active/inactive
 		leaves.GET("/Get-All-Leave-Policy", h.GetAllLeavePolicies)                                                                                                           // Get all leave policies (?active_only=true for apply-leave)
+		leaves.GET("/policy/preview", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.PreviewLeaveAllocation)         // Preview prorated allocation for a new policy (stateless)
 		// Get all leaves (filtered by role)
 		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport)             // Monthly / yearly / range leave report
 		leaves.GET("/Get-Leave-Policy-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeavePolicyReport) // Per-policy breakdown report

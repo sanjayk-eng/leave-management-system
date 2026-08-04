@@ -12,6 +12,10 @@ type LeaveTypeInput struct {
 	LeaveCount         *int    `json:"leave_count,omitempty" validate:"omitempty,gt=0"`
 	ApprovalFlowID     *string `json:"approval_flow_id,omitempty"`
 	IsActive           *bool   `json:"is_active,omitempty"`
+	// AssociateMonth is the 1-12 month used as the proration anchor when
+	// allocating balances for a newly created policy.
+	// If nil or 0, defaults to the current calendar month.
+	AssociateMonth *int `json:"associate_month,omitempty"`
 }
 
 // ----------------- LEAVE TYPE -----------------
@@ -25,6 +29,9 @@ type LeaveType struct {
 	IsWorkFromHome     bool      `json:"is_work_from_home" db:"is_work_from_home"`
 	IsActive           bool      `json:"is_active" db:"is_active"`
 	ApprovalFlowID     *string   `json:"approval_flow_id,omitempty" db:"approval_flow_id"`
+	// AssociateMonth is the 1-12 proration anchor month stored at policy creation time.
+	// NULL for legacy policies — callers fall back to EXTRACT(MONTH FROM created_at).
+	AssociateMonth     *int      `json:"associate_month,omitempty" db:"associate_month"`
 	CreatedAt          time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -40,6 +47,7 @@ type LeaveTypeResponse struct {
 	IsWorkFromHome     bool                       `json:"is_work_from_home"`
 	IsActive           bool                       `json:"is_active"`
 	ApprovalFlowID     *string                    `json:"approval_flow_id,omitempty"`
+	AssociateMonth     *int                       `json:"associate_month,omitempty"`
 	CreatedAt          time.Time                  `json:"created_at"`
 	UpdatedAt          time.Time                  `json:"updated_at"`
 	ApprovalFlow       *LeaveApprovalFlowResponse `json:"approval_flow,omitempty"`
@@ -63,6 +71,7 @@ func MappPayload(leavetype *LeaveType, leaveApprovalFlow *LeaveApprovalFlowRespo
 		IsWorkFromHome:     leavetype.IsWorkFromHome,
 		IsActive:           leavetype.IsActive,
 		ApprovalFlowID:     leavetype.ApprovalFlowID,
+		AssociateMonth:     leavetype.AssociateMonth,
 		CreatedAt:          leavetype.CreatedAt,
 		UpdatedAt:          leavetype.UpdatedAt,
 	}

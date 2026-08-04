@@ -34,7 +34,7 @@ export const useLeavePolicies = (status: 'active' | 'inactive' | 'all' = 'active
   const policies = Array.isArray(policiesData) ? policiesData : [];
 
   const addPolicyMutation = useMutation({
-    mutationFn: (data: { name: string; is_paid: boolean; is_early?: boolean; is_work_from_home?: boolean; default_entitlement: number; intern_entitlement?: number; approval_flow_id?: string }) =>
+    mutationFn: (data: { name: string; is_paid: boolean; is_early?: boolean; is_work_from_home?: boolean; default_entitlement: number; intern_entitlement?: number; approval_flow_id?: string; associate_month?: number }) =>
       leaveService.addPolicy(data),
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['leavePolicies'] });

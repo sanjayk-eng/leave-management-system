@@ -36,7 +36,7 @@ export const useLeaveBalances = (employeeId: string) => {
     },
   });
 
-  // Ensure balances is always an array and clean the data
+  // Ensure balances is always an array
   const cleanBalances = data?.balances ? data.balances.filter(balance =>
     balance &&
     typeof balance.leave_type === 'string' &&

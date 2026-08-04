@@ -1,14 +1,16 @@
 import { api } from '@/lib/api';
 
 export interface LeaveBalanceItem {
+  leave_type_id?: number;   // policy id — used to link back to the policy
   leave_type: string;
   used: number;
   total: number;
   available: number;
-  adjusted?: number; // Add adjustment field
-  opening?: number;  // Add opening balance
-  accrued?: number;  // Add accrued balance
-  closing?: number;  // Add closing balance
+  adjusted?: number;
+  opening?: number;
+  accrued?: number;
+  closing?: number;
+  associate_month?: number; // 1-12 proration anchor stored on the policy
 }
 
 export interface LeaveBalanceResponse {

@@ -507,7 +507,8 @@ func (r *Repository) GetAllLeaveTypesWithEntitlements() ([]models.LeaveTypeData,
 			lt.id AS leave_type_id,
 			lt.name AS leave_type_name,
 			COALESCE(lt.default_entitlement, 0) AS default_entitlement,
-			lt.intern_entitlement
+			lt.intern_entitlement,
+			lt.associate_month
 		FROM Tbl_Leave_Type lt
 		WHERE (lt.is_early IS NULL OR lt.is_early = FALSE)
 		  AND lt.is_active = TRUE

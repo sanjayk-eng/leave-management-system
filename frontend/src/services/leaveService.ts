@@ -44,6 +44,7 @@ export interface AddLeavePolicyRequest {
   default_entitlement: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12: proration anchor month for balance allocation
 }
 
 export interface UpdateLeavePolicyRequest {
@@ -54,6 +55,7 @@ export interface UpdateLeavePolicyRequest {
   default_entitlement?: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12 proration anchor — send only when changed
 }
 
 export interface LeaveActionRequest {
@@ -87,6 +89,7 @@ export interface LeavePolicy {
   default_entitlement: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12 proration anchor stored at creation
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +123,19 @@ export interface LeaveResponse {
   approval_name?: string;
   applied_by_name?: string;   // Populated when someone applied on behalf of the employee
   approval_log?: ApprovalLogEntry[];
+}
+
+export interface PolicyAllocationPreview {
+  default_entitlement: number;
+  intern_entitlement?: number;
+  prorated_default: number;
+  prorated_intern?: number;
+  remaining_months: number;
+  elapsed_months: number;
+  selected_month: number;
+  current_month: number;
+  current_year: number;
+  is_current_month: boolean;
 }
 
 // --- SERVICE OBJECT ---
@@ -159,6 +175,14 @@ export const leaveService = {
 
   togglePolicy: async (id: number) => {
     return api.patch<{ message: string; id: number; is_active: boolean }>(`/leaves/admin-toggle/policy/${id}`);
+  },
+
+  previewPolicyAllocation: async (defaultEntitlement: number, internEntitlement?: number, month?: number) => {
+    const params = new URLSearchParams();
+    params.append('default_entitlement', String(defaultEntitlement));
+    if (internEntitlement != null) params.append('intern_entitlement', String(internEntitlement));
+    if (month != null) params.append('month', String(month));
+    return api.get<PolicyAllocationPreview>(`/leaves/policy/preview?${params.toString()}`);
   },
 
   action: async (id: string, data: LeaveActionRequest) => {

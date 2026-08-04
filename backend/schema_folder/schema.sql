@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS Tbl_Leave_Type (
     -- Approval workflow assigned to this leave type
     approval_flow_id UUID NULL,
 
+    -- Whether this policy is currently active
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- Proration anchor month (1-12) chosen by admin in the preview when creating
+    -- the policy. NULL = legacy policy (fallback to EXTRACT(MONTH FROM created_at)).
+    associate_month INT DEFAULT NULL
+        CONSTRAINT chk_associate_month CHECK (associate_month IS NULL OR (associate_month >= 1 AND associate_month <= 12)),
+
     -- Audit fields
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
