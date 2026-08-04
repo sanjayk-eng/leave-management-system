@@ -27,6 +27,7 @@ const toPayload = (v: PolicyFormValues) => ({
   default_entitlement: parseInt(v.default_entitlement),
   intern_entitlement:  v.intern_entitlement ? parseInt(v.intern_entitlement) : undefined,
   approval_flow_id:    v.approval_flow_id   || undefined,
+  associate_month:     v.associate_month,
 });
 
 const toFormValues = (p: LeavePolicy): Partial<PolicyFormValues> => ({
@@ -37,6 +38,9 @@ const toFormValues = (p: LeavePolicy): Partial<PolicyFormValues> => ({
   default_entitlement: p.default_entitlement.toString(),
   intern_entitlement:  p.intern_entitlement ? p.intern_entitlement.toString() : '',
   approval_flow_id:    p.approval_flow_id  ?? '',
+  // Restore the stored associate_month so the edit preview opens on the correct month.
+  // Falls back to current month (default) when not set (legacy policies).
+  associate_month:     p.associate_month   ?? new Date().getMonth() + 1,
 });
 
 // ── Page ──────────────────────────────────────────────────────────────────────

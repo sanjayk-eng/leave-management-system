@@ -75,7 +75,6 @@ export const PolicyFormDialog = ({
 
   const [preview,       setPreview]       = useState<PolicyAllocationPreview | null>(null);
   const [previewLoad,   setPreviewLoad]   = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Reset on open ─────────────────────────────────────────────────────────
@@ -83,11 +82,11 @@ export const PolicyFormDialog = ({
     if (open) {
       setStep(1);
       setPreview(null);
-      setSelectedMonth(new Date().getMonth() + 1);
       setForm({
         ...POLICY_FORM_DEFAULTS,
         ...initial,
         approval_flow_id: initial?.approval_flow_id ?? systemFlowId,
+        associate_month:  new Date().getMonth() + 1,
       });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,7 +108,7 @@ export const PolicyFormDialog = ({
     debounceRef.current = setTimeout(async () => {
       try {
         const internVal = form.intern_entitlement ? Number(form.intern_entitlement) : undefined;
-        const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, selectedMonth);
+        const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, form.associate_month);
         setPreview(data);
       } catch {
         setPreview(null);
@@ -120,7 +119,7 @@ export const PolicyFormDialog = ({
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.default_entitlement, form.intern_entitlement, form.is_early, selectedMonth]);
+  }, [form.default_entitlement, form.intern_entitlement, form.is_early, form.associate_month]);
 
   const patch = (partial: Partial<PolicyFormValues>) =>
     setForm(prev => ({ ...prev, ...partial }));
@@ -173,8 +172,8 @@ export const PolicyFormDialog = ({
               form={form}
               preview={preview}
               previewLoad={previewLoad}
-              selectedMonth={selectedMonth}
-              onMonthChange={setSelectedMonth}
+              selectedMonth={form.associate_month}
+              onMonthChange={m => patch({ associate_month: m })}
               onPatch={patch}
               onNext={goNext}
               onBack={goBack}

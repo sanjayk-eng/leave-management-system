@@ -5,9 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { TableCell, TableRow } from '@/components/ui/table';
-import { Edit, GitMerge, Trash2 } from 'lucide-react';
+import { Edit, GitMerge, Trash2, Calendar } from 'lucide-react';
 import type { LeavePolicy } from '@/services/leaveService';
 import type { LeaveApprovalFlowResponse } from '@/types';
+
+const MONTH_SHORT = [
+  'Jan','Feb','Mar','Apr','May','Jun',
+  'Jul','Aug','Sep','Oct','Nov','Dec',
+];
 
 interface Props {
   policy:     LeavePolicy;
@@ -25,6 +30,11 @@ export const PolicyRow = ({
 }: Props) => {
   const flowName = flows.find(f => f.id === policy.approval_flow_id)?.name;
 
+  // Proration basis label — e.g. "from Jan" when associate_month is set
+  const associateLabel = policy.associate_month != null
+    ? MONTH_SHORT[policy.associate_month - 1]
+    : null;
+
   return (
     <TableRow className={!policy.is_active ? 'opacity-50' : undefined}>
       {/* Name */}
@@ -41,14 +51,28 @@ export const PolicyRow = ({
         </div>
       </TableCell>
 
-      {/* Entitlement */}
-      <TableCell className="text-muted-foreground">
-        <span>{policy.default_entitlement} days</span>
-        {policy.intern_entitlement != null && (
-          <span className="block text-xs text-muted-foreground/70">
-            Intern: {policy.intern_entitlement} days
+      {/* Entitlement — annual days + associate month basis */}
+      <TableCell>
+        <div className="flex flex-col gap-0.5">
+          {/* Annual entitlement */}
+          <span className="font-medium text-sm">
+            {policy.default_entitlement} days / yr
           </span>
-        )}
+          {policy.intern_entitlement != null && (
+            <span className="text-xs text-muted-foreground">
+              Intern: {policy.intern_entitlement} days / yr
+            </span>
+          )}
+          {/* Associate month badge — proration anchor */}
+          {associateLabel && !policy.is_early && (
+            <span className="inline-flex items-center gap-1 mt-0.5">
+              <Calendar className="h-3 w-3 text-primary/60" />
+              <span className="text-[11px] text-primary font-medium">
+                from {associateLabel}
+              </span>
+            </span>
+          )}
+        </div>
       </TableCell>
 
       {/* Approval flow */}

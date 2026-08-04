@@ -44,6 +44,7 @@ export interface AddLeavePolicyRequest {
   default_entitlement: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12: proration anchor month for balance allocation
 }
 
 export interface UpdateLeavePolicyRequest {
@@ -87,6 +88,7 @@ export interface LeavePolicy {
   default_entitlement: number;
   intern_entitlement?: number;
   approval_flow_id?: string;
+  associate_month?: number; // 1-12 proration anchor stored at creation
   created_at: string;
   updated_at: string;
 }

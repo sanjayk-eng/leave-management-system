@@ -54,6 +54,7 @@ func (r *leavePolicy) GetById(ctx context.Context, id string) (*models.LeaveType
 			is_work_from_home,
 			is_active,
 			approval_flow_id,
+			associate_month,
 			created_at,
 			updated_at
 		FROM Tbl_Leave_type
@@ -82,6 +83,7 @@ func (r *leavePolicy) Get(ctx context.Context, status PolicyStatusFilter) (*[]mo
 			is_work_from_home,
 			is_active,
 			approval_flow_id,
+			associate_month,
 			created_at,
 			updated_at
 		FROM Tbl_Leave_type
@@ -121,9 +123,9 @@ func (r *leavePolicy) Create(ctx context.Context, tx *sqlx.Tx, input *models.Lea
 
 	query := `
 		INSERT INTO Tbl_Leave_type 
-			(name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, approval_flow_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, is_work_from_home, created_at, updated_at, is_early, approval_flow_id
+			(name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, approval_flow_id, associate_month)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, is_work_from_home, created_at, updated_at, is_early, approval_flow_id, associate_month
 	`
 
 	err := tx.QueryRowxContext(
@@ -136,6 +138,7 @@ func (r *leavePolicy) Create(ctx context.Context, tx *sqlx.Tx, input *models.Lea
 		*input.IsEarly,
 		*input.IsWorkFromHome,
 		input.ApprovalFlowID,
+		input.AssociateMonth,
 	).Scan(
 		&leave.ID,
 		&leave.IsWorkFromHome,
@@ -143,6 +146,7 @@ func (r *leavePolicy) Create(ctx context.Context, tx *sqlx.Tx, input *models.Lea
 		&leave.UpdatedAt,
 		&leave.IsEarly,
 		&leave.ApprovalFlowID,
+		&leave.AssociateMonth,
 	)
 
 	return &leave, err
@@ -172,6 +176,7 @@ func (r *leavePolicy) Update(ctx context.Context, tx *sqlx.Tx, id string, input 
 			is_early,
 			is_work_from_home,
 			approval_flow_id,
+			associate_month,
 			created_at,
 			updated_at
 	`
@@ -196,6 +201,7 @@ func (r *leavePolicy) Update(ctx context.Context, tx *sqlx.Tx, id string, input 
 		&leave.IsEarly,
 		&leave.IsWorkFromHome,
 		&leave.ApprovalFlowID,
+		&leave.AssociateMonth,
 		&leave.CreatedAt,
 		&leave.UpdatedAt,
 	)
@@ -252,7 +258,7 @@ func (r *leavePolicy) Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) 
 
 func (r *Repository) GetAllLeaveType() ([]models.LeaveType, error) {
 	var leaveType []models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type WHERE is_active = TRUE ORDER BY id`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, associate_month, created_at, updated_at FROM Tbl_Leave_type WHERE is_active = TRUE ORDER BY id`
 	err := r.DB.Select(&leaveType, query)
 	return leaveType, err
 }

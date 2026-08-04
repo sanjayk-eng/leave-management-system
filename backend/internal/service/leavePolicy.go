@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/config/database"
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
@@ -61,10 +62,19 @@ func (s *LeavePolicy) Create(ctx context.Context, input *models.LeaveTypeInput) 
 		return nil, err
 	}
 
-	// 2. Transaction wrapper
+	// 2. Build the proration anchor date.
+	// If the admin selected a specific month in the preview, use the 1st of that
+	// month in the current year. Otherwise fall back to today.
+	now := time.Now()
+	asOf := now
+	if input.AssociateMonth != nil && *input.AssociateMonth >= 1 && *input.AssociateMonth <= 12 {
+		asOf = time.Date(now.Year(), time.Month(*input.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
+	}
+
+	// 3. Transaction wrapper
 	err = database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
 
-		// 3. Insert leave type
+		// 4. Insert leave type
 		res, err = s.LeavePolicyRepo.Create(ctx, tx, input)
 		if err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "failed to create leave type")
@@ -76,9 +86,9 @@ func (s *LeavePolicy) Create(ctx context.Context, input *models.LeaveTypeInput) 
 		res.DefaultEntitlement = *input.DefaultEntitlement
 		res.InternEntitlement = input.InternEntitlement
 
-		// 4. Bulk allocation (inside transaction)
+		// 5. Bulk allocation using the selected associate month (inside transaction)
 		if !*input.IsEarly {
-			s.LeaveBalanceService.AllocateForNewLeaveType(tx, res.ID, res.DefaultEntitlement, res.InternEntitlement)
+			s.LeaveBalanceService.AllocateForNewLeaveType(tx, res.ID, res.DefaultEntitlement, res.InternEntitlement, asOf)
 		}
 
 		return nil
@@ -151,6 +161,7 @@ func (s *LeavePolicy) Get(ctx context.Context, status repositories.PolicyStatusF
 			IsWorkFromHome:     lCopy.IsWorkFromHome,
 			IsActive:           lCopy.IsActive,
 			ApprovalFlowID:     lCopy.ApprovalFlowID,
+			AssociateMonth:     lCopy.AssociateMonth,
 			CreatedAt:          lCopy.CreatedAt,
 			UpdatedAt:          lCopy.UpdatedAt,
 			ApprovalFlow:       nil,
@@ -170,6 +181,15 @@ func (s *LeavePolicy) Update(ctx context.Context, leaveTypeID int, input *models
 		return nil, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
 
+	// Resolve the proration anchor for balance recalculation.
+	// Use the stored associate_month so updates don't drift the anchor to today.
+	var policyAsOf *time.Time
+	if oldLeaveType.AssociateMonth != nil {
+		now := time.Now()
+		t := time.Date(now.Year(), time.Month(*oldLeaveType.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
+		policyAsOf = &t
+	}
+
 	var res *models.LeaveType
 
 	err = database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
@@ -181,7 +201,7 @@ func (s *LeavePolicy) Update(ctx context.Context, leaveTypeID int, input *models
 
 		isEarly := oldLeaveType.IsEarly != nil && *oldLeaveType.IsEarly
 		if !isEarly {
-			if err := s.LeaveBalanceService.SyncLeaveBalances(tx,leaveTypeID,*input.DefaultEntitlement,input.InternEntitlement); err != nil {
+			if err := s.LeaveBalanceService.SyncLeaveBalances(tx, leaveTypeID, *input.DefaultEntitlement, input.InternEntitlement, policyAsOf); err != nil {
 				return err
 			}
 		}

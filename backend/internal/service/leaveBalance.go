@@ -30,9 +30,11 @@ type LeaveBalance interface {
 
 	Adjust(ctx context.Context, actorID uuid.UUID, employeeID uuid.UUID, input models.LeaveBalanceAdjustInput) (*models.LeaveBalanceAdjustResult, error)
 
-	AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error
+	AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int, asOf time.Time) error
 
-	SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error
+	// SyncLeaveBalances recalculates balances when a policy is updated.
+	// policyAsOf is the stored associate_month date — nil falls back to time.Now().
+	SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int, policyAsOf *time.Time) error
 
 	AllocateForEmployee(tx *sqlx.Tx, employeeID uuid.UUID, role string, joiningDate *time.Time) error
 
@@ -117,25 +119,23 @@ func (s *leaveBalance) Adjust(ctx context.Context, actorID uuid.UUID, employeeID
 	}
 	return &result, nil
 }
-func (s *leaveBalance) AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error {
+func (s *leaveBalance) AllocateForNewLeaveType(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int, asOf time.Time) error {
 	// For a brand-new policy created mid-year, existing employees are prorated
-	// based on the policy creation date (today), not their joining date.
-	// e.g. policy created in August → remaining months = 13-8 = 5 → 5/12 of annual entitlement.
-	policyCreatedAt := time.Now()
-
-	return s.processLeaveBalances(tx, defaultEntitlement, internEntitlement, policyCreatedAt,
+	// based on the given asOf date (typically the policy associate month selected
+	// by the admin in the preview, or time.Now() if not specified).
+	// e.g. asOf = August → remaining months = 13-8 = 5 → 5/12 of annual entitlement.
+	return s.processLeaveBalances(tx, defaultEntitlement, internEntitlement, asOf,
 		func(emp models.ActiveEmployeeRole, entitlement float64) error {
 			return s.Repo.Create(tx, emp.ID, leaveTypeID, entitlement)
 		},
 	)
 }
 
-func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int) error {
+func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEntitlement int, internEntitlement *int, policyAsOf *time.Time) error {
 	// On policy UPDATE the entitlement values may have changed.
-	// For employees who already have a balance row: recalculate using their
-	// original joining date so their proration is not reset by the update.
-	// For employees who have no row yet (e.g. they joined after the policy
-	// was first created): prorate from today.
+	// Use the stored associate_month (policyAsOf) as the proration anchor so the
+	// calculation stays consistent with what was chosen at creation time.
+	// Falls back to time.Now() for legacy policies that have no associate_month.
 	employees, err := s.CommRepo.GetAllActiveEmployeesWithRoles(tx)
 	if err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to fetch employees")
@@ -144,13 +144,27 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 	now := time.Now()
 	currentYear := now.Year()
 
+	// Determine the base policy anchor date.
+	baseAsOf := now
+	if policyAsOf != nil {
+		baseAsOf = *policyAsOf
+	}
+
 	for _, emp := range employees {
+		// Per-employee anchor: the later of the policy's associate month and the
+		// employee's joining date. An employee who joined after the policy was
+		// associated should not receive days for months they weren't present.
+		asOf := baseAsOf
+		if emp.JoiningDate != nil && emp.JoiningDate.After(baseAsOf) {
+			asOf = *emp.JoiningDate
+		}
+
 		balance, err := s.Repo.GetLeaveBalance(tx, emp.ID, leaveTypeID)
 
 		switch {
 		case err == sql.ErrNoRows:
-			// No row yet — prorate from today (same as new-policy allocation).
-			entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, now)
+			// No row yet — create one prorated from the correct anchor.
+			entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
 			if err := s.Repo.Create(tx, emp.ID, leaveTypeID, entitlement); err != nil {
 				return err
 			}
@@ -159,8 +173,8 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 			return err
 
 		default:
-			// Row exists — keep the employee's original proration anchor (joining date).
-			entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, now)
+			// Row exists — recalculate opening from the policy anchor (not today).
+			entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
 			balance.Opening = entitlement
 			balance.Closing = s.calculateClosingBalance(balance.Opening, balance.Used, balance.Adjusted)
 			balance.EmployeeID = emp.ID
@@ -177,21 +191,36 @@ func (s *leaveBalance) SyncLeaveBalances(tx *sqlx.Tx, leaveTypeID int, defaultEn
 }
 
 func (s *leaveBalance) AllocateForEmployee(tx *sqlx.Tx, employeeID uuid.UUID, role string, joiningDate *time.Time) error {
-	// For a new employee, proration is based on their joining date.
-	// If joining date is nil or in a prior year, they receive the full entitlement.
-	asOf := time.Now()
+	// For a new employee, proration is based on the later of:
+	//   - their joining date, and
+	//   - the policy's associate_month (the month the admin chose as the allocation anchor).
+	// This prevents a new employee joining in e.g. March from receiving days intended
+	// only from August (the policy's associate month).
+	// If joining date is nil or in a prior year → ProratedLeave returns full entitlement.
+	empAsOf := time.Now()
 	if joiningDate != nil {
-		asOf = *joiningDate
+		empAsOf = *joiningDate
 	}
 
 	leaveTypes, err := s.CommRepo.GetAllLeaveType()
 	if err != nil {
 		return errors.CustomErr(http.StatusInternalServerError, "failed to get leave types")
 	}
-	for _, leaveType := range leaveTypes {
 
+	for _, leaveType := range leaveTypes {
 		if leaveType.IsEarly != nil && *leaveType.IsEarly {
 			continue
+		}
+
+		// Determine per-policy asOf: use the later of the employee's joining date
+		// and the policy's associate_month (if set).
+		asOf := empAsOf
+		if leaveType.AssociateMonth != nil {
+			now := time.Now()
+			policyAsOf := time.Date(now.Year(), time.Month(*leaveType.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
+			if policyAsOf.After(empAsOf) {
+				asOf = policyAsOf
+			}
 		}
 
 		entitlement := s.calculateEntitlementAsOf(role, joiningDate, leaveType.DefaultEntitlement, leaveType.InternEntitlement, asOf)
@@ -295,7 +324,7 @@ func (s *leaveBalance) RecalculateForRoleChange(tx *sqlx.Tx, employeeID uuid.UUI
 
 	return nil
 }
-func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int, internEntitlement *int, asOf time.Time, handler func(emp models.ActiveEmployeeRole, entitlement float64) error) error {
+func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int, internEntitlement *int, policyAsOf time.Time, handler func(emp models.ActiveEmployeeRole, entitlement float64) error) error {
 
 	employees, err := s.CommRepo.GetAllActiveEmployeesWithRoles(tx)
 	if err != nil {
@@ -303,6 +332,18 @@ func (s *leaveBalance) processLeaveBalances(tx *sqlx.Tx, defaultEntitlement int,
 	}
 
 	for _, emp := range employees {
+		// Per-employee asOf: use the later of the policy's associate month and the
+		// employee's own joining date (within the current year).
+		// - If the employee joined AFTER the policy's associate month → prorate from joining date
+		//   (they weren't around for the earlier months).
+		// - If the employee joined BEFORE or in the same month → prorate from the policy date
+		//   (they get the full allocation that the policy intends).
+		// - If the employee joined in a prior year → ProratedLeave returns full entitlement anyway.
+		asOf := policyAsOf
+		if emp.JoiningDate != nil && emp.JoiningDate.After(policyAsOf) {
+			asOf = *emp.JoiningDate
+		}
+
 		entitlement := s.calculateEntitlementAsOf(emp.Role, emp.JoiningDate, defaultEntitlement, internEntitlement, asOf)
 		if err := handler(emp, entitlement); err != nil {
 			return err

@@ -8,6 +8,7 @@ export interface PolicyFormValues {
   default_entitlement: string;
   intern_entitlement:  string;
   approval_flow_id:    string; // "" = none
+  associate_month:     number; // 1-12: the month used as the proration anchor when creating the policy
 }
 
 export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
@@ -18,6 +19,7 @@ export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
   default_entitlement: '',
   intern_entitlement:  '',
   approval_flow_id:    '',
+  associate_month:     new Date().getMonth() + 1,
 };
 
 // Wizard steps:
