@@ -1,13 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
 
-// Thin wrapper — owns only wizard state (current step) and form state.
-// All visual content lives in PolicyStep1Fields / PolicyStep2Flow.
+// Thin wrapper — owns wizard state, form state, and the backend allocation
+// preview that is shared between Step 1 (typed live) and Step 2 (summary).
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import type { LeaveApprovalFlowResponse } from '@/types';
+import { leaveService, type PolicyAllocationPreview } from '@/services/leaveService';
 import { PolicyStep1Fields } from './policy/PolicyStep1Fields';
 import { PolicyStep2Flow }   from './policy/PolicyStep2Flow';
 import {
@@ -18,6 +19,8 @@ import {
 // Re-export so existing imports in LeavePolicies.tsx keep working.
 export type { PolicyFormValues };
 export { POLICY_FORM_DEFAULTS };
+
+const DEBOUNCE_MS = 400;
 
 // ── Step progress bar ─────────────────────────────────────────────────────────
 const StepIndicator = ({ step }: { step: 1 | 2 }) => (
@@ -45,12 +48,21 @@ export const PolicyFormDialog = ({
   const isAdd = mode === 'add';
   const systemFlowId = flows.find(f => f.is_system)?.id ?? '';
 
-  const [form, setForm] = useState<PolicyFormValues>(POLICY_FORM_DEFAULTS);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [form, setForm]       = useState<PolicyFormValues>(POLICY_FORM_DEFAULTS);
+  const [step, setStep]       = useState<1 | 2>(1);
 
+  // ── Shared allocation preview (fetched from backend) ─────────────────────
+  const [preview,       setPreview]       = useState<PolicyAllocationPreview | null>(null);
+  const [previewLoad,   setPreviewLoad]   = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       setStep(1);
+      setPreview(null);
+      setSelectedMonth(new Date().getMonth() + 1);
       setForm({
         ...POLICY_FORM_DEFAULTS,
         ...initial,
@@ -58,6 +70,41 @@ export const PolicyFormDialog = ({
       });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch preview from backend whenever entitlement values OR month changes
+  useEffect(() => {
+    const defaultVal = Number(form.default_entitlement) || 0;
+
+    if (defaultVal <= 0 || form.is_early) {
+      setPreview(null);
+      setPreviewLoad(false);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      return;
+    }
+
+    setPreviewLoad(true);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const internVal = form.intern_entitlement
+          ? Number(form.intern_entitlement)
+          : undefined;
+        const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, selectedMonth);
+        setPreview(data);
+      } catch {
+        setPreview(null);
+      } finally {
+        setPreviewLoad(false);
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.default_entitlement, form.intern_entitlement, form.is_early, selectedMonth]);
 
   const patch = (partial: Partial<PolicyFormValues>) =>
     setForm(prev => ({ ...prev, ...partial }));
@@ -68,8 +115,8 @@ export const PolicyFormDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) handleClose(); }}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
+      <DialogContent className="w-full max-w-md mx-auto max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isAdd ? 'Add Leave Policy' : 'Edit Leave Policy'}</DialogTitle>
           <DialogDescription>
             {step === 1
@@ -78,27 +125,36 @@ export const PolicyFormDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <StepIndicator step={step} />
+        <div className="shrink-0 px-1">
+          <StepIndicator step={step} />
+        </div>
 
-        {step === 1 ? (
-          <PolicyStep1Fields
-            form={form}
-            isValid={step1Valid}
-            onPatch={patch}
-            onNext={() => setStep(2)}
-            onCancel={handleClose}
-          />
-        ) : (
-          <PolicyStep2Flow
-            form={form}
-            flows={flows}
-            isAdd={isAdd}
-            isSubmitting={isSubmitting}
-            onPatch={patch}
-            onBack={() => setStep(1)}
-            onSubmit={e => { e.preventDefault(); onSubmit(form); }}
-          />
-        )}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {step === 1 ? (
+            <PolicyStep1Fields
+              form={form}
+              isValid={step1Valid}
+              preview={preview}
+              previewLoad={previewLoad}
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+              onPatch={patch}
+              onNext={() => setStep(2)}
+              onCancel={handleClose}
+            />
+          ) : (
+            <PolicyStep2Flow
+              form={form}
+              flows={flows}
+              isAdd={isAdd}
+              isSubmitting={isSubmitting}
+              preview={preview}
+              onPatch={patch}
+              onBack={() => setStep(1)}
+              onSubmit={e => { e.preventDefault(); onSubmit(form); }}
+            />
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

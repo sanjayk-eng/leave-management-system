@@ -122,6 +122,19 @@ export interface LeaveResponse {
   approval_log?: ApprovalLogEntry[];
 }
 
+export interface PolicyAllocationPreview {
+  default_entitlement: number;
+  intern_entitlement?: number;
+  prorated_default: number;
+  prorated_intern?: number;
+  remaining_months: number;
+  elapsed_months: number;
+  selected_month: number;
+  current_month: number;
+  current_year: number;
+  is_current_month: boolean;
+}
+
 // --- SERVICE OBJECT ---
 
 export const leaveService = {
@@ -159,6 +172,14 @@ export const leaveService = {
 
   togglePolicy: async (id: number) => {
     return api.patch<{ message: string; id: number; is_active: boolean }>(`/leaves/admin-toggle/policy/${id}`);
+  },
+
+  previewPolicyAllocation: async (defaultEntitlement: number, internEntitlement?: number, month?: number) => {
+    const params = new URLSearchParams();
+    params.append('default_entitlement', String(defaultEntitlement));
+    if (internEntitlement != null) params.append('intern_entitlement', String(internEntitlement));
+    if (month != null) params.append('month', String(month));
+    return api.get<PolicyAllocationPreview>(`/leaves/policy/preview?${params.toString()}`);
   },
 
   action: async (id: string, data: LeaveActionRequest) => {

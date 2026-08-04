@@ -13,7 +13,7 @@ type leaveBalanceRepository struct {
 }
 
 type LeaveBalanceRepository interface {
-	Create(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, entitlement int) error
+	Create(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, entitlement float64) error
 	GetLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int) (*models.LeaveBalanceForAdjustment, error)
 	UpdateLeaveBalance(tx *sqlx.Tx, balance *models.LeaveBalanceForAdjustment) error
 	UpdateAdjertment(tx *sqlx.Tx, balanceID uuid.UUID, newAdjusted, newClosing float64) error
@@ -25,7 +25,7 @@ func NewLeaveBalanceRepository(db *sqlx.DB) LeaveBalanceRepository {
 		DB: db,
 	}
 }
-func (r *leaveBalanceRepository) Create(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, entitlement int) error {
+func (r *leaveBalanceRepository) Create(tx *sqlx.Tx, employeeID uuid.UUID, leaveTypeID int, entitlement float64) error {
 	_, err := tx.Exec(`
 		INSERT INTO Tbl_Leave_balance 
 			(employee_id, leave_type_id, year, opening, accrued, used, adjusted, closing)
