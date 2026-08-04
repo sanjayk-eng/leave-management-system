@@ -231,6 +231,60 @@ export interface LeaveReportResponse {
 export type LeaveMonthlyRecord = LeaveReportRecord;
 export type LeaveMonthlyReportResponse = LeaveReportResponse;
 
+// ─── Leave Policy Report ──────────────────────────────────────────────────────
+
+/** Usage + balance for a single leave policy, within the report window. */
+export interface LeavePolicyEntry {
+  policy_id: number;
+  policy_name: string;
+  is_paid: boolean;
+  is_early: boolean;
+  is_active: boolean;
+  used_days: number;
+  balance: number;
+}
+
+/** One employee row containing a breakdown per leave policy. */
+export interface LeavePolicyReportRecord {
+  employee_id: string;
+  employee_name: string;
+  email: string;
+  role: string;
+  total_used: number;
+  total_balance: number;
+  policies: LeavePolicyEntry[];
+}
+
+export interface LeavePolicyReportResponse {
+  message: string;
+  data: {
+    report_type: LeaveReportType;
+    from_month: number;
+    from_year: number;
+    to_month: number;
+    to_year: number;
+    total: number;
+    records: LeavePolicyReportRecord[];
+  };
+}
+
+export type LeavePolicyReportType = 'monthly' | 'weekly' | 'yearly' | 'range';
+
+export interface LeavePolicyReportParams {
+  report_type: LeavePolicyReportType;
+  month?: number;
+  year?: number;
+  // weekly uses from_*/to_* just like range
+  from_month?: number;
+  from_year?: number;
+  to_month?: number;
+  to_year?: number;
+  search?: string;
+  role?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+}
+
 export type ApproverRole = 'SUPERADMIN' | 'HR' | 'ADMIN' | 'MANAGER';
 
 export interface ApprovalStage {

@@ -8,10 +8,22 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// PolicyStatusFilter controls which policies are returned by Get.
+// "active"   → only is_active = TRUE
+// "inactive" → only is_active = FALSE
+// anything else (e.g. "all") → no filter
+type PolicyStatusFilter string
+
+const (
+	PolicyStatusActive   PolicyStatusFilter = "active"
+	PolicyStatusInactive PolicyStatusFilter = "inactive"
+	PolicyStatusAll      PolicyStatusFilter = "all"
+)
+
 type LeavePolicyRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	GetById(ctx context.Context, id string) (*models.LeaveType, error)
-	Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error)
+	Get(ctx context.Context, status PolicyStatusFilter) (*[]models.LeaveType, error)
 	Update(ctx context.Context, tx *sqlx.Tx, id string, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	Delete(tx *sqlx.Tx, leaveTypeID int) error
 	Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) (bool, error)
@@ -55,7 +67,7 @@ func (r *leavePolicy) GetById(ctx context.Context, id string) (*models.LeaveType
 
 	return &leave, nil
 }
-func (r *leavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error) {
+func (r *leavePolicy) Get(ctx context.Context, status PolicyStatusFilter) (*[]models.LeaveType, error) {
 
 	var leave []models.LeaveType
 
@@ -74,9 +86,14 @@ func (r *leavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.Leave
 			updated_at
 		FROM Tbl_Leave_type
 	`
-	if activeOnly {
+	switch status {
+	case PolicyStatusActive:
 		query += ` WHERE is_active = TRUE`
+	case PolicyStatusInactive:
+		query += ` WHERE is_active = FALSE`
+	// "all" or any other value → no WHERE clause
 	}
+	query += ` ORDER BY id`
 
 	rows, err := r.DB.QueryxContext(ctx, query)
 	if err != nil {
@@ -235,7 +252,7 @@ func (r *leavePolicy) Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) 
 
 func (r *Repository) GetAllLeaveType() ([]models.LeaveType, error) {
 	var leaveType []models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type ORDER BY id`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type WHERE is_active = TRUE ORDER BY id`
 	err := r.DB.Select(&leaveType, query)
 	return leaveType, err
 }

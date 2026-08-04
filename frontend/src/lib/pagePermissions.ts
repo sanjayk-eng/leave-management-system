@@ -113,8 +113,8 @@ export const PAGE_MENU_ITEMS: MenuItemDefinition[] = [
     permissionAll: [{ resource: 'log', action: 'read' }],
   },
   {
-    title: 'Leave Report',
-    url: '/leave-monthly-report',
+    title: 'Reports',
+    url: '/reports',
     icon: BarChart3,
     permissionAll: [{ resource: 'leave_report', action: 'read' }],
   },

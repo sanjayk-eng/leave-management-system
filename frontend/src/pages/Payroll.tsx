@@ -10,9 +10,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MonthSelect, YearSelect } from "@/components/ui/MonthYearSelect";
+import { getMonthLabel } from "@/lib/dateConstants";
 import { DollarSign, PlayCircle, CheckCircle, Download } from "lucide-react";
-import { toast } from "sonner";
+import { MONTHS, YEARS } from "@/lib/dateConstants";import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,35 +32,16 @@ const Payroll = () => {
   const { runPayroll, isRunning, payrollPreview, finalizePayroll, isFinalizing, downloadPayslip } = usePayroll();
   
   const currentDate = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1));
-  const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [showRunDialog, setShowRunDialog] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [payslipIds, setPayslipIds] = useState<string[]>([]);
 
-  const months = [
-    { value: "1", label: "January" },
-    { value: "2", label: "February" },
-    { value: "3", label: "March" },
-    { value: "4", label: "April" },
-    { value: "5", label: "May" },
-    { value: "6", label: "June" },
-    { value: "7", label: "July" },
-    { value: "8", label: "August" },
-    { value: "9", label: "September" },
-    { value: "10", label: "October" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ];
-
-  // Generate years from 2020 to current year
-  const currentYear = currentDate.getFullYear();
-  const years = Array.from({ length: currentYear - 2019 }, (_, i) => 2020 + i);
-
   const handleRunPayroll = () => {
     setPayslipIds([]); // Reset payslip IDs when running new payroll
     runPayroll(
-      { month: parseInt(selectedMonth), year: parseInt(selectedYear) },
+      { month: selectedMonth, year: selectedYear },
       {
         onSuccess: () => {
           setShowRunDialog(false);
@@ -197,32 +179,18 @@ const Payroll = () => {
         <CardContent>
           <div className="flex gap-4 mb-6">
             <div className="flex-1">
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MonthSelect
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                className="w-full"
+              />
             </div>
             <div className="flex-1">
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <YearSelect
+                value={selectedYear}
+                onChange={setSelectedYear}
+                className="w-full"
+              />
             </div>
           </div>
 
@@ -305,7 +273,7 @@ const Payroll = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Run Payroll</AlertDialogTitle>
             <AlertDialogDescription>
-              This will calculate salaries for {months.find(m => m.value === selectedMonth)?.label} {selectedYear} based on attendance and leave data.
+              This will calculate salaries for {getMonthLabel(selectedMonth)} {selectedYear} based on attendance and leave data.
               Are you sure you want to proceed?
             </AlertDialogDescription>
           </AlertDialogHeader>

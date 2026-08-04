@@ -21,5 +21,14 @@ func (h *HandlerFunc) GetLeaveLog(c *gin.Context) {
 		return
 	}
 
+	// No flow record found — return an empty log so the frontend doesn't crash on null.
+	if res == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"leave_id":     leaveID,
+			"approval_log": []interface{}{},
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, res)
 }

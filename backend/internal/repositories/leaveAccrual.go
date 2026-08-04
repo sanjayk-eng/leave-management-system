@@ -17,7 +17,7 @@ type AccruableEmployee struct {
 	Role string    `db:"role"`
 }
 
-// GetAccruableLeaveTypes returns all paid, non-early leave types.
+// GetAccruableLeaveTypes returns all paid, non-early, active leave types.
 // These are the only types that receive monthly accrual credits.
 func (r *Repository) GetAccruableLeaveTypes() ([]AccruableLeaveType, error) {
 	var types []AccruableLeaveType
@@ -26,6 +26,7 @@ func (r *Repository) GetAccruableLeaveTypes() ([]AccruableLeaveType, error) {
 		FROM Tbl_Leave_type
 		WHERE is_paid = TRUE
 		  AND (is_early IS NULL OR is_early = FALSE)
+		  AND is_active = TRUE
 		ORDER BY id
 	`)
 	return types, err

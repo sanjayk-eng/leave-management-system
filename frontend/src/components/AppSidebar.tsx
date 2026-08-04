@@ -12,7 +12,9 @@ import {
   Activity,
   Package,
   History,
-  BarChart3
+  BarChart3,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -35,11 +37,13 @@ import {
   PAGE_MENU_ITEMS,
   canAccessMenuItem,
 } from "@/lib/pagePermissions";
+import { useTheme } from "@/contexts/ThemeProvider";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const { currentUser, logout, isLoggingOut } = useAuth();
   const { data: permissionData } = useMyPermissions();
+  const { resolvedTheme, toggleTheme } = useTheme();
 
   const visibleItems = useMemo(
     () =>
@@ -110,17 +114,36 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
+      <SidebarFooter className="border-t border-sidebar-border p-3 space-y-1">
+        {/* Theme toggle */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
+          onClick={toggleTheme}
+        >
+          {resolvedTheme === "dark" ? (
+            <Sun className="h-4 w-4 shrink-0" />
+          ) : (
+            <Moon className="h-4 w-4 shrink-0" />
+          )}
+          {!isCollapsed && (
+            <span className="ml-2">
+              {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+            </span>
+          )}
+        </Button>
+
+        {/* Logout */}
         <Button
           variant="ghost"
           className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
           onClick={handleLogout}
           disabled={isLoggingOut}
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4 shrink-0" />
           {!isCollapsed && (
             <span className="ml-2">
-              {isLoggingOut ? "Logging out..." : "Logout"}
+              {isLoggingOut ? "Logging out…" : "Logout"}
             </span>
           )}
         </Button>

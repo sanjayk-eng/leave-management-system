@@ -1,83 +1,159 @@
-import { useMemo, useCallback } from 'react';
-import { AgGridReact } from 'ag-grid-react';
-import { ColDef, GridOptions, GridReadyEvent, ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
+/**
+ * DataGrid — lightweight shadcn/ui Table wrapper.
+ * Drop-in replacement for the former AG Grid wrapper.
+ * Supports optional client-side pagination.
+ */
+import { useState, useMemo } from 'react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Register AG Grid modules
-ModuleRegistry.registerModules([AllCommunityModule]);
+// ─── Column definition (mirrors the AG Grid ColDef surface we used) ───────────
+export interface ColDef<T = unknown> {
+  field?: keyof T & string;
+  headerName?: string;
+  /** Custom cell renderer — receives the row data object */
+  cellRenderer?: (data: T) => React.ReactNode;
+  /** Simple value formatter — receives the raw field value */
+  valueFormatter?: (value: unknown, data: T) => string;
+  className?: string;
+  headerClassName?: string;
+  /** 'left' | 'right' — kept for API compat, currently unused visually */
+  pinned?: 'left' | 'right';
+}
 
 interface DataGridProps<T = unknown> {
   rowData: T[];
   columnDefs: ColDef<T>[];
-  onGridReady?: (event: GridReadyEvent) => void;
   className?: string;
-  gridOptions?: GridOptions<T>;
   pagination?: boolean;
   paginationPageSize?: number;
-  domLayout?: 'normal' | 'autoHeight' | 'print';
+  /** Kept for API compat — unused */
+  domLayout?: string;
+  /** Kept for API compat — unused */
   rowHeight?: number;
+  /** Kept for API compat — unused */
+  gridOptions?: unknown;
+  /** Kept for API compat — unused */
+  onGridReady?: unknown;
 }
 
-export function DataGrid<T = unknown>({
+export function DataGrid<T extends { id?: string | number }>({
   rowData,
   columnDefs,
-  onGridReady,
   className,
-  gridOptions,
   pagination = false,
   paginationPageSize = 10,
-  domLayout = 'autoHeight',
-  rowHeight,
 }: DataGridProps<T>) {
-  const defaultColDef = useMemo<ColDef>(() => ({
-    sortable: true,
-    filter: true,
-    resizable: true,
-    minWidth: 80,
-  }), []);
+  const [page, setPage] = useState(1);
 
-  // When pagination is on with autoHeight, the horizontal scrollbar overlaps the pagination panel.
-  // Fix: switch to domLayout="normal" with a calculated fixed height so the pagination panel
-  // renders inside the grid's own layout flow — fully visible below the scroll area.
-  const effectiveDomLayout = pagination && domLayout === 'autoHeight' ? 'normal' : domLayout;
-  const effectiveHeight =
-    pagination && domLayout === 'autoHeight'
-      ? `${(paginationPageSize * (rowHeight ?? 60)) + 108}px` // data rows + header (48px) + pagination bar (60px)
-      : '100%';
+  // Reset to page 1 whenever data changes
+  const pageCount = pagination ? Math.ceil(rowData.length / paginationPageSize) : 1;
 
-  const defaultGridOptions = useMemo<GridOptions<T>>(() => ({
-    animateRows: true,
-    rowSelection: 'single',
-    suppressCellFocus: true,
-    enableCellTextSelection: true,
-    suppressHorizontalScroll: false,
-    domLayout: effectiveDomLayout,
-    ...gridOptions,
-  }), [gridOptions, effectiveDomLayout]);
+  const visibleRows = useMemo(() => {
+    if (!pagination) return rowData;
+    const start = (page - 1) * paginationPageSize;
+    return rowData.slice(start, start + paginationPageSize);
+  }, [rowData, pagination, page, paginationPageSize]);
 
-  const handleGridReady = useCallback((event: GridReadyEvent) => {
-    if (onGridReady) {
-      onGridReady(event);
+  const renderCell = (col: ColDef<T>, row: T) => {
+    const rawValue = col.field ? (row as Record<string, unknown>)[col.field] : undefined;
+
+    if (col.cellRenderer) {
+      return col.cellRenderer(row);
     }
-  }, [onGridReady]);
+    if (col.valueFormatter) {
+      return col.valueFormatter(rawValue, row);
+    }
+    if (rawValue === null || rawValue === undefined) {
+      return <span className="text-muted-foreground italic text-xs">—</span>;
+    }
+    return String(rawValue);
+  };
 
   return (
-    <div
-      className={cn('ag-theme-alpine', className)}
-      style={{ width: '100%', height: effectiveHeight }}
-    >
-      <AgGridReact
-        rowData={rowData}
-        columnDefs={columnDefs}
-        defaultColDef={defaultColDef}
-        gridOptions={defaultGridOptions}
-        onGridReady={handleGridReady}
-        pagination={pagination}
-        paginationPageSize={paginationPageSize}
-        domLayout={effectiveDomLayout}
-        getRowId={(params) => params.data.id}
-        rowHeight={rowHeight}
-      />
+    <div className={cn('w-full', className)}>
+      <div className="rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/30 hover:bg-muted/30">
+              {columnDefs.map((col, i) => (
+                <TableHead
+                  key={col.field ?? i}
+                  className={cn(
+                    'text-xs font-semibold uppercase tracking-wide text-muted-foreground px-4 py-3',
+                    col.headerClassName,
+                  )}
+                >
+                  {col.headerName ?? col.field ?? ''}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibleRows.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columnDefs.length}
+                  className="text-center py-10 text-muted-foreground"
+                >
+                  No data
+                </TableCell>
+              </TableRow>
+            ) : (
+              visibleRows.map((row, ri) => (
+                <TableRow
+                  key={(row as Record<string, unknown>).id as string ?? ri}
+                  className="border-b last:border-0 hover:bg-accent/30 transition-colors"
+                >
+                  {columnDefs.map((col, ci) => (
+                    <TableCell
+                      key={col.field ?? ci}
+                      className={cn('px-4 py-3 align-middle text-sm', col.className)}
+                    >
+                      {renderCell(col, row)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {pagination && pageCount > 1 && (
+        <div className="flex items-center justify-between px-2 py-3 border-t mt-0">
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {pageCount} &nbsp;·&nbsp; {rowData.length} total
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page === pageCount}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

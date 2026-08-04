@@ -15,19 +15,7 @@ import { useLeaveCalendar } from "@/hooks/useLeaves";
 import { useCalendarBirthdays } from "@/hooks/useBirthday";
 import { MonthlyCalendar, WeeklyCalendar, HolidaysList } from "@/components/calendar";
 import { LeaveSummaryCards } from "@/components/leave/LeaveSummaryCards";
-
-const LEAVE_TYPE_COLORS = [
-  { name: "Casual Leave (CL)", color: "bg-blue-500", category: "Leave Types" },
- // { name: "Sick Leave (SL)", color: "bg-red-500", category: "Leave Types" },
-  { name: "Work From Home (WFH)", color: "bg-purple-500", category: "Leave Types" },
-  { name: "Other Approved", color: "bg-green-500", category: "Leave Types" },
-  { name: "Pending", color: "bg-yellow-500", category: "Status" },
-  { name: "Cancelled", color: "bg-orange-500", category: "Status" },
-  { name: "Withdrawn", color: "bg-amber-600", category: "Status" },
-  { name: "Rejected", color: "bg-gray-500", category: "Status" },
-  { name: "Public Holiday", color: "bg-rose-600", category: "Special" },
-  { name: "Weekend", color: "bg-gray-300", category: "Special" },
-];
+import { LEAVE_TYPE_LEGEND } from "@/components/calendar/shared/calendarUtils";
 
 const LeaveCalendar = () => {
   const { holidays, isLoading: holidaysLoading } = useHolidays();
@@ -114,35 +102,39 @@ const LeaveCalendar = () => {
           <div className="flex flex-col gap-3 sm:gap-4">
             {/* Date Navigation */}
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 sm:gap-2">
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={goToPrevious}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </Button>
-                <Button 
-                  variant="outline" 
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={goToPrevious}
+                className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
+              >
+                <ChevronLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
+
+              {/* Center: current date range + today shortcut */}
+              <div className="flex flex-col items-center gap-1 min-w-0">
+                <div className="text-sm sm:text-base lg:text-lg font-semibold flex items-center gap-1 sm:gap-2">
+                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-primary shrink-0" />
+                  <span className="truncate">{formatDateRange()}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={goToToday}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors text-[11px] sm:text-xs lg:text-sm h-8 sm:h-9 lg:h-10 px-2 sm:px-3 lg:px-4"
+                  className="h-6 px-2 text-[10px] sm:text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                 >
-                  Today
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={goToNext}
-                  className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
-                >
-                  <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Go to Today
                 </Button>
               </div>
-              <div className="text-xs sm:text-sm lg:text-lg font-semibold flex items-center gap-1 sm:gap-2 min-w-0">
-                <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-primary shrink-0" />
-                <span className="truncate">{formatDateRange()}</span>
-              </div>
+
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={goToNext}
+                className="hover:bg-primary hover:text-primary-foreground transition-colors h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10 shrink-0"
+              >
+                <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
             </div>
             
             {/* View Controls */}
@@ -151,7 +143,7 @@ const LeaveCalendar = () => {
                 variant={showHolidays ? "default" : "outline"}
                 size="sm"
                 onClick={() => setShowHolidays(!showHolidays)}
-                className="gap-2 transition-all duration-300 hover:scale-105 w-full sm:w-auto text-xs sm:text-sm h-8 sm:h-9"
+                className="gap-2 w-full sm:w-auto text-xs sm:text-sm h-8 sm:h-9"
               >
                 {showHolidays ? <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
                 <span>{showHolidays ? "Hide" : "Show"} Holidays</span>
@@ -226,61 +218,30 @@ const LeaveCalendar = () => {
       )}
 
       {/* Legend */}
-      <Card className="shadow-md">
-        <CardHeader className="p-3 sm:p-4 lg:p-6">
+      <Card className="shadow-sm">
+        <CardHeader className="p-3 sm:p-4 lg:p-6 pb-0">
           <CardTitle className="text-sm sm:text-base">Calendar Legend</CardTitle>
           <CardDescription className="text-xs sm:text-sm">Color coding for leaves and holidays</CardDescription>
         </CardHeader>
-        <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
-          <div className="space-y-3 sm:space-y-4">
-            {/* Leave Types Section */}
-            <div>
-              <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Leave Types (Approved)</h4>
-              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Leave Types").map((type, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
+        <CardContent className="p-3 sm:p-4 lg:p-6">
+          {(["Leave Types", "Status", "Special"] as const).map((category) => (
+            <div key={category} className="mb-3 last:mb-0">
+              <h4 className="text-xs font-semibold text-muted-foreground mb-2">
+                {category === "Leave Types" ? "Leave Types (Approved)" : category === "Status" ? "Leave Status" : "Special Days"}
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 sm:gap-2">
+                {LEAVE_TYPE_LEGEND.filter((t) => t.category === category).map((type) => (
+                  <div
+                    key={type.name}
+                    className="flex items-center gap-2 p-2 rounded-md border border-muted hover:bg-muted/40 transition-colors cursor-default"
                   >
-                    <div className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded shadow-sm shrink-0 ${type.color}`} />
+                    <span className={`w-3 h-3 rounded-sm shrink-0 ${type.color}`} />
                     <span className="text-[11px] sm:text-xs font-medium truncate">{type.name}</span>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Status Section */}
-            <div>
-              <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Leave Status</h4>
-              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Status").map((type, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
-                  >
-                    <div className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded shadow-sm shrink-0 ${type.color}`} />
-                    <span className="text-[11px] sm:text-xs font-medium truncate">{type.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Special Days Section */}
-            <div>
-              <h4 className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2 sm:mb-3">Special Days</h4>
-              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {LEAVE_TYPE_COLORS.filter(t => t.category === "Special").map((type, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center gap-2 p-2 sm:p-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-200 cursor-default border border-muted"
-                  >
-                    <div className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded shadow-sm shrink-0 ${type.color}`} />
-                    <span className="text-[11px] sm:text-xs font-medium truncate">{type.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          ))}
         </CardContent>
       </Card>
 

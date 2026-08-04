@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
+	"github.com/Zenithive/LeaveManagementSystem/internal/repositories"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
@@ -61,11 +62,24 @@ func (h *HandlerFunc) LeavePolicy(c *gin.Context) {
 }
 
 func (h *HandlerFunc) GetAllLeavePolicies(c *gin.Context) {
-	// ?active_only=true  → only active policies (used by apply-leave)
-	// default (omitted)  → all policies (used by admin settings page)
-	activeOnly := c.Query("active_only") == "true"
+	// ?status=active   → only active policies (default)
+	// ?status=inactive → only inactive policies
+	// ?status=all      → all policies
+	// legacy: ?active_only=true is still honoured for backward compat
+	statusParam := c.Query("status")
 
-	res, err := h.LeavePolicyService.Get(c, activeOnly)
+	var status repositories.PolicyStatusFilter
+	switch statusParam {
+	case "inactive":
+		status = repositories.PolicyStatusInactive
+	case "all":
+		status = repositories.PolicyStatusAll
+	default:
+		// "active", empty, or legacy ?active_only=true → return active only
+		status = repositories.PolicyStatusActive
+	}
+
+	res, err := h.LeavePolicyService.Get(c, status)
 	if err != nil {
 		errors.Error(c, err)
 		return

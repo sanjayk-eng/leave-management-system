@@ -23,6 +23,7 @@ var (
 	ErrInvalidSortBy     = errors.New("invalid sort_by field")
 	ErrInvalidSortOrder  = errors.New("invalid sort_order, must be ASC or DESC")
 	ErrMissingCaller     = errors.New("missing caller identity")
+	ErrInvalidRole       = errors.New("invalid role filter. Must be: EMPLOYEE, INTERN, HR, ADMIN, SUPERADMIN, MANAGER")
 )
 
 // ValidSortFields is the single source of truth for sortable columns.

@@ -1,4 +1,15 @@
 export const calendarAnimations = `
+  @keyframes cellFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   @keyframes slideInUp {
     from {
       opacity: 0;
@@ -54,6 +65,17 @@ export const calendarAnimations = `
     }
   }
   
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   @keyframes expandWidth {
     from {
       width: 0;

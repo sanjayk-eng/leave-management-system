@@ -65,7 +65,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		leaves.PATCH("/admin-toggle/policy/:id", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeavePolicy)), h.ToggleLeavePolicy)  // Admin, SuperAdmin, HR toggle active/inactive
 		leaves.GET("/Get-All-Leave-Policy", h.GetAllLeavePolicies)                                                                                                           // Get all leave policies (?active_only=true for apply-leave)
 		// Get all leaves (filtered by role)
-		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport)     // Alias — same RBAC guard
+		leaves.GET("/Get-Leave-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeaveReport)             // Monthly / yearly / range leave report
+		leaves.GET("/Get-Leave-Policy-Report", middleware.RequirePermission(h, string(rbsc.ResourceLeaveReport), string(rbsc.ActionRead)), h.GetLeavePolicyReport) // Per-policy breakdown report
 		leaves.GET("/timming", h.GetLeaveTiming)                                                                                                          // Get all Leave Timing
 		leaves.PUT("/timming", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageLeaveTiming)), h.UpdateLeaveTiming) // Update leave timing by super admin and admin
 		leaves.PUT("edit/:id", middleware.RequirePermission(h, string(rbsc.ResourceLeave), string(rbsc.ActionApply)), h.EditLeave)                        // Cancel pending leave (Employee/Admin)

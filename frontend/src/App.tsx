@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppStateProvider } from "./contexts/AppStateProvider";
 import { AuthProvider } from "@/contexts/AuthProvider";
+import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { Layout } from "@/components/Layout";
 import { AuthGuard } from "@/components/AuthGuard";
 import { SuperAdminRoute } from "@/components/SuperAdminRoute";
@@ -28,6 +29,8 @@ import Designations from "./pages/Designations";
 import Equipment from "./pages/Equipment";
 import Logs from "./pages/Logs";
 import LeaveMonthlyReport from "./pages/LeaveMonthlyReport";
+import LeavePolicyReport from "./pages/LeavePolicyReport";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 import CompanySettings from "./pages/settings/CompanySettings";
 import LeavePolicies from "./pages/settings/LeavePolicies";
@@ -55,7 +58,8 @@ const queryClient = new QueryClient({
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AppStateProvider>
+    <ThemeProvider>
+      <AppStateProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -119,13 +123,18 @@ const App = () => (
                   </PermissionRoute>
                 </AuthGuard>
               } />
-              <Route path="/leave-monthly-report" element={
+              <Route path="/leave-monthly-report" element={<Navigate to="/reports/leave" replace />} />
+              <Route path="/leave-policy-report"  element={<Navigate to="/reports/policy" replace />} />
+              <Route path="/reports" element={
                 <AuthGuard>
                   <PermissionRoute permissionAll={[{ resource: 'leave_report', action: 'read' }]}>
-                    <Layout><LeaveMonthlyReport /></Layout>
+                    <Layout><Reports /></Layout>
                   </PermissionRoute>
                 </AuthGuard>
-              } />
+              }>
+                <Route path="leave"  element={<LeaveMonthlyReport />} />
+                <Route path="policy" element={<LeavePolicyReport />} />
+              </Route>
               <Route path="/access-denied" element={<AccessDenied />} />
               <Route path="*" element={<AuthGuard><NotFound /></AuthGuard>} />
             </Routes>
@@ -133,6 +142,7 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </AppStateProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
