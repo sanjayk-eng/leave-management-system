@@ -1,6 +1,4 @@
-// Shared types and defaults for the leave policy form.
-// Kept in a plain .ts file so it can be imported by both the dialog
-// and the parent page without pulling in any JSX.
+// Shared types and defaults for the leave policy form wizard.
 
 export interface PolicyFormValues {
   name:                string;
@@ -21,3 +19,15 @@ export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
   intern_entitlement:  '',
   approval_flow_id:    '',
 };
+
+// Wizard steps:
+//  1 → Name
+//  2 → Leave type (Paid / Early / WFH)
+//  3 → Entitlements + proration preview   (skipped when is_early = true)
+//  4 → Approval flow + submit
+export type WizardStep = 1 | 2 | 3 | 4;
+
+/** Returns the ordered list of steps for the current form state. */
+export function getSteps(isEarly: boolean): WizardStep[] {
+  return isEarly ? [1, 2, 4] : [1, 2, 3, 4];
+}

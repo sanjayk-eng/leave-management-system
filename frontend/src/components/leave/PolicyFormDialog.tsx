@@ -1,34 +1,56 @@
 /* eslint-disable react-refresh/only-export-components */
 
-// Thin wrapper — owns wizard state, form state, and the backend allocation
-// preview that is shared between Step 1 (typed live) and Step 2 (summary).
-
 import { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import type { LeaveApprovalFlowResponse } from '@/types';
 import { leaveService, type PolicyAllocationPreview } from '@/services/leaveService';
-import { PolicyStep1Fields } from './policy/PolicyStep1Fields';
-import { PolicyStep2Flow }   from './policy/PolicyStep2Flow';
+import { StepName }         from './policy/StepName';
+import { StepLeaveType }    from './policy/StepLeaveType';
+import { StepEntitlement }  from './policy/StepEntitlement';
+import { StepApprovalFlow } from './policy/StepApprovalFlow';
 import {
   PolicyFormValues,
   POLICY_FORM_DEFAULTS,
+  WizardStep,
+  getSteps,
 } from './policy/PolicyFormTypes';
 
-// Re-export so existing imports in LeavePolicies.tsx keep working.
 export type { PolicyFormValues };
 export { POLICY_FORM_DEFAULTS };
 
 const DEBOUNCE_MS = 400;
 
-// ── Step progress bar ─────────────────────────────────────────────────────────
-const StepIndicator = ({ step }: { step: 1 | 2 }) => (
-  <div className="flex items-center gap-2 px-1">
-    <div className={`h-1.5 flex-1 rounded-full ${step >= 1 ? 'bg-primary' : 'bg-muted'}`} />
-    <div className={`h-1.5 flex-1 rounded-full ${step >= 2 ? 'bg-primary' : 'bg-muted'}`} />
-  </div>
-);
+// ── Step progress indicator ───────────────────────────────────────────────────
+const StepDots = ({
+  steps, current,
+}: { steps: WizardStep[]; current: WizardStep }) => {
+  const idx = steps.indexOf(current);
+  return (
+    <div className="flex items-center gap-1.5 px-1">
+      {steps.map((s, i) => (
+        <div
+          key={s}
+          className={[
+            'h-1.5 flex-1 rounded-full transition-all',
+            i < idx  ? 'bg-primary'    : '',
+            i === idx ? 'bg-primary'   : '',
+            i > idx  ? 'bg-muted'      : '',
+          ].join(' ')}
+        />
+      ))}
+    </div>
+  );
+};
+
+// ── Step labels ───────────────────────────────────────────────────────────────
+const STEP_TITLES: Record<WizardStep, string> = {
+  1: 'Policy Name',
+  2: 'Leave Type',
+  3: 'Entitlements',
+  4: 'Approval Flow',
+};
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface PolicyFormDialogProps {
@@ -41,23 +63,22 @@ interface PolicyFormDialogProps {
   isSubmitting: boolean;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 export const PolicyFormDialog = ({
   mode, open, onOpenChange, initial, flows, onSubmit, isSubmitting,
 }: PolicyFormDialogProps) => {
-  const isAdd = mode === 'add';
+  const isAdd        = mode === 'add';
   const systemFlowId = flows.find(f => f.is_system)?.id ?? '';
 
   const [form, setForm]       = useState<PolicyFormValues>(POLICY_FORM_DEFAULTS);
-  const [step, setStep]       = useState<1 | 2>(1);
+  const [step, setStep]       = useState<WizardStep>(1);
 
-  // ── Shared allocation preview (fetched from backend) ─────────────────────
   const [preview,       setPreview]       = useState<PolicyAllocationPreview | null>(null);
   const [previewLoad,   setPreviewLoad]   = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset form when dialog opens
+  // ── Reset on open ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (open) {
       setStep(1);
@@ -71,7 +92,7 @@ export const PolicyFormDialog = ({
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch preview from backend whenever entitlement values OR month changes
+  // ── Backend proration fetch (debounced) ────────────────────────────────────
   useEffect(() => {
     const defaultVal = Number(form.default_entitlement) || 0;
 
@@ -83,14 +104,11 @@ export const PolicyFormDialog = ({
     }
 
     setPreviewLoad(true);
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const internVal = form.intern_entitlement
-          ? Number(form.intern_entitlement)
-          : undefined;
+        const internVal = form.intern_entitlement ? Number(form.intern_entitlement) : undefined;
         const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, selectedMonth);
         setPreview(data);
       } catch {
@@ -100,9 +118,7 @@ export const PolicyFormDialog = ({
       }
     }, DEBOUNCE_MS);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.default_entitlement, form.intern_entitlement, form.is_early, selectedMonth]);
 
@@ -111,46 +127,68 @@ export const PolicyFormDialog = ({
 
   const handleClose = () => { onOpenChange(false); setStep(1); };
 
-  const step1Valid = form.name.trim().length > 0 && form.default_entitlement.length > 0;
+  // Ordered list of steps for the current form state
+  const steps    = getSteps(form.is_early);
+  const stepIdx  = steps.indexOf(step);
+  const goNext   = () => { if (stepIdx < steps.length - 1) setStep(steps[stepIdx + 1]); };
+  const goBack   = () => { if (stepIdx > 0) setStep(steps[stepIdx - 1]); };
+
+  const totalSteps  = steps.length;
+  const currentNum  = stepIdx + 1;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) handleClose(); }}>
       <DialogContent className="w-full max-w-md mx-auto max-h-[90vh] flex flex-col overflow-hidden">
+
         <DialogHeader className="shrink-0">
           <DialogTitle>{isAdd ? 'Add Leave Policy' : 'Edit Leave Policy'}</DialogTitle>
           <DialogDescription>
-            {step === 1
-              ? `Step 1 of 2 — ${isAdd ? 'Create a new leave type policy' : 'Update leave policy details'}`
-              : 'Step 2 of 2 — Attach an approval flow'}
+            Step {currentNum} of {totalSteps} — {STEP_TITLES[step]}
           </DialogDescription>
         </DialogHeader>
 
         <div className="shrink-0 px-1">
-          <StepIndicator step={step} />
+          <StepDots steps={steps} current={step} />
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0">
-          {step === 1 ? (
-            <PolicyStep1Fields
+          {step === 1 && (
+            <StepName
               form={form}
-              isValid={step1Valid}
+              onPatch={patch}
+              onNext={goNext}
+              onCancel={handleClose}
+            />
+          )}
+          {step === 2 && (
+            <StepLeaveType
+              form={form}
+              onPatch={patch}
+              onNext={goNext}
+              onBack={goBack}
+            />
+          )}
+          {step === 3 && (
+            <StepEntitlement
+              form={form}
               preview={preview}
               previewLoad={previewLoad}
               selectedMonth={selectedMonth}
               onMonthChange={setSelectedMonth}
               onPatch={patch}
-              onNext={() => setStep(2)}
-              onCancel={handleClose}
+              onNext={goNext}
+              onBack={goBack}
             />
-          ) : (
-            <PolicyStep2Flow
+          )}
+          {step === 4 && (
+            <StepApprovalFlow
               form={form}
               flows={flows}
               isAdd={isAdd}
               isSubmitting={isSubmitting}
               preview={preview}
               onPatch={patch}
-              onBack={() => setStep(1)}
+              onBack={goBack}
               onSubmit={e => { e.preventDefault(); onSubmit(form); }}
             />
           )}
