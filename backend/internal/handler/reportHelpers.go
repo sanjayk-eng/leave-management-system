@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Zenithive/LeaveManagementSystem/internal/models"
-	"github.com/Zenithive/LeaveManagementSystem/internal/service/leavereport"
+	"github.com/Zenithive/LeaveManagementSystem/internal/service/leaveReport"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/common/errors"
 	"github.com/gin-gonic/gin"
 )
