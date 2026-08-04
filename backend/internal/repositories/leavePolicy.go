@@ -11,9 +11,10 @@ import (
 type LeavePolicyRepository interface {
 	Create(ctx context.Context, tx *sqlx.Tx, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	GetById(ctx context.Context, id string) (*models.LeaveType, error)
-	Get(ctx context.Context) (*[]models.LeaveType, error)
+	Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error)
 	Update(ctx context.Context, tx *sqlx.Tx, id string, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	Delete(tx *sqlx.Tx, leaveTypeID int) error
+	Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) (bool, error)
 }
 
 type leavePolicy struct {
@@ -39,6 +40,7 @@ func (r *leavePolicy) GetById(ctx context.Context, id string) (*models.LeaveType
 			intern_entitlement,
 			is_early,
 			is_work_from_home,
+			is_active,
 			approval_flow_id,
 			created_at,
 			updated_at
@@ -53,7 +55,7 @@ func (r *leavePolicy) GetById(ctx context.Context, id string) (*models.LeaveType
 
 	return &leave, nil
 }
-func (r *leavePolicy) Get(ctx context.Context) (*[]models.LeaveType, error) {
+func (r *leavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.LeaveType, error) {
 
 	var leave []models.LeaveType
 
@@ -66,11 +68,15 @@ func (r *leavePolicy) Get(ctx context.Context) (*[]models.LeaveType, error) {
 			intern_entitlement,
 			is_early,
 			is_work_from_home,
+			is_active,
 			approval_flow_id,
 			created_at,
 			updated_at
 		FROM Tbl_Leave_type
 	`
+	if activeOnly {
+		query += ` WHERE is_active = TRUE`
+	}
 
 	rows, err := r.DB.QueryxContext(ctx, query)
 	if err != nil {
@@ -215,9 +221,21 @@ func (r *leavePolicy) Delete(tx *sqlx.Tx, leaveTypeID int) error {
 	return nil
 }
 
+// Toggle flips is_active for the given leave type and returns the new state.
+func (r *leavePolicy) Toggle(ctx context.Context, tx *sqlx.Tx, leaveTypeID int) (bool, error) {
+	var newState bool
+	err := tx.QueryRowxContext(ctx, `
+		UPDATE Tbl_Leave_type
+		SET is_active = NOT is_active, updated_at = NOW()
+		WHERE id = $1
+		RETURNING is_active
+	`, leaveTypeID).Scan(&newState)
+	return newState, err
+}
+
 func (r *Repository) GetAllLeaveType() ([]models.LeaveType, error) {
 	var leaveType []models.LeaveType
-	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, created_at, updated_at FROM Tbl_Leave_type ORDER BY id`
+	query := `SELECT id, name, is_paid, default_entitlement, intern_entitlement, is_early, is_work_from_home, is_active, created_at, updated_at FROM Tbl_Leave_type ORDER BY id`
 	err := r.DB.Select(&leaveType, query)
 	return leaveType, err
 }
@@ -236,7 +254,8 @@ func (r *Repository) GetAllLeaveTypes(tx *sqlx.Tx) ([]models.LeaveTypeRow, error
 	err := tx.Select(&leaveTypes, `
 		SELECT id, default_entitlement, intern_entitlement
 		FROM Tbl_Leave_type
-		WHERE is_early IS NULL OR is_early = FALSE
+		WHERE (is_early IS NULL OR is_early = FALSE)
+		  AND is_active = TRUE
 	`)
 	return leaveTypes, err
 }

@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { CalendarIcon, Clock, Loader2, UserRound } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useLeaves, useLeavePolicies } from "@/hooks/useLeaves";
+import { useLeaves, useActiveLeavePolicies } from "@/hooks/useLeaves";
 import { useLeaveTiming } from "@/hooks/useLeaveTiming";
 import type { Employee } from "@/services/employeeService";
 import { toast } from "sonner";
@@ -30,7 +30,7 @@ function getInitials(name: string) {
 
 export const ApplyOnBehalfDialog = ({ employee, open, onOpenChange }: ApplyOnBehalfDialogProps) => {
   const { applyLeave, isApplying } = useLeaves();
-  const { policies, isLoading: policiesLoading } = useLeavePolicies();
+  const { policies, isLoading: policiesLoading } = useActiveLeavePolicies();
   const { leaveTimings, loading: timingsLoading, fetchLeaveTimings } = useLeaveTiming(false);
 
   const [leaveTypeId, setLeaveTypeId]       = useState("");

@@ -11,6 +11,7 @@ type LeaveTypeInput struct {
 	InternEntitlement  *int    `json:"intern_entitlement,omitempty"`
 	LeaveCount         *int    `json:"leave_count,omitempty" validate:"omitempty,gt=0"`
 	ApprovalFlowID     *string `json:"approval_flow_id,omitempty"`
+	IsActive           *bool   `json:"is_active,omitempty"`
 }
 
 // ----------------- LEAVE TYPE -----------------
@@ -22,6 +23,7 @@ type LeaveType struct {
 	InternEntitlement  *int      `json:"intern_entitlement,omitempty" db:"intern_entitlement"`
 	IsEarly            *bool     `json:"is_early,omitempty" db:"is_early"`
 	IsWorkFromHome     bool      `json:"is_work_from_home" db:"is_work_from_home"`
+	IsActive           bool      `json:"is_active" db:"is_active"`
 	ApprovalFlowID     *string   `json:"approval_flow_id,omitempty" db:"approval_flow_id"`
 	CreatedAt          time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
@@ -36,6 +38,7 @@ type LeaveTypeResponse struct {
 	InternEntitlement  *int                       `json:"intern_entitlement,omitempty"`
 	IsEarly            *bool                      `json:"is_early,omitempty"`
 	IsWorkFromHome     bool                       `json:"is_work_from_home"`
+	IsActive           bool                       `json:"is_active"`
 	ApprovalFlowID     *string                    `json:"approval_flow_id,omitempty"`
 	CreatedAt          time.Time                  `json:"created_at"`
 	UpdatedAt          time.Time                  `json:"updated_at"`
@@ -58,6 +61,7 @@ func MappPayload(leavetype *LeaveType, leaveApprovalFlow *LeaveApprovalFlowRespo
 		InternEntitlement:  leavetype.InternEntitlement,
 		IsEarly:            leavetype.IsEarly,
 		IsWorkFromHome:     leavetype.IsWorkFromHome,
+		IsActive:           leavetype.IsActive,
 		ApprovalFlowID:     leavetype.ApprovalFlowID,
 		CreatedAt:          leavetype.CreatedAt,
 		UpdatedAt:          leavetype.UpdatedAt,

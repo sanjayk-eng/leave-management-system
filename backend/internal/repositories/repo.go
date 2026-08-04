@@ -498,8 +498,8 @@ func (r *Repository) GetAllActiveEmployeesWithRoles(tx *sqlx.Tx) ([]models.Activ
 	return employees, err
 }
 
-// GetAllLeaveTypesWithEntitlements fetches all non-early leave types with their default entitlements.
-// Early leave types (is_early = true) are excluded because they don't have a balance bucket.
+// GetAllLeaveTypesWithEntitlements fetches all non-early, active leave types with their entitlements.
+// Early leave types (is_early = true) and inactive types are excluded — they have no balance bucket.
 func (r *Repository) GetAllLeaveTypesWithEntitlements() ([]models.LeaveTypeData, error) {
 	var leaveTypes []models.LeaveTypeData
 	query := `
@@ -509,7 +509,8 @@ func (r *Repository) GetAllLeaveTypesWithEntitlements() ([]models.LeaveTypeData,
 			COALESCE(lt.default_entitlement, 0) AS default_entitlement,
 			lt.intern_entitlement
 		FROM Tbl_Leave_Type lt
-		WHERE lt.is_early IS NULL OR lt.is_early = FALSE
+		WHERE (lt.is_early IS NULL OR lt.is_early = FALSE)
+		  AND lt.is_active = TRUE
 		ORDER BY lt.id
 	`
 	err := r.DB.Select(&leaveTypes, query)

@@ -18,9 +18,10 @@ import (
 type LeavePolicyService interface {
 	Create(ctx context.Context, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	GetByID(ctx context.Context, leaveTypeID int) (*models.LeaveTypeResponse, error)
-	Get(ctx context.Context) (*[]models.LeaveTypeResponse, error)
+	Get(ctx context.Context, activeOnly bool) (*[]models.LeaveTypeResponse, error)
 	Update(ctx context.Context, leaveTypeID int, input *models.LeaveTypeInput) (*models.LeaveType, error)
 	Delete(ctx context.Context, leaveTypeID int) error
+	Toggle(ctx context.Context, leaveTypeID int) (bool, error)
 }
 
 type LeavePolicy struct {
@@ -111,9 +112,9 @@ func (s *LeavePolicy) GetByID(ctx context.Context, leaveTypeID int) (*models.Lea
 	return models.MappPayload(leaveType, leaveApproverFlow), nil
 }
 
-func (s *LeavePolicy) Get(ctx context.Context) (*[]models.LeaveTypeResponse, error) {
+func (s *LeavePolicy) Get(ctx context.Context, activeOnly bool) (*[]models.LeaveTypeResponse, error) {
 
-	leaveType, err := s.LeavePolicyRepo.Get(ctx)
+	leaveType, err := s.LeavePolicyRepo.Get(ctx, activeOnly)
 	if err != nil {
 
 		return nil, errors.CustomErr(http.StatusInternalServerError, "failed to get leave policy")
@@ -148,6 +149,7 @@ func (s *LeavePolicy) Get(ctx context.Context) (*[]models.LeaveTypeResponse, err
 			InternEntitlement:  lCopy.InternEntitlement,
 			IsEarly:            lCopy.IsEarly,
 			IsWorkFromHome:     lCopy.IsWorkFromHome,
+			IsActive:           lCopy.IsActive,
 			ApprovalFlowID:     lCopy.ApprovalFlowID,
 			CreatedAt:          lCopy.CreatedAt,
 			UpdatedAt:          lCopy.UpdatedAt,
@@ -202,6 +204,20 @@ func (s *LeavePolicy) Delete(ctx context.Context, leaveTypeID int) error {
 		return nil
 	})
 	return err
+}
+
+// Toggle flips is_active for a leave policy. Returns the new active state.
+func (s *LeavePolicy) Toggle(ctx context.Context, leaveTypeID int) (bool, error) {
+	var newState bool
+	err := database.ExecuteTransaction(ctx, s.DB, func(tx *sqlx.Tx) error {
+		var err error
+		newState, err = s.LeavePolicyRepo.Toggle(ctx, tx, leaveTypeID)
+		if err != nil {
+			return errors.CustomErr(http.StatusInternalServerError, "failed to toggle leave policy")
+		}
+		return nil
+	})
+	return newState, err
 }
 
 func (s *LeavePolicy) NormalizeLeaveTypeInput(ctx context.Context, input *models.LeaveTypeInput) error {
