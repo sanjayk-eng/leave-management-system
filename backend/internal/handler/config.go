@@ -6,7 +6,7 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/service"
 	authsvc "github.com/Zenithive/LeaveManagementSystem/internal/service"
 	"github.com/Zenithive/LeaveManagementSystem/internal/service/leave/leaveflow"
-	leavereport "github.com/Zenithive/LeaveManagementSystem/internal/service/leavereport"
+	leavereport "github.com/Zenithive/LeaveManagementSystem/internal/service/leaveReport"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/actor"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/audit"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/notification"
