@@ -75,6 +75,8 @@ export const PolicyFormDialog = ({
 
   const [preview,       setPreview]       = useState<PolicyAllocationPreview | null>(null);
   const [previewLoad,   setPreviewLoad]   = useState(false);
+  // Edit mode: separate month used only for fetch/visualiser — never written to form
+  const [previewFetchMonth, setPreviewFetchMonth] = useState<number>(new Date().getMonth() + 1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 // ── Reset on open ─────────────────────────────────────────────────────────
@@ -83,6 +85,7 @@ export const PolicyFormDialog = ({
       setStep(1);
       setPreview(null);
       const savedMonth = initial?.associate_month ?? new Date().getMonth() + 1;
+      setPreviewFetchMonth(savedMonth);
       setForm({
         ...POLICY_FORM_DEFAULTS,
         ...initial,
@@ -94,6 +97,10 @@ export const PolicyFormDialog = ({
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Backend proration fetch (debounced) ────────────────────────────────────
+  // In create mode: uses form.associate_month (admin is choosing the anchor).
+  // In edit mode:   uses previewFetchMonth (strip moves for preview, form unchanged).
+  const fetchMonth = isAdd ? form.associate_month : previewFetchMonth;
+
   useEffect(() => {
     const defaultVal = Number(form.default_entitlement) || 0;
 
@@ -110,7 +117,7 @@ export const PolicyFormDialog = ({
     debounceRef.current = setTimeout(async () => {
       try {
         const internVal = form.intern_entitlement ? Number(form.intern_entitlement) : undefined;
-        const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, form.associate_month);
+        const data = await leaveService.previewPolicyAllocation(defaultVal, internVal, fetchMonth);
         setPreview(data);
       } catch {
         setPreview(null);
@@ -121,7 +128,7 @@ export const PolicyFormDialog = ({
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.default_entitlement, form.intern_entitlement, form.is_early, form.associate_month]);
+  }, [form.default_entitlement, form.intern_entitlement, form.is_early, fetchMonth]);
 
   const patch = (partial: Partial<PolicyFormValues>) =>
     setForm(prev => ({ ...prev, ...partial }));
@@ -176,8 +183,11 @@ export const PolicyFormDialog = ({
               form={form}
               preview={preview}
               previewLoad={previewLoad}
-              selectedMonth={form.associate_month}
-              onMonthChange={m => patch({ associate_month: m })}
+              selectedMonth={isAdd ? form.associate_month : previewFetchMonth}
+              onMonthChange={isAdd
+                ? (m) => patch({ associate_month: m })  // create: updates form + triggers fetch
+                : () => {}                               // edit: strip removed, no-op
+              }
               onPatch={patch}
               onNext={goNext}
               onBack={goBack}

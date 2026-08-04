@@ -181,18 +181,19 @@ func (s *LeavePolicy) Update(ctx context.Context, leaveTypeID int, input *models
 		return nil, errors.CustomErr(http.StatusBadRequest, err.Error())
 	}
 
-	// Resolve the proration anchor for balance recalculation.
-	// Priority: 1) newly submitted associate_month (admin explicitly changed it)
-	//           2) previously stored associate_month
-	//           3) time.Now() fallback for legacy policies
+	// associate_month is locked after creation — ignore whatever the client sends.
+	// Changing the anchor mid-year would cause deficits for employees who already
+	// consumed leaves under the original anchor (used stays, opening shrinks → negative closing).
+	// The stored value is always used as-is; the SQL UPDATE uses COALESCE($9, associate_month)
+	// so nil here means "keep the existing column value".
+	input.AssociateMonth = nil
+
+	// Resolve the proration anchor for balance recalculation using the stored month only.
+	// Falls back to time.Now() for legacy policies that have no associate_month stored.
 	var policyAsOf *time.Time
-	anchorMonth := input.AssociateMonth
-	if anchorMonth == nil {
-		anchorMonth = oldLeaveType.AssociateMonth
-	}
-	if anchorMonth != nil {
+	if oldLeaveType.AssociateMonth != nil {
 		now := time.Now()
-		t := time.Date(now.Year(), time.Month(*anchorMonth), 1, 0, 0, 0, 0, now.Location())
+		t := time.Date(now.Year(), time.Month(*oldLeaveType.AssociateMonth), 1, 0, 0, 0, 0, now.Location())
 		policyAsOf = &t
 	}
 

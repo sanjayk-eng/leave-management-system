@@ -1,18 +1,18 @@
 // Step 3 — Entitlements + proration preview
 // Only shown when is_early = false.
+//
+// associate_month:
+//   CREATE → interactive month strip, admin chooses the proration anchor,
+//            selection is saved with the policy.
+//   EDIT   → month strip hidden. Preview is shown automatically based on
+//            the already-saved associate_month. No selection possible.
 
-import { useState }   from 'react';
-import { Button }     from '@/components/ui/button';
-import { Input }      from '@/components/ui/input';
-import { Label }      from '@/components/ui/label';
-import { Badge }      from '@/components/ui/badge';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { Loader2, CalendarCheck, Info, AlertTriangle } from 'lucide-react';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Button }       from '@/components/ui/button';
+import { Input }        from '@/components/ui/input';
+import { Label }        from '@/components/ui/label';
+import { Badge }        from '@/components/ui/badge';
+import { Skeleton }     from '@/components/ui/skeleton';
+import { CalendarCheck, Info, Lock } from 'lucide-react';
 import type { PolicyAllocationPreview } from '@/services/leaveService';
 import type { PolicyFormValues }        from './PolicyFormTypes';
 
@@ -21,102 +21,25 @@ const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ];
-const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Two-letter abbreviations — used for the add-mode month strip
+const MONTH_SHORT2 = ['Ja','Fe','Ma','Ap','My','Jn','Jl','Au','Se','Oc','No','De'];
 
 const fmtDays = (v: number) => v % 1 === 0 ? String(v) : v.toFixed(1);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Warning dialog — shown when user changes associate_month on an existing policy
-// ─────────────────────────────────────────────────────────────────────────────
-interface WarnProps {
-  open:         boolean;
-  fromMonth:    number;
-  toMonth:      number;
-  onConfirm:    () => void;
-  onCancel:     () => void;
-}
-
-const MonthChangeWarning = ({ open, fromMonth, toMonth, onConfirm, onCancel }: WarnProps) => (
-  <Dialog open={open} onOpenChange={v => { if (!v) onCancel(); }}>
-    <DialogContent className="max-w-sm">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-amber-500">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Allocation month change
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-3 text-sm">
-        {/* What will happen */}
-        <p className="text-muted-foreground leading-relaxed">
-          You are changing the allocation basis month from{' '}
-          <span className="font-semibold text-foreground">{MONTH_NAMES[fromMonth - 1]}</span>
-          {' '}to{' '}
-          <span className="font-semibold text-foreground">{MONTH_NAMES[toMonth - 1]}</span>.
-        </p>
-
-        {/* Impact disclaimer */}
-        <div className="rounded-lg border border-amber-400/30 bg-amber-500/5 p-3 space-y-1.5">
-          <p className="text-xs font-semibold text-amber-500 flex items-center gap-1.5">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            Balance recalculation disclaimer
-          </p>
-          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
-            <li>
-              All existing employee leave balances for this policy will be
-              <span className="font-medium text-foreground"> recalculated</span> using{' '}
-              <span className="font-medium text-foreground">{MONTH_NAMES[toMonth - 1]}</span> as the new anchor.
-            </li>
-            <li>
-              Employees who had more days under the previous month{' '}
-              <span className="text-destructive font-medium">may see a reduction</span> in their opening balance.
-            </li>
-            <li>
-              Leaves already taken are preserved — only the opening balance is adjusted.
-            </li>
-            <li>
-              Manual adjustments are kept as-is.
-            </li>
-          </ul>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          This action cannot be undone without manually re-adjusting each employee balance.
-          Proceed only if you intended to change the proration anchor.
-        </p>
-      </div>
-
-      <DialogFooter className="gap-2 sm:gap-0">
-        <Button variant="outline" onClick={onCancel} className="flex-1">
-          Cancel
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={onConfirm}
-          className="flex-1"
-        >
-          Yes, recalculate balances
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Proration Visualiser
 // ─────────────────────────────────────────────────────────────────────────────
 interface VisProps {
-  preview:        PolicyAllocationPreview;
-  selectedMonth:  number;
-  currentMonth:   number;
-  isEdit:         boolean;
-  originalMonth:  number | null; // stored month from DB (edit only)
-  isMonthChanged: boolean;       // user changed the month from original
-  onMonthChange:  (m: number) => void;
+  preview:       PolicyAllocationPreview;
+  selectedMonth: number;
+  currentMonth:  number;
+  isEdit:        boolean;
+  originalMonth: number | null;
+  onMonthChange: (m: number) => void;
 }
 
 const ProrationVisualiser = ({
-  preview, selectedMonth, currentMonth, isEdit, originalMonth, isMonthChanged, onMonthChange,
+  preview, selectedMonth, currentMonth, isEdit, originalMonth, onMonthChange,
 }: VisProps) => {
   const elapsed      = preview.elapsed_months;
   const remaining    = preview.remaining_months;
@@ -145,6 +68,11 @@ const ProrationVisualiser = ({
     }] : []),
   ];
 
+  // The display month for labels — edit always shows saved month, add shows selected
+  const displayMonth = isEdit
+    ? (originalMonth ?? selectedMonth)
+    : selectedMonth;
+
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
 
@@ -153,47 +81,39 @@ const ProrationVisualiser = ({
         <div className="flex items-center gap-1.5">
           <CalendarCheck className="h-3.5 w-3.5 text-primary" />
           <span className="text-xs font-semibold text-foreground">Allocation preview</span>
-          {isEdit && isMonthChanged && (
-            <Badge className="text-[9px] h-4 px-1.5 bg-amber-500/10 text-amber-600 border border-amber-400/40 rounded-full">
-              changed
-            </Badge>
-          )}
         </div>
-        <div className="flex items-center gap-2">
-          {/* Create: show "Today" when on current month. Edit: never show Today badge. */}
-          {!isEdit && preview.is_current_month && (
+        {/* Edit: locked saved-month badge */}
+        {isEdit ? (
+          <div className="flex items-center gap-1.5">
+            <Lock className="h-3 w-3 text-muted-foreground/60" />
+            <Badge variant="outline" className="text-[11px] h-5 px-2 border-primary/30 text-primary">
+              {MONTH_NAMES[displayMonth - 1]}
+            </Badge>
+          </div>
+        ) : (
+          /* Create: show Today badge when on current month */
+          preview.is_current_month && (
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-green-400 text-green-600">
               Today
             </Badge>
-          )}
-          <Select value={String(selectedMonth)} onValueChange={v => onMonthChange(Number(v))}>
-            <SelectTrigger className="h-6 text-[11px] w-28 px-2 py-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTH_NAMES.map((name, i) => (
-                <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">
-                  <span className="flex items-center gap-1.5">
-                    {name}
-                    {/* Create: mark today's month */}
-                    {!isEdit && i + 1 === currentMonth && (
-                      <span className="text-[9px] text-green-600 font-medium">← now</span>
-                    )}
-                    {/* Edit: mark the original stored month */}
-                    {isEdit && originalMonth !== null && i + 1 === originalMonth && (
-                      <span className="text-[9px] text-primary font-medium">← saved</span>
-                    )}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          )
+        )}
       </div>
 
-      {/* ── Callout: differs by mode ─────────────────────────────────────── */}
-      {!isEdit ? (
-        /* CREATE: informational — this month is the allocation anchor */
+      {/* ── Callout ──────────────────────────────────────────────────────── */}
+      {isEdit ? (
+        <div className="mx-3 mt-3 rounded-lg border border-muted bg-muted/30 px-3 py-2 flex items-start gap-2">
+          <Lock className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-muted-foreground leading-tight">
+              Allocation month — {MONTH_NAMES[displayMonth - 1]}
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug">
+              Fixed at creation. Showing prorated allocation based on this month.
+            </p>
+          </div>
+        </div>
+      ) : (
         <div className="mx-3 mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 flex items-start gap-2">
           <CalendarCheck className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
           <div className="min-w-0">
@@ -201,37 +121,7 @@ const ProrationVisualiser = ({
               Policy creation month — {MONTH_NAMES[selectedMonth - 1]}
             </p>
             <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-              Existing employees will receive prorated days calculated from this month.
-              The allocation below shows exactly what each employee will receive.
-            </p>
-          </div>
-        </div>
-      ) : isMonthChanged ? (
-        /* EDIT + changed: amber warning callout */
-        <div className="mx-3 mt-3 rounded-lg border border-amber-400/40 bg-amber-500/5 px-3 py-2 flex items-start gap-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-amber-500 leading-tight">
-              Allocation month changed → {MONTH_NAMES[selectedMonth - 1]}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-              Saving will recalculate all employee balances using this month as the new anchor.
-              Employees who had more days before may see a reduction.
-            </p>
-          </div>
-        </div>
-      ) : (
-        /* EDIT + unchanged: neutral — shows the stored month */
-        <div className="mx-3 mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 flex items-start gap-2">
-          <CalendarCheck className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-primary leading-tight">
-              Allocation month — {MONTH_NAMES[selectedMonth - 1]}
-              <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(saved)</span>
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-              This is the month used when balances were originally calculated.
-              Changing it will trigger a full recalculation for all employees.
+              Employees receive prorated days from this month. Click any month below to change.
             </p>
           </div>
         </div>
@@ -239,81 +129,121 @@ const ProrationVisualiser = ({
 
       <div className="p-3 space-y-3">
 
-        {/* ── 12-month strip ──────────────────────────────────────────────── */}
-        <div className="space-y-1">
-          <p className="text-[10px] font-medium text-muted-foreground">
-            Allocation basis — click to change
-          </p>
-          <div className="flex h-7 w-full rounded-md overflow-hidden gap-[1px] bg-border">
-            {MONTH_SHORT.map((m, i) => {
-              const mn           = i + 1;
-              const isSelected   = mn === selectedMonth;
-              const isElapsed    = mn < selectedMonth;
-              const isAllocated  = mn > selectedMonth;
-              const isToday      = mn === currentMonth;
-              const isOriginal   = isEdit && originalMonth !== null && mn === originalMonth && !isSelected;
+        {/* ── 12-month strip — Add mode only ──────────────────────────────── */}
+        {!isEdit && (
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground">
+              Allocation basis — click to change
+            </p>
 
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  title={[
-                    MONTH_NAMES[i],
-                    isToday     && !isEdit    ? '(today)'          : '',
-                    isOriginal               ? '(saved month)'     : '',
-                    isSelected               ? '— allocation start' : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={() => onMonthChange(mn)}
-                  className={[
-                    'flex-1 flex flex-col items-center justify-center transition-colors cursor-pointer relative',
-                    isElapsed  ? 'bg-muted text-muted-foreground/40 hover:bg-muted/80' : '',
-                    isSelected ? 'bg-primary text-primary-foreground'                  : '',
-                    isAllocated? 'bg-primary/10 text-primary/70 hover:bg-primary/20'  : '',
-                    // Today ring (create only)
-                    isToday && !isSelected && !isEdit ? 'ring-1 ring-inset ring-green-400' : '',
-                    // Original/saved ring (edit only, when not also selected)
-                    isOriginal ? 'ring-1 ring-inset ring-primary/60' : '',
-                    // Changed: amber ring on selected when it differs from original
-                    isSelected && isEdit && isMonthChanged ? 'bg-amber-500 text-white' : '',
-                  ].join(' ')}
+            {/* CSS grid: every cell is exactly equal width */}
+            <div className="grid grid-cols-12 h-8 w-full rounded-md overflow-hidden gap-px bg-border">
+              {MONTH_SHORT2.map((m, i) => {
+                const mn          = i + 1;
+                const isSelected  = mn === selectedMonth;
+                const isElapsed   = mn < selectedMonth;
+                const isAllocated = mn > selectedMonth;
+                const isToday     = mn === currentMonth;
+
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    title={[
+                      MONTH_NAMES[i],
+                      isToday    ? '(today)'            : '',
+                      isSelected ? '— allocation start' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => onMonthChange(mn)}
+                    className={[
+                      'flex items-center justify-center transition-colors cursor-pointer relative min-w-0',
+                      isElapsed   ? 'bg-muted text-muted-foreground/40 hover:bg-muted/80'  : '',
+                      isSelected  ? 'bg-primary text-primary-foreground'                   : '',
+                      isAllocated ? 'bg-primary/10 text-primary/70 hover:bg-primary/20'   : '',
+                      isToday && !isSelected ? 'ring-1 ring-inset ring-green-400'          : '',
+                    ].join(' ')}
+                  >
+                    <span className="text-[9px] font-semibold leading-none truncate px-0.5">{m}</span>
+                    {isSelected && (
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-white/70" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-wrap">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-muted border inline-block" />
+                Elapsed ({elapsed}mo)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-primary inline-block" />
+                Start
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-sm bg-primary/10 border border-primary/20 inline-block" />
+                Allocated ({remaining}mo)
+              </span>
+              {currentMonth !== selectedMonth && (
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-sm border border-green-400 inline-block" />
+                  Today
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Direct & range summary — Edit mode ──────────────────────────── */}
+        {isEdit && (
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium text-muted-foreground">
+              Month coverage
+            </p>
+            <div className="flex h-8 w-full rounded-md overflow-hidden gap-px bg-border">
+              {/* Elapsed segment */}
+              {elapsedPct > 0 && (
+                <div
+                  className="bg-muted flex items-center justify-center shrink-0"
+                  style={{ width: `${elapsedPct}%` }}
+                  title={`Elapsed: ${elapsed} month${elapsed !== 1 ? 's' : ''}`}
                 >
-                  <span className="text-[9px] font-medium leading-none">{m[0]}</span>
-                  {isSelected && (
-                    <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-white/60" />
+                  {elapsedPct >= 12 && (
+                    <span className="text-[9px] font-semibold text-muted-foreground/50 truncate px-0.5">
+                      {elapsed}mo
+                    </span>
                   )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm bg-muted border inline-block" />
-              Elapsed ({elapsed} mo)
-            </span>
-            <span className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-sm inline-block ${isEdit && isMonthChanged ? 'bg-amber-500' : 'bg-primary'}`} />
-              {isEdit && isMonthChanged ? 'New start' : 'Allocation start'}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm bg-primary/10 border border-primary/20 inline-block" />
-              Allocated ({remaining} mo)
-            </span>
-            {isEdit && originalMonth !== null && originalMonth !== selectedMonth && (
+                </div>
+              )}
+              {/* Allocated segment */}
+              {remainingPct > 0 && (
+                <div
+                  className="bg-primary/20 flex items-center justify-center shrink-0"
+                  style={{ width: `${remainingPct}%` }}
+                  title={`Allocated: ${remaining} month${remaining !== 1 ? 's' : ''}`}
+                >
+                  {remainingPct >= 12 && (
+                    <span className="text-[9px] font-semibold text-primary/70 truncate px-0.5">
+                      {remaining}mo
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm border border-primary/60 inline-block" />
-                Previous saved
+                <span className="w-2 h-2 rounded-sm bg-muted border inline-block" />
+                Elapsed ({elapsed}mo)
               </span>
-            )}
-            {!isEdit && currentMonth !== selectedMonth && (
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm border border-green-400 inline-block" />
-                Today
+                <span className="w-2 h-2 rounded-sm bg-primary/20 border border-primary/20 inline-block" />
+                Allocated ({remaining}mo)
               </span>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ── Per-role rows ─────────────────────────────────────────────────── */}
         <div className="space-y-3">
@@ -332,7 +262,7 @@ const ProrationVisualiser = ({
                     <span className={`text-sm font-bold tabular-nums ${row.text}`}>
                       {fmtDays(row.prorated)}
                     </span>
-                    <span className="text-xs text-muted-foreground">/ {row.annual} days</span>
+                    <span className="text-xs text-muted-foreground">/ {row.annual}d</span>
                   </div>
                 </div>
 
@@ -342,14 +272,13 @@ const ProrationVisualiser = ({
                     style={{ width: `${elapsedPct}%` }}
                   />
                   <div
-                    className={`absolute inset-y-0 ${isEdit && isMonthChanged ? 'bg-amber-500' : row.bar} rounded-r-full transition-all duration-500`}
+                    className={`absolute inset-y-0 ${row.bar} rounded-r-full transition-all duration-500`}
                     style={{ left: `${elapsedPct}%`, width: `${remainingPct}%` }}
                   />
                 </div>
 
                 <p className="text-[10px] text-muted-foreground/60 text-right tabular-nums">
-                  {row.annual} × {remaining}/12 ={' '}
-                  <span className={`font-semibold ${row.text}`}>{fmtDays(row.prorated)}</span> days
+                  {row.annual} × {remaining}/12 = <span className={`font-semibold ${row.text}`}>{fmtDays(row.prorated)}</span>d
                 </p>
               </div>
             );
@@ -367,18 +296,17 @@ const ProrationVisualiser = ({
               {elapsedPct >= 15 ? `${Math.round(elapsedPct)}%` : ''}
             </div>
             <div
-              className={`${isEdit && isMonthChanged ? 'bg-amber-500/20' : 'bg-primary/20'} flex items-center justify-center ${isEdit && isMonthChanged ? 'text-amber-600' : 'text-primary'} shrink-0`}
+              className="bg-primary/20 flex items-center justify-center text-primary shrink-0"
               style={{ width: `${remainingPct}%` }}
             >
               {remainingPct >= 15 ? `${Math.round(remainingPct)}%` : ''}
             </div>
           </div>
-
           <div className="flex items-start gap-1 mt-1">
             <Info className="h-3 w-3 text-muted-foreground/50 mt-0.5 shrink-0" />
             <p className="text-[10px] text-muted-foreground/50 leading-snug">
               Prior-year employees receive the full annual amount.
-              New employees are prorated from their own joining month.
+              New employees are prorated from their joining month.
             </p>
           </div>
         </div>
@@ -393,11 +321,11 @@ const ProrationVisualiser = ({
 // ─────────────────────────────────────────────────────────────────────────────
 interface Props {
   mode:          'add' | 'edit';
-  originalMonth: number | null;  // stored associate_month from DB (edit only), null for add
+  originalMonth: number | null;
   form:          PolicyFormValues;
   preview:       PolicyAllocationPreview | null;
   previewLoad:   boolean;
-  selectedMonth: number;          // = form.associate_month
+  selectedMonth: number;
   onMonthChange: (m: number) => void;
   onPatch:       (p: Partial<PolicyFormValues>) => void;
   onNext:        () => void;
@@ -408,36 +336,8 @@ export const StepEntitlement = ({
   mode, originalMonth, form, preview, previewLoad, selectedMonth,
   onMonthChange, onPatch, onNext, onBack,
 }: Props) => {
-  const isEdit = mode === 'edit';
+  const isEdit       = mode === 'edit';
   const currentMonth = new Date().getMonth() + 1;
-
-  // Month changed from the stored value (only relevant in edit mode)
-  const isMonthChanged = isEdit && originalMonth !== null && selectedMonth !== originalMonth;
-
-  // Pending month — held while warning is shown
-  const [pendingMonth, setPendingMonth] = useState<number | null>(null);
-  const [warnOpen, setWarnOpen]         = useState(false);
-
-  const handleMonthChange = (m: number) => {
-    if (isEdit && originalMonth !== null && m !== originalMonth) {
-      // User is changing away from the saved month → show warning first
-      setPendingMonth(m);
-      setWarnOpen(true);
-    } else {
-      onMonthChange(m);
-    }
-  };
-
-  const handleConfirm = () => {
-    if (pendingMonth !== null) onMonthChange(pendingMonth);
-    setWarnOpen(false);
-    setPendingMonth(null);
-  };
-
-  const handleCancel = () => {
-    setWarnOpen(false);
-    setPendingMonth(null);
-  };
 
   const suggestedIntern = form.default_entitlement
     ? Math.floor(Number(form.default_entitlement) / 1.5)
@@ -447,17 +347,6 @@ export const StepEntitlement = ({
 
   return (
     <div className="space-y-4 py-4 px-1">
-
-      {/* ── Warning dialog ─────────────────────────────────────────────── */}
-      {isEdit && (
-        <MonthChangeWarning
-          open={warnOpen}
-          fromMonth={originalMonth ?? selectedMonth}
-          toMonth={pendingMonth ?? selectedMonth}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-        />
-      )}
 
       {/* ── Annual days — Employee ──────────────────────────────────────── */}
       <div className="space-y-1.5">
@@ -495,9 +384,35 @@ export const StepEntitlement = ({
       {form.default_entitlement && (
         <>
           {previewLoad && (
-            <div className="rounded-xl border bg-muted/40 p-3 flex items-center gap-2 text-xs text-muted-foreground min-h-[48px]">
-              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-              Calculating allocation…
+            <div className="rounded-xl border bg-muted/20 overflow-hidden">
+              {/* Skeleton header */}
+              <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+                <div className="flex items-center gap-1.5">
+                  <Skeleton className="h-3.5 w-3.5 rounded-full" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <div className="p-3 space-y-3">
+                {/* Callout skeleton */}
+                <Skeleton className="h-9 w-full rounded-lg" />
+                {/* Month strip skeleton — add mode only */}
+                {!isEdit && <Skeleton className="h-8 w-full rounded-md" />}
+                {/* Row skeleton — employee */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                  <Skeleton className="h-2.5 w-full rounded-full" />
+                  <Skeleton className="h-3 w-32 ml-auto" />
+                </div>
+                {/* Year coverage skeleton */}
+                <div className="space-y-1 pt-1 border-t border-border/40">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full rounded-md" />
+                </div>
+              </div>
             </div>
           )}
           {!previewLoad && preview && (
@@ -507,8 +422,7 @@ export const StepEntitlement = ({
               currentMonth={currentMonth}
               isEdit={isEdit}
               originalMonth={originalMonth}
-              isMonthChanged={isMonthChanged}
-              onMonthChange={handleMonthChange}
+              onMonthChange={onMonthChange}
             />
           )}
         </>
