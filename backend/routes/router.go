@@ -7,11 +7,19 @@ import (
 	"github.com/Zenithive/LeaveManagementSystem/internal/handler"
 	"github.com/Zenithive/LeaveManagementSystem/middleware"
 	"github.com/Zenithive/LeaveManagementSystem/pkg/constant/rbsc"
+	"github.com/Zenithive/LeaveManagementSystem/pkg/ratelimit"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
+
+	// ── Rate limiters (per-IP only — no shared global bucket) ───────────────
+	// Each client IP gets its own independent token bucket.
+	// authRL  : strict limit for login  — ~10 req/min, burst 5
+	// apiRL   : standard limit for all authenticated routes — 10 req/sec, burst 10
+	authRL := ratelimit.NewPerIP(ratelimit.DefaultAuthConfig())
+	apiRL := ratelimit.NewPerIP(ratelimit.DefaultAPIConfig())
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     env.ALLOWED_ORIGINS,
@@ -25,7 +33,8 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	// ----------------- Auth -----------------
 	auth := r.Group("/api/auth")
 	{
-		auth.POST("/login", h.Login)
+		// Strict per-IP limit on login to block brute-force attempts.
+		auth.POST("/login", authRL.Middleware(), h.Login)
 		auth.GET("/verify", h.VerifyToken)                           // Verify token validity
 		auth.POST("/logout", middleware.AuthMiddleware(h), h.Logout) // Logout (requires valid token)
 		auth.GET("/roles", h.GetAllRoles)                            // Get all available role types (public)
@@ -33,7 +42,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Employees -----------------
 	employees := r.Group("/api/employee")
-	employees.Use(middleware.AuthMiddleware(h)) // Protect employee routes
+	employees.Use(apiRL.Middleware(), middleware.AuthMiddleware(h)) // Protect employee routes
 	{
 		employees.GET("", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionRead)), h.GetEmployee)                                     // List all employees (SUPER_ADMIN, ADMIN/HR)                                                                                                // Get manager's team members (MANAGER only)
 		employees.GET("/:id", h.GetEmployeeById)                                                                                                                      // Get employee details (Self/Manager/Admin)
@@ -50,7 +59,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Leaves -----------------
 	leaves := r.Group("/api/leaves")
-	leaves.Use(middleware.AuthMiddleware(h))
+	leaves.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 		leaves.POST("/apply", middleware.RequirePermission(h, string(rbsc.ResourceLeave), string(rbsc.ActionApply)), h.ApplyLeave)
 		leaves.GET("/all", middleware.RequirePermission(h, string(rbsc.ResourceLeave), string(rbsc.ActionRead)), h.GetLeaves)
@@ -86,7 +95,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Leave Balances -----------------
 	leaveBalances := r.Group("/api/leave-balances")
-	leaveBalances.Use(middleware.AuthMiddleware(h))
+	leaveBalances.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 
 		leaveBalances.GET("/employee/:id", h.GetLeaveBalances)                                                                                                 // GET /api/employees/:id/leave-balances
@@ -95,7 +104,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Admin: Leave Accrual -----------------
 	admin := r.Group("/api/admin")
-	admin.Use(middleware.AuthMiddleware(h))
+	admin.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 		// Manually trigger monthly leave accrual (SUPERADMIN only)
 		// ?month=5&year=2026  (defaults to current month/year)
@@ -112,7 +121,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Payroll -----------------
 	payroll := r.Group("/api/payroll")
-	payroll.Use(middleware.AuthMiddleware(h))
+	payroll.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 		// Run payroll for a given month & year
 		payroll.POST("/run", middleware.RequirePermission(h, string(rbsc.ResourcePayroll), string(rbsc.ActionPayrollManagment)), h.RunPayroll)
@@ -134,14 +143,14 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Settings -----------------
 	settings := r.Group("/api/settings")
-	settings.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionMangmentCompanyInfo))) // Only admin/superadmin
+	settings.Use(apiRL.Middleware(), middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionMangmentCompanyInfo))) // Only admin/superadmin
 	{
 		settings.GET("", h.GetCompanySettings)                      // Get current settings
 		settings.PUT("", h.UpdateCompanySettings)                   // Update settings
 		settings.GET("/birthday-preview", h.PreviewBirthdayMessage) // Preview rendered birthday message      // Get today's employee birthdays
 	}
 	holidays := r.Group("/api/settings/holidays")
-	holidays.Use(middleware.AuthMiddleware(h))
+	holidays.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 		holidays.POST("", middleware.RequirePermission(h, string(rbsc.ResourceSettings), string(rbsc.ActionManageHolidays)), h.AddHoliday)          // SUPERADMIN adds holiday
 		holidays.GET("", h.GetHolidays)                                                                                                             // List all holidays
@@ -150,7 +159,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 
 	// ----------------- Designations -----------------
 	designations := r.Group("/api/designations")
-	designations.Use(middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)))
+	designations.Use(apiRL.Middleware(), middleware.AuthMiddleware(h), middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionDesignationManage)))
 	{
 		designations.POST("", h.CreateDesignation)                                 // Create designation
 		designations.GET("", h.GetAllDesignations)                                 // Get all designations
@@ -161,14 +170,14 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		designations.DELETE("/:id/assign-employee/:employee_id", h.RemoveEmployee) // Remove employee from designation
 	}
 	logs := r.Group("/api/logs")
-	logs.Use((middleware.AuthMiddleware(h)), middleware.RequirePermission(h, string(rbsc.ResourceLog), string(rbsc.ActionRead)))
+	logs.Use(apiRL.Middleware(), (middleware.AuthMiddleware(h)), middleware.RequirePermission(h, string(rbsc.ResourceLog), string(rbsc.ActionRead)))
 	{
 		logs.GET("", h.GetActivityFeed)
 		logs.GET("/meta", h.GetActivityMeta)
 	}
 
 	permissions := r.Group("/api/permissions")
-	permissions.Use(middleware.AuthMiddleware(h))
+	permissions.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 		permissions.GET("/me", h.GetMyPermissions)
 		permissions.GET("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionRead)), h.GetRolePermissions)
@@ -176,7 +185,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 	}
 	// Category routes
 	catagory := r.Group("/api/catagory")
-	catagory.Use(middleware.AuthMiddleware(h))
+	catagory.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 
 		catagory.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateCategory)
