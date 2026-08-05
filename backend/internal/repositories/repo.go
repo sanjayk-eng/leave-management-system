@@ -546,6 +546,7 @@ func (r *Repository) GetTotalPaidLeaveBalance(tx *sqlx.Tx, employeeID uuid.UUID)
 		WHERE lb.employee_id = $1
 		  AND lb.year = EXTRACT(YEAR FROM CURRENT_DATE)
 		  AND lt.is_paid = TRUE
+		  AND lt.is_active = TRUE
 		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
 		  AND lt.is_work_from_home = FALSE
 	`, employeeID)
@@ -562,6 +563,7 @@ func (r *Repository) GetTotalPendingPaidLeaveDays(tx *sqlx.Tx, employeeID uuid.U
 		  AND l.status IN ('Pending', 'MANAGER_APPROVED')
 		  AND EXTRACT(YEAR FROM l.start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
 		  AND lt.is_paid = TRUE
+		  AND lt.is_active = TRUE
 		  AND (lt.is_early IS NULL OR lt.is_early = FALSE)
 		  AND lt.is_work_from_home = FALSE
 	`, employeeID)

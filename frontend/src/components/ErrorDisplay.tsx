@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw, Lock, WifiOff, ServerCrash, SearchX } from "lucide-react";
+import { AlertCircle, RefreshCw, Lock, WifiOff, ServerCrash, SearchX, Timer } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,13 @@ function getStatusConfig(status: number | undefined): StatusConfig {
         title: "Not Found",
         hint: "The requested resource could not be found.",
         canRetry: false,
+      };
+    case 429:
+      return {
+        icon: Timer,
+        title: "Too Many Requests",
+        hint: "You're sending requests too fast. Please wait a moment and try again.",
+        canRetry: true,
       };
     case 0:
       return {
@@ -122,18 +129,21 @@ export const ErrorDisplay = ({
   // ── Full alert variant ─────────────────────────────────────────────────────
   return (
     <Alert
-      variant={status === 403 || status === 401 ? "default" : "destructive"}
+      variant={status === 403 || status === 401 || status === 429 ? "default" : "destructive"}
       className={cn(
         "rounded-xl",
         status === 403 || status === 401
           ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
-          : undefined,
+          : status === 429
+            ? "border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-800 dark:bg-orange-950/30 dark:text-orange-200"
+            : undefined,
         className,
       )}
     >
       <Icon className={cn(
         "h-4 w-4",
         status === 403 || status === 401 ? "text-amber-600 dark:text-amber-400" : undefined,
+        status === 429 ? "text-orange-500 dark:text-orange-400" : undefined,
       )} />
       <AlertTitle className="font-semibold">{displayTitle}</AlertTitle>
       <AlertDescription className="space-y-2 mt-1">

@@ -144,6 +144,14 @@ export const handleApiError = (
         break;
       }
 
+      case 429: {
+        toast.warning(message || STATUS_MESSAGES[429], {
+          duration: 6000,
+          description: "You're sending requests too fast. Please wait a moment and try again.",
+        });
+        break;
+      }
+
       default:
         toast.error(
           message || STATUS_MESSAGES[status] || "An unexpected error occurred.",
