@@ -201,7 +201,12 @@ func (h *HandlerFunc) FinalizePayroll(c *gin.Context) {
 		errors.RespondWithError(c, 500, "Failed to start transaction")
 		return
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			// Rollback errors are expected after a successful Commit — ignore them.
+			_ = err
+		}
+	}()
 
 	// --- Fetch Only Employees Belonging To The Payroll Run Period ---
 	var employees []struct {
@@ -592,7 +597,9 @@ func (h *HandlerFunc) GetPayslipPDF(c *gin.Context) {
 	// 4. SERVE FILE
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Disposition", "inline; filename=payslip.pdf")
-	pdf.Output(c.Writer)
+	if err := pdf.Output(c.Writer); err != nil {
+		errors.RespondWithError(c, http.StatusInternalServerError, "failed to write PDF: "+err.Error())
+	}
 }
 
 // PreviewPayslipPDF - GET /api/payroll/payslips/preview
@@ -674,7 +681,9 @@ func (h *HandlerFunc) PreviewPayslipPDF(c *gin.Context) {
 	// 4. SERVE inline — no file saved, no DB record
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Disposition", "inline; filename=payslip_preview.pdf")
-	pdf.Output(c.Writer)
+	if err := pdf.Output(c.Writer); err != nil {
+		errors.RespondWithError(c, http.StatusInternalServerError, "failed to write PDF: "+err.Error())
+	}
 }
 
 func HexToRGB(hex string) (int, int, int) {
@@ -714,9 +723,9 @@ func (h *HandlerFunc) GetFinalizedPayslips(c *gin.Context) {
 			return
 		}
 
-		empID, err := uuid.Parse(empIDStr)
-		if err != nil {
-			errors.RespondWithError(c, 500, "Failed to parse employee ID: "+err.Error())
+		empID, parseErr := uuid.Parse(empIDStr)
+		if parseErr != nil {
+			errors.RespondWithError(c, 500, "Failed to parse employee ID: "+parseErr.Error())
 			return
 		}
 		rows, err = h.Query.GetFinalizedPayslipsByEmployee(empID)

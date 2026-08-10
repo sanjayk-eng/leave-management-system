@@ -108,11 +108,11 @@ export const settingsService = {
 
   getUpcomingBirthdays: async (filterType?: string) => {
     const query = filterType ? `?filter_type=${filterType}` : '';
-    return api.get<UpcomingBirthdaysResponse>(`/employee/birthdays/upcomming${query}`);
+    return api.get<UpcomingBirthdaysResponse>(`/employee/birthdays/upcoming${query}`);
   },
 
   getCalendarBirthdays: async (month: number, year: number) => {
-    return api.get<UpcomingBirthdaysResponse>(`/employee/birthdays/upcomming?month=${month}&year=${year}`);
+    return api.get<UpcomingBirthdaysResponse>(`/employee/birthdays/upcoming?month=${month}&year=${year}`);
   },
 
   getBirthdayPreview: async (name?: string, birth_date?: string) => {

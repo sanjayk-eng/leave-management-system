@@ -54,7 +54,7 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		employees.PUT("/deactivate/:id", middleware.RequirePermission(h, string(rbsc.ResourceEmployee), string(rbsc.ActionStateManage)), h.DeleteEmployeeStatus)
 		// Deactivate/Activate employee (SUPER_ADMIN, ADMIN/HR)            // Get direct reports (Self/Manager/Admin)
 		employees.GET("/birthdays/today", h.GetTodayBirthdays)
-		employees.GET("/birthdays/upcomming", h.GetBirthdays) // filter_type=current_month
+		employees.GET("/birthdays/upcoming", h.GetBirthdays) // filter_type=current_month
 	}
 
 	// ----------------- Leaves -----------------
@@ -184,16 +184,16 @@ func SetupRoutes(r *gin.Engine, h *handler.HandlerFunc, env *config.ENV) {
 		permissions.PATCH("/roles/:role_id", middleware.RequirePermission(h, string(rbsc.ResourcePermission), string(rbsc.ActionEdit)), h.UpdateRolePermissions)
 	}
 	// Category routes
-	catagory := r.Group("/api/catagory")
-	catagory.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
+	category := r.Group("/api/category")
+	category.Use(apiRL.Middleware(), middleware.AuthMiddleware(h))
 	{
 
-		catagory.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateCategory)
-		catagory.GET("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRead)), h.GetCategory)
-		catagory.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRemove)), h.DeleteCategory)
-		catagory.PUT("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionEdit)), h.UpdateCategory)
+		category.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateCategory)
+		category.GET("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRead)), h.GetCategory)
+		category.DELETE("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRemove)), h.DeleteCategory)
+		category.PUT("/:id", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionEdit)), h.UpdateCategory)
 
-		equipment := catagory.Group("/equipment")
+		equipment := category.Group("/equipment")
 		{
 			equipment.POST("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionAdd)), h.CreateAsset)                        // Create equipment (ADMIN, SUPERADMIN, HR)
 			equipment.GET("", middleware.RequirePermission(h, string(rbsc.ResourceAsset), string(rbsc.ActionRead)), h.GetAsset)                           // Get all equipment (ADMIN, SUPERADMIN, HR)

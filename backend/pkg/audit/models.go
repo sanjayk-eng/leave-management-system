@@ -25,6 +25,8 @@ import (
 // AuditEntry is what a service passes to AuditSvc.Log().
 // Every field marked "required" must be populated; omitting them is a logic error
 // (the service will log a warning and drop the entry rather than persist garbage).
+//
+//nolint:revive // AuditEntry name intentionally kept for clarity at call sites (audit.AuditEntry).
 type AuditEntry struct {
 	// WHO
 	ActorID   uuid.UUID `json:"actor_id"`   // required

@@ -32,7 +32,7 @@ func (h *HandlerFunc) GetCompanySettings(c *gin.Context) {
 func (h *HandlerFunc) UpdateCompanySettings(c *gin.Context) {
 	// 1. Authorization check
 	roleRaw, _ := c.Get("role")
-	role, ok := roleRaw.(string)
+	role, _ := roleRaw.(string)
 
 	// 2. Extract values from multipart form
 	workingDays, _ := strconv.Atoi(c.PostForm("WorkingDaysPerMonth"))

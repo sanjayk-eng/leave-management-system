@@ -49,6 +49,7 @@ func ValidateRole(role string) (string, error) {
 	return normalised, nil
 }
 
+// NormalizeRole converts role to trimmed upper-case for consistent comparison.
 func NormalizeRole(role string) string {
 	return strings.ToUpper(strings.TrimSpace(role))
 }

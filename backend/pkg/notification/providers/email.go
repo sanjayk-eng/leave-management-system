@@ -98,7 +98,11 @@ func (p *ResendEmailProvider) send(to []string, subject, body string) error {
 	if err != nil {
 		return fmt.Errorf("email: resend api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			p.logger.Error("email: resp.Body.Close", "err", cerr)
+		}
+	}()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {

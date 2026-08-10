@@ -5,6 +5,7 @@ package rbsc
 // Naming: singular snake_case — no drift between code and DB allowed.
 type Resource string
 
+// ResourceEmployee is the RBAC resource for employee management.
 const (
 	ResourceEmployee     Resource = "employee"
 	ResourceLeave        Resource = "leave"

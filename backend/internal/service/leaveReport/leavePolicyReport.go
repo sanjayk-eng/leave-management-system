@@ -13,7 +13,7 @@ import (
 // requested time window. It reuses the same date-range resolution, scope, and
 // validation helpers as the main leave report.
 func (s *Service) GetLeavePolicyReport(
-	ctx context.Context,
+	_ context.Context,
 	req *models.LeaveReportRequest,
 ) (*models.LeavePolicyReportResponse, error) {
 

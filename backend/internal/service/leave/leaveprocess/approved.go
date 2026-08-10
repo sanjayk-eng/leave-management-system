@@ -10,8 +10,10 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ApproveProcessor handles the APPROVE action for leave requests.
 type ApproveProcessor struct{}
 
+// Process executes the approval logic for the given leave action context.
 func (p *ApproveProcessor) Process(ctx context.Context, tx *sqlx.Tx, lctx *LeaveActionContext) error {
 
 	// 1. get caller's stage

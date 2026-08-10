@@ -1,5 +1,6 @@
 package constant
 
+// ComponentLeave is the audit component name for leave domain events.
 const (
 	ComponentLeave        = "leave"
 	ComponentPayroll      = "payroll"

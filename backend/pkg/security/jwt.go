@@ -7,6 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// CustomClaims extends the standard JWT registered claims with application-specific fields.
 type CustomClaims struct {
 	UserID   string `json:"user_id"`
 	UserRole string `json:"user_role"`
@@ -53,6 +54,7 @@ func ValidateToken(tokenString string, jwtKey string) (*CustomClaims, error) {
 	return claims, nil
 }
 
+// GenerateExpiredToken creates an already-expired JWT, useful for testing token expiry handling.
 func GenerateExpiredToken(userID string, userRole string, jwtKey string) (string, error) {
 	claims := CustomClaims{
 		UserID:   userID,

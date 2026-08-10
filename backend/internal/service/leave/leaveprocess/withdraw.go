@@ -52,8 +52,10 @@ import (
 //  5. When all stages settled → WITHDRAWN.
 //  6. Balance restored only by isHighestApprovedStage — non-early only.
 
+// WithdrawProcessor handles the WITHDRAW action for leave requests.
 type WithdrawProcessor struct{}
 
+// Process executes the withdrawal logic for the given leave action context.
 func (p *WithdrawProcessor) Process(ctx context.Context, tx *sqlx.Tx, lctx *LeaveActionContext) error {
 
 	// 1. Find caller's stage

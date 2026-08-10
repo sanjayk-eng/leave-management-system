@@ -1,3 +1,4 @@
+// Package handlers contains notification handlers for domain events.
 package handlers
 
 import (
@@ -16,6 +17,7 @@ type EmployeeNotificationHandler struct {
 	cfg    *config.ENV
 }
 
+// NewEmployeeNotificationHandler constructs a handler with its dependencies.
 func NewEmployeeNotificationHandler(email providers.EmailProvider, logger *slog.Logger, cfg *config.ENV) *EmployeeNotificationHandler {
 	return &EmployeeNotificationHandler{email: email, logger: logger, cfg: cfg}
 }

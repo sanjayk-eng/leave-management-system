@@ -54,6 +54,7 @@ type Config struct {
 	RetryBaseDelay time.Duration
 }
 
+// DefaultConfig returns a Config with sensible production defaults.
 func DefaultConfig() Config {
 	return Config{
 		Workers:        3,

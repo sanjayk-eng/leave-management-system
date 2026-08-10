@@ -15,6 +15,7 @@ type Service struct {
 	repo *repositories.Repository
 }
 
+// NewService constructs a Service for the leave report domain.
 func NewService(repo *repositories.Repository) *Service {
 	return &Service{repo: repo}
 }
@@ -22,7 +23,7 @@ func NewService(repo *repositories.Repository) *Service {
 // GetLeaveReport resolves the report window, validates all inputs
 // independently of any caller (handler, cron, CLI, etc.), and delegates
 // to the repository.
-func (s *Service) GetLeaveReport(ctx context.Context, req *models.LeaveReportRequest) (*models.LeaveReportResponse, error) {
+func (s *Service) GetLeaveReport(_ context.Context, req *models.LeaveReportRequest) (*models.LeaveReportResponse, error) {
 	if req.CallerID == "" {
 		return nil, ErrMissingCaller
 	}

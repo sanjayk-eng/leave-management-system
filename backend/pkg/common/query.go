@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// GetEmployeeId extracts and parses the authenticated user's UUID from the Gin context.
 func GetEmployeeId(c *gin.Context) (uuid.UUID, error) {
 	empIDRaw, ok := c.Get("user_id")
 	if !ok {
@@ -29,6 +30,8 @@ func GetEmployeeId(c *gin.Context) (uuid.UUID, error) {
 	return empID, nil
 }
 
+// GetMonthYear extracts month and year query parameters from the Gin context,
+// defaulting to the current month and year when absent.
 func GetMonthYear(c *gin.Context) (int, int, error) {
 	month, err := strconv.Atoi(
 		c.DefaultQuery("month", fmt.Sprintf("%d", int(time.Now().Month()))),
@@ -47,6 +50,7 @@ func GetMonthYear(c *gin.Context) (int, int, error) {
 	return month, year, nil
 }
 
+// GetRoleID extracts the authenticated user's integer role ID from the Gin context.
 func GetRoleID(c *gin.Context) (int, error) {
 	roleID, ok := c.Get("role_id")
 	if !ok {

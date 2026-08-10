@@ -10,8 +10,10 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// RejectProcessor handles the REJECT action for leave requests.
 type RejectProcessor struct{}
 
+// Process executes the rejection logic for the given leave action context.
 func (p *RejectProcessor) Process(ctx context.Context, tx *sqlx.Tx, lctx *LeaveActionContext) error {
 
 	// 1. Find caller's stage

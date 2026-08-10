@@ -474,6 +474,8 @@ func (s *leaveBalance) calculateEntitlementForPolicyAsOf(role string, defaultEnt
 
 // calculateEntitlement is kept for backward compatibility with RecalculateForJoiningDate.
 // It prorates based on the employee's joining date (old behaviour).
+//
+//nolint:unused
 func (s *leaveBalance) calculateEntitlement(role string, joiningDate *time.Time, defaultEntitlement int, internEntitlement *int) float64 {
 	asOf := time.Now()
 	if joiningDate != nil {

@@ -88,7 +88,9 @@ func (s *LeavePolicy) Create(ctx context.Context, input *models.LeaveTypeInput) 
 
 		// 5. Bulk allocation using the selected associate month (inside transaction)
 		if !*input.IsEarly {
-			s.LeaveBalanceService.AllocateForNewLeaveType(tx, res.ID, res.DefaultEntitlement, res.InternEntitlement, asOf)
+			if err := s.LeaveBalanceService.AllocateForNewLeaveType(tx, res.ID, res.DefaultEntitlement, res.InternEntitlement, asOf); err != nil {
+				return err
+			}
 		}
 
 		return nil

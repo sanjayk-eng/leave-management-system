@@ -1,6 +1,6 @@
 // cmd/seed/main.go
 //
-// Demo account seeder for local / staging environments.
+// Package main is a demo account seeder for local / staging environments.
 //
 // Usage:
 //
@@ -86,7 +86,11 @@ func main() {
 	flag.Parse()
 
 	db := connectDB()
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("failed to close db: %v", err)
+		}
+	}()
 
 	if *teardown {
 		runTeardown(db)
@@ -146,67 +150,15 @@ func runSeed(db *sqlx.DB) {
 	skipped := 0
 
 	for _, acc := range demoAccounts {
-		// Idempotency check — skip if already exists
-		if emailExists(db, acc.email) {
-			log.Printf("  SKIP  %s (already exists)", acc.email)
+		wasCreated, err := seedAccount(db, acc, hashedPassword, leaveTypes, managerIDs)
+		if err != nil {
+			log.Fatalf("Failed to seed %s: %v", acc.email, err)
+		}
+		if wasCreated {
+			created++
+		} else {
 			skipped++
-			continue
 		}
-
-		// Resolve role ID
-		roleID, err := getRoleID(db, acc.role)
-		if err != nil {
-			log.Fatalf("Role %q not found in Tbl_Role. Make sure migrations have run: %v", acc.role, err)
-		}
-
-		// Resolve manager UUID (only for EMPLOYEE and INTERN)
-		var managerID *string
-		if acc.managerEmail != "" {
-			if mid, ok := managerIDs[acc.managerEmail]; ok {
-				managerID = &mid
-			} else {
-				// Manager might already exist in DB from a previous partial seed
-				mid, err := getEmployeeIDByEmail(db, acc.managerEmail)
-				if err != nil {
-					log.Fatalf("Manager %q not found. Seed the MANAGER account first: %v", acc.managerEmail, err)
-				}
-				managerID = &mid
-			}
-		}
-
-		joiningDate := time.Now()
-
-		// Insert employee inside a transaction
-		tx, err := db.Beginx()
-		if err != nil {
-			log.Fatalf("Failed to begin transaction: %v", err)
-		}
-
-		empID, err := insertEmployee(tx, acc.fullName, acc.email, roleID, hashedPassword, acc.salary, joiningDate, managerID)
-		if err != nil {
-			_ = tx.Rollback()
-			log.Fatalf("Failed to insert %s: %v", acc.email, err)
-		}
-
-		// Allocate leave balances for every non-early leave type
-		for _, lt := range leaveTypes {
-			entitlement := lt.DefaultEntitlement
-			if acc.role == "INTERN" && lt.InternEntitlement != nil {
-				entitlement = *lt.InternEntitlement
-			}
-			if err := allocateLeaveBalance(tx, empID, lt.ID, entitlement); err != nil {
-				_ = tx.Rollback()
-				log.Fatalf("Failed to allocate leave balance for %s (leave_type %d): %v", acc.email, lt.ID, err)
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			log.Fatalf("Failed to commit transaction for %s: %v", acc.email, err)
-		}
-
-		managerIDs[acc.email] = empID
-		log.Printf("  CREATE %s  [%s]  id=%s", acc.email, acc.role, empID)
-		created++
 	}
 
 	fmt.Println()
@@ -239,6 +191,77 @@ func runSeed(db *sqlx.DB) {
 	fmt.Println("  go run ./cmd/seed --teardown")
 }
 
+// seedAccount inserts a single demo account (idempotent). Returns true if created, false if skipped.
+func seedAccount(db *sqlx.DB, acc struct {
+	fullName     string
+	email        string
+	role         string
+	salary       float64
+	managerEmail string
+}, hashedPassword string, leaveTypes []leaveTypeRow, managerIDs map[string]string) (bool, error) {
+	if emailExists(db, acc.email) {
+		log.Printf("  SKIP  %s (already exists)", acc.email)
+		return false, nil
+	}
+
+	roleID, err := getRoleID(db, acc.role)
+	if err != nil {
+		return false, fmt.Errorf("role %q not found in Tbl_Role: %w", acc.role, err)
+	}
+
+	managerID, err := resolveManagerID(db, acc.managerEmail, managerIDs)
+	if err != nil {
+		return false, err
+	}
+
+	joiningDate := time.Now()
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return false, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	empID, err := insertEmployee(tx, acc.fullName, acc.email, roleID, hashedPassword, acc.salary, joiningDate, managerID)
+	if err != nil {
+		_ = tx.Rollback()
+		return false, fmt.Errorf("insert employee: %w", err)
+	}
+
+	for _, lt := range leaveTypes {
+		entitlement := lt.DefaultEntitlement
+		if acc.role == "INTERN" && lt.InternEntitlement != nil {
+			entitlement = *lt.InternEntitlement
+		}
+		if err := allocateLeaveBalance(tx, empID, lt.ID, entitlement); err != nil {
+			_ = tx.Rollback()
+			return false, fmt.Errorf("allocate leave balance (leave_type %d): %w", lt.ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	managerIDs[acc.email] = empID
+	log.Printf("  CREATE %s  [%s]  id=%s", acc.email, acc.role, empID)
+	return true, nil
+}
+
+// resolveManagerID returns the manager's UUID string if managerEmail is set.
+func resolveManagerID(db *sqlx.DB, managerEmail string, managerIDs map[string]string) (*string, error) {
+	if managerEmail == "" {
+		return nil, nil
+	}
+	if mid, ok := managerIDs[managerEmail]; ok {
+		return &mid, nil
+	}
+	mid, err := getEmployeeIDByEmail(db, managerEmail)
+	if err != nil {
+		return nil, fmt.Errorf("manager %q not found, seed MANAGER account first: %w", managerEmail, err)
+	}
+	return &mid, nil
+}
+
 // ─── teardown ─────────────────────────────────────────────────────────────────
 
 func runTeardown(db *sqlx.DB) {
@@ -258,12 +281,16 @@ func runTeardown(db *sqlx.DB) {
 	for rows.Next() {
 		var e empRow
 		if err := rows.Scan(&e.ID, &e.Email); err != nil {
-			rows.Close()
+			if cerr := rows.Close(); cerr != nil {
+				log.Printf("rows.Close failed: %v", cerr)
+			}
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 		employees = append(employees, e)
 	}
-	rows.Close()
+	if err := rows.Close(); err != nil {
+		log.Printf("rows.Close failed: %v", err)
+	}
 
 	if len(employees) == 0 {
 		log.Println("No demo accounts found. Nothing to remove.")

@@ -21,6 +21,8 @@ import (
 // Adding new fields here never changes the Process() signature — OCP.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// LeaveActionContext is the single object passed into every leave action processor.
+// Adding new fields here never changes the Process() signature — follows OCP.
 type LeaveActionContext struct {
 	// Who is acting
 	ApproverID uuid.UUID
@@ -42,6 +44,7 @@ type LeaveActionContext struct {
 // LeaveActionProcessor — one method, one context object
 // ─────────────────────────────────────────────────────────────────────────────
 
+// LeaveActionProcessor defines the interface for a leave action handler.
 type LeaveActionProcessor interface {
 	Process(ctx context.Context, tx *sqlx.Tx, lctx *LeaveActionContext) error
 }
@@ -50,6 +53,7 @@ type LeaveActionProcessor interface {
 // ProcessorRegistry — maps action string → processor (no switch needed)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ProcessorRegistry maps action strings to their corresponding processor implementations.
 type ProcessorRegistry struct {
 	processors map[string]LeaveActionProcessor
 }

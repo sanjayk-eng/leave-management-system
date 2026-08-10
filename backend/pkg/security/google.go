@@ -1,3 +1,4 @@
+// Package security provides JWT and OAuth token verification utilities.
 package security
 
 import (
@@ -9,6 +10,7 @@ import (
 
 const googleUserInfoURL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
+// UserInfo holds the profile data returned by the Google userinfo endpoint.
 type UserInfo struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
@@ -16,6 +18,7 @@ type UserInfo struct {
 	Picture       string `json:"picture"`
 }
 
+// VerifyAccessToken validates a Google OAuth access token and returns the user's profile.
 func VerifyAccessToken(accessToken string) (*UserInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, googleUserInfoURL, nil)
 	if err != nil {
@@ -27,7 +30,12 @@ func VerifyAccessToken(accessToken string) (*UserInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("google: userinfo request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			// best-effort close; original error takes priority
+			_ = cerr
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

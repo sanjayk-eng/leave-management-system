@@ -436,6 +436,9 @@ func (h *HandlerFunc) RemoveAssignment(c *gin.Context) {
 
 // assetResourceName builds a display label for asset audit entries.
 // Falls back to the UUID string when no name is available.
+// Reserved for future use — currently audit entries use direct field assignment.
+//
+//nolint:unused
 func assetResourceName(id uuid.UUID, name string) string {
 	if name != "" {
 		return fmt.Sprintf("%s (%s)", name, id)

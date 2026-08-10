@@ -167,7 +167,11 @@ func (r *postgresRepository) GetActivity(ctx context.Context, f ActivityFilter) 
 	if err != nil {
 		return nil, 0, fmt.Errorf("audit.GetActivity query: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			r.logger.Error("audit.GetActivity rows.Close", "err", cerr)
+		}
+	}()
 
 	var entries []ActivityEntry
 	for rows.Next() {

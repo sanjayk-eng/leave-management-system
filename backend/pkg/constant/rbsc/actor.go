@@ -39,6 +39,7 @@ const (
 
 	// ── Equipment ────────────────────────────────────────────────────────────
 	ActionAssign           Action = "assign"
+	// ActionPayrollManagement is the action for running and finalizing payroll.
 	ActionPayrollManagment Action = "payroll_managment"
 )
 

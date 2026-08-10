@@ -47,7 +47,7 @@ func (s *Service) Login(input *models.LoginInput) (*LoginResult, error) {
 	case models.ProviderGoogle:
 		result, err = s.googleLogin(input.Token)
 	default:
-		errors.CustomErr(http.StatusBadRequest, "unsupported provider: use 'local' or 'google'")
+		return nil, errors.CustomErr(http.StatusBadRequest, "unsupported provider: use 'local' or 'google'")
 	}
 	return result, err
 }

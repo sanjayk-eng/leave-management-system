@@ -382,17 +382,21 @@ func (h *HandlerFunc) GetTodayBirthdays(c *gin.Context) {
 	})
 }
 
-// GetBirthdays - GET /api/employee/birthdays/upcomming
+// GetBirthdays - GET /api/employee/birthdays/upcoming
 // Query params: ?month=4&year=2026  or  ?year=2027  or  (none = upcoming 30 days)
 func (h *HandlerFunc) GetBirthdays(c *gin.Context) {
 	month := 0
 	year := 0
 
 	if m := c.Query("month"); m != "" {
-		fmt.Sscanf(m, "%d", &month)
+		if _, err := fmt.Sscanf(m, "%d", &month); err != nil {
+			month = 0
+		}
 	}
 	if y := c.Query("year"); y != "" {
-		fmt.Sscanf(y, "%d", &year)
+		if _, err := fmt.Sscanf(y, "%d", &year); err != nil {
+			year = 0
+		}
 	}
 
 	// 1. Get data from repository

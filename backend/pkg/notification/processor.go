@@ -20,6 +20,7 @@ type EventProcessor struct {
 	logger          *slog.Logger
 }
 
+// NewEventProcessor constructs an EventProcessor wired to the given domain handlers.
 func NewEventProcessor(
 	leaveHandler *handlers.LeaveNotificationHandler,
 	employeeHandler *handlers.EmployeeNotificationHandler,

@@ -126,7 +126,11 @@ func sendSlackMessage(webhookURL, text string) error {
 	if err != nil {
 		return fmt.Errorf("slack POST: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("[Slack] resp.Body.Close: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("slack returned status %d", resp.StatusCode)

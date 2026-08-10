@@ -21,6 +21,7 @@ type LeaveNotificationHandler struct {
 	cfg    *config.ENV
 }
 
+// NewLeaveNotificationHandler constructs a handler with its dependencies.
 func NewLeaveNotificationHandler(email providers.EmailProvider, logger *slog.Logger, cfg *config.ENV) *LeaveNotificationHandler {
 	return &LeaveNotificationHandler{email: email, logger: logger, cfg: cfg}
 }
@@ -86,6 +87,7 @@ func (h *LeaveNotificationHandler) OnLeaveApplied(d *models.LeaveNotificationDat
 	}
 }
 
+// OnLeaveApproved sends approval notifications to the employee and HR recipients.
 func (h *LeaveNotificationHandler) OnLeaveApproved(d *models.LeaveNotificationData) {
 	empVM := templates.LeaveApprovedEmployeeVM(
 		appName(h.cfg), h.cfg.APP_URL,
@@ -115,6 +117,7 @@ func (h *LeaveNotificationHandler) OnLeaveApproved(d *models.LeaveNotificationDa
 
 }
 
+// OnLeaveRejected sends rejection notifications to the employee and HR recipients.
 func (h *LeaveNotificationHandler) OnLeaveRejected(d *models.LeaveNotificationData) {
 	empVM := templates.LeaveRejectedEmployeeVM(
 		appName(h.cfg), h.cfg.APP_URL,
@@ -144,6 +147,7 @@ func (h *LeaveNotificationHandler) OnLeaveRejected(d *models.LeaveNotificationDa
 
 }
 
+// OnLeaveWithdrawalPending notifies recipients that a withdrawal is awaiting confirmation.
 func (h *LeaveNotificationHandler) OnLeaveWithdrawalPending(d *models.LeaveNotificationData) {
 	vm := templates.LeaveWithdrawalPendingVM(
 		appName(h.cfg), h.cfg.APP_URL,
@@ -160,6 +164,7 @@ func (h *LeaveNotificationHandler) OnLeaveWithdrawalPending(d *models.LeaveNotif
 
 }
 
+// OnLeaveWithdrawn sends withdrawal confirmation notifications.
 func (h *LeaveNotificationHandler) OnLeaveWithdrawn(d *models.LeaveNotificationData) {
 	empVM := templates.LeaveWithdrawnEmployeeVM(
 		appName(h.cfg), h.cfg.APP_URL,
@@ -189,6 +194,7 @@ func (h *LeaveNotificationHandler) OnLeaveWithdrawn(d *models.LeaveNotificationD
 
 }
 
+// OnLeaveCancelled notifies the employee that their leave has been cancelled.
 func (h *LeaveNotificationHandler) OnLeaveCancelled(d *models.LeaveNotificationData) {
 	vm := templates.LeaveCancelledVM(
 		appName(h.cfg), h.cfg.APP_URL,

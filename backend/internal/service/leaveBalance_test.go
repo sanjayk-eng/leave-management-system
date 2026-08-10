@@ -39,7 +39,11 @@ func dateInPriorYear(month time.Month, day int) time.Time {
 }
 
 // ptr helpers
-func intPtr(v int) *int       { return &v }
+func intPtr(v int) *int { return &v }
+
+// timePtr is defined for future use in test cases that need *time.Time parameters.
+//
+//nolint:unused
 func timePtr(t time.Time) *time.Time { return &t }
 
 // ─────────────────────────────────────────────────────────────────────────────
