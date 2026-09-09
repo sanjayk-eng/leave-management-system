@@ -261,16 +261,17 @@ func (s *LeaveValidationService) ValidateLeaveApplication(tx *sqlx.Tx, params Va
 		if err := s.ValidateEarlyLeaveLimit(tx, params.EmployeeID, params.LeaveTypeID, params.StartDate); err != nil {
 			return err
 		}
+		// Skip overlapping check for early leaves - multiple leaves can overlap with early leave
 	} else {
 		// Non-early leave: check balance
 		if err := s.ValidateLeaveBalance(tx, params.EmployeeID, params.LeaveTypeID, params.LeaveDays, params.ExcludeLeaveID); err != nil {
 			return err
 		}
-	}
 
-	// Check overlapping leaves (applies to all leave types)
-	if err := s.ValidateOverlappingLeaves(tx, params.EmployeeID, params.StartDate, params.EndDate, params.ExcludeLeaveID); err != nil {
-		return err
+		// Check overlapping leaves (only for non-early leaves)
+		if err := s.ValidateOverlappingLeaves(tx, params.EmployeeID, params.StartDate, params.EndDate, params.ExcludeLeaveID); err != nil {
+			return err
+		}
 	}
 
 	return nil

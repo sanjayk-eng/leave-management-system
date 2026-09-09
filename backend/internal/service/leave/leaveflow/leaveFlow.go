@@ -479,7 +479,12 @@ func (s *leaveFlow) UpdateLeave(ctx context.Context, empID uuid.UUID, leaveId st
 			return errors.CustomErr(http.StatusBadRequest, err.Error())
 		}
 
-		if err = s.Repo.UpdateLeave(tx, leaveUUID, empID, leave, leaveDays); err != nil {
+		var leaveTimingStr *string
+		if LeaveTypeInfo.LeaveType.IsEarly != nil && *LeaveTypeInfo.LeaveType.IsEarly && leave.LeaveTiming != nil {
+			leaveTimingStr = leave.LeaveTiming
+		}
+
+		if err = s.Repo.UpdateLeave(tx, leaveUUID, empID, leave, leaveTimingStr, leaveDays); err != nil {
 			return errors.CustomErr(http.StatusInternalServerError, "failed to update leave: "+err.Error())
 		}
 		if err := s.LeaveFlowLogService.RegenerateApprovalLog(ctx, tx, leaveUUID, leaveTypeRes, role); err != nil {
