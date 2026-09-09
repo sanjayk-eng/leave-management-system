@@ -21,7 +21,7 @@ type LeaveFlowRepository interface {
 	GetByID(ctx context.Context, leaveID string) (*models.Leave, error)
 	UpdateLeaveStatus(leaveID string, status string) error
 	UpdateLeaveStatusTx(tx *sql.Tx, leaveID uuid.UUID, status string, approverID uuid.UUID) error
-	UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID, input *models.LeaveInput, NewDays float64) error
+	UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID, input *models.LeaveInput, leaveTiming *string, NewDays float64) error
 }
 
 type leaveFlow struct {
@@ -40,11 +40,11 @@ func (r *leaveFlow) InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTimi
 	query := `
 		INSERT INTO Tbl_Leave (
 			employee_id, leave_type_id, start_date, end_date,
-			days, reason, leave_timing, status, applied_by,
+			days, reason, half_id, leave_timing, status, applied_by,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4,
-			$5, $6, $7, $8, $9,
+			$5, $6, $7, $8, $9, $10,
 			NOW(), NOW()
 		)
 		RETURNING id
@@ -58,6 +58,7 @@ func (r *leaveFlow) InsertLeave(tx *sqlx.Tx, leave *models.LeaveInput, leaveTimi
 		leave.EndDate,
 		leave.Days,
 		leave.Reason,
+		leave.LeaveTimingID,  //  Now inserting half_id
 		leaveTiming,
 		constant.LEAVE_PENDING,
 		appliedBy,
@@ -403,7 +404,7 @@ func (r *leaveFlow) UpdateLeaveStatus(leaveID string, status string) error {
 	return err
 }
 
-func (r *leaveFlow) UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID, input *models.LeaveInput, NewDays float64) error {
+func (r *leaveFlow) UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID, input *models.LeaveInput, leaveTiming *string, NewDays float64) error {
 
 	// 2. RE-CALCULATE DAYS using your existing service
 	// Ensure you pass the correct timingID (1, 2, or 3)
@@ -417,9 +418,10 @@ func (r *leaveFlow) UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID,
             reason = $4,
 			days = $5,           
             half_id = $6,
+            leave_timing = $7,
             updated_at = NOW()
-        WHERE id = $7 
-          AND employee_id = $8 
+        WHERE id = $8 
+          AND employee_id = $9 
           AND status = 'Pending'`
 
 	result, err := tx.Exec(query,
@@ -429,6 +431,7 @@ func (r *leaveFlow) UpdateLeave(tx *sqlx.Tx, leaveID uuid.UUID, empID uuid.UUID,
 		input.Reason,
 		NewDays,
 		input.LeaveTimingID,
+		leaveTiming,  // ✅ Now updating leave_timing for early leaves
 		leaveID,
 		empID,
 	)
